@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { 
-  View, TextInput, Text, StyleSheet, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Image 
+import {
+  View, TextInput, Text, StyleSheet, TouchableOpacity, ActivityIndicator, KeyboardAvoidingView, Platform, Image
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -57,7 +57,7 @@ const SignupScreen = ({ navigation }) => {
         <Text style={styles.title}>Create a New Account</Text>
         <Text style={styles.subtitle}>Sign up to join TechNest Ghazi</Text>
       </LinearGradient>
-      
+
       <View style={styles.inputContainer}>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -121,7 +121,8 @@ const SignupScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
-  gradientContainer: { width: "100%", height: "45%", justifyContent: "center", alignItems: "center", borderBottomLeftRadius: 80, borderBottomRightRadius: 80, elevation: 8 },
+  gradientContainer: { width: "100%", height: "45%", justifyContent: "center", alignItems: "center", borderTopLeftRadius: 50,  
+    borderTopRightRadius: 50, elevation: 8 },
   image: { width: 120, height: 120, resizeMode: "contain", marginBottom: 10 },
   title: { fontSize: 22, fontWeight: "bold", color: "#FFFFFF", textAlign: "center" },
   subtitle: { fontSize: 14, color: "#FFC107", textAlign: "center", marginTop: 5 },

@@ -29,17 +29,16 @@ const LoginScreen = ({ navigation }) => {
     setIsLoading(true);
   
     if (email === "admin" && password === "1234") {
-      navigation.replace("AdminDashboardTabs"); // Navigate to Admin Dashboard Tabs
+      navigation.replace("AdminDashboardTabs");
     } else if (email === "user" && password === "1234") {
-      navigation.replace("BottomTabs"); // Navigate to User Bottom Navigation
+      navigation.replace("BottomTabs");
     } else {
       setError("Invalid email or password.");
     }
   
     setIsLoading(false);
   };
-  
-  
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -47,7 +46,7 @@ const LoginScreen = ({ navigation }) => {
     >
       {/* Gradient Header */}
       <LinearGradient 
-        colors={["#007BFF", "#0056D2", "#0033A0"]} 
+        colors={["#C40000", "#FF0000"]} 
         style={styles.gradientContainer}
       >
         <Image source={require("../assets/cart.png")} style={styles.image} />
@@ -60,7 +59,7 @@ const LoginScreen = ({ navigation }) => {
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
         <View style={styles.inputWrapper}>
-          <Icon name="email" size={22} color="#007BFF" />
+          <Icon name="email" size={22} color="#FF0000" />
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -73,7 +72,7 @@ const LoginScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.inputWrapper}>
-          <Icon name="lock" size={22} color="#007BFF" />
+          <Icon name="lock" size={22} color="#FF0000" />
           <TextInput
             style={styles.input}
             placeholder="Password"
@@ -87,12 +86,12 @@ const LoginScreen = ({ navigation }) => {
             <Icon 
               name={showPassword ? "eye-off" : "eye"} 
               size={22} 
-              color="#007BFF" 
+              color="#FF0000" 
             />
           </TouchableOpacity>
         </View>
 
-        {/* Forgot Password Positioned Below Password Field */}
+        {/* Forgot Password */}
         <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
           <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
         </TouchableOpacity>
@@ -111,7 +110,7 @@ const LoginScreen = ({ navigation }) => {
         )}
       </TouchableOpacity>
 
-      {/* Signup Link Positioned Like Forgot Password */}
+      {/* Signup Link */}
       <TouchableOpacity onPress={() => navigation.navigate("Signup")}>
         <Text style={styles.signupText}>Don't have an account? <Text style={styles.signupLink}>Sign up</Text></Text>
       </TouchableOpacity>
@@ -122,18 +121,18 @@ const LoginScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "#FAFAFA",
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 20,
   },
   gradientContainer: {
     width: "100%",
-    height: "40%", // Reduced height slightly for better balance
+    height: "40%",
     justifyContent: "center",
     alignItems: "center",
-    borderTopLeftRadius: 60,  
-    borderTopRightRadius: 60, 
+    borderBottomLeftRadius: 50,  
+    borderBottomRightRadius: 50, 
     elevation: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 5 },
@@ -154,7 +153,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
-    color: "#FFC107",
+    color: "#FFCCBC",
     textAlign: "center",
     marginTop: 5,
   },
@@ -183,14 +182,14 @@ const styles = StyleSheet.create({
   },
   forgotPasswordText: {
     marginTop: 5,  
-    color: "#3399FF", // Light Blue for Hypertext
+    color: "#FF0000", 
     fontSize: 13,
     fontWeight: "500",
     alignSelf: "flex-end",
     textDecorationLine: "underline",
   },
   button: {
-    backgroundColor: "#0033A0", // Dark Blue for Button
+    backgroundColor: "#FF0000", 
     paddingVertical: 12, 
     borderRadius: 10,
     alignItems: "center",
@@ -199,7 +198,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   buttonDisabled: {
-    backgroundColor: "#90CAF9",
+    backgroundColor: "#FF6666",
   },
   buttonText: {
     color: "#FFFFFF",
@@ -211,10 +210,10 @@ const styles = StyleSheet.create({
     color: "#333",
     fontSize: 13,
     fontWeight: "500",
-    alignSelf: "flex-end",
+    alignSelf: "center",
   },
   signupLink: {
-    color: "#3399FF", // Light Blue for Hypertext
+    color: "#FF0000", 
     fontWeight: "bold",
     textDecorationLine: "underline",
   },

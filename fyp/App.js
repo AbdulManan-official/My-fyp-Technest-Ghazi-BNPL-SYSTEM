@@ -13,33 +13,38 @@ import AdminDashboardNavigation from './screens/AdminScreens/AdminDashboardNavig
 
 const Stack = createStackNavigator();
 
+// Custom Header with Pure Bright Red
+const CustomHeader = ({ navigation, title }) => ({
+  headerShown: true,
+  headerStyle: { backgroundColor: '#FF0000' }, // Pure Bright Red
+  headerTitleStyle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  headerLeft: () => (
+    <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: 10 }}>
+      <MaterialIcons name="arrow-back" size={28} color="white" />
+    </TouchableOpacity>
+  ),
+  headerTitle: title,
+});
+
 export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator
         screenOptions={{
-          headerShown: false, // Hide headers globally
+          headerShown: false, // Default: No headers
         }}
       >
         {/* Authentication Screens */}
         <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen name="Signup" component={SignupScreen} />
-
-        {/* Forgot Password Screen (With Custom Header & Back Button) */}
-        <Stack.Screen
-          name="ForgotPassword"
-          component={ForgotPasswordScreen}
-          options={({ navigation }) => ({
-            headerShown: true,
-            headerStyle: { backgroundColor: '#0033A0' },
-            headerTitleStyle: { color: 'white' },
-            headerLeft: () => (
-              <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: 10 }}>
-                <MaterialIcons name="arrow-back" size={30} color="white" />
-              </TouchableOpacity>
-            ),
-            headerTitle: 'Forgot Password',
-          })}
+        <Stack.Screen 
+          name="Signup" 
+          component={SignupScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Sign Up' })}
+        />
+        <Stack.Screen 
+          name="ForgotPassword" 
+          component={ForgotPasswordScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password' })}
         />
 
         {/* User Bottom Tab Navigation */}

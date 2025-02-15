@@ -1,8 +1,9 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialIcons } from '@expo/vector-icons';
+import { View } from 'react-native';
 
-// Importing Screens
+// Import Screens
 import HomeScreen from './HomeScreen';
 import SearchScreen from './SearchScreen';
 import CartScreen from './CartScreen';
@@ -15,7 +16,7 @@ export default function BottomTabNavigation() {
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
-        tabBarIcon: ({ color, size }) => {
+        tabBarIcon: ({ focused }) => {
           let iconName;
 
           if (route.name === 'Home') {
@@ -30,18 +31,37 @@ export default function BottomTabNavigation() {
             iconName = 'person';
           }
 
-          return <MaterialIcons name={iconName} size={size} color={color} />;
+          return (
+            <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+              <MaterialIcons
+                name={iconName}
+                size={focused ? 30 : 25} // Increased size for active tab
+                color={focused ? 'black' : '#FFFFFF'} // Active: Gold, Inactive: White
+              />
+            </View>
+          );
         },
-        tabBarActiveTintColor: '#007BFF',
-        tabBarInactiveTintColor: 'gray',
-        tabBarStyle: { backgroundColor: '#fff', paddingBottom: 5 },
+        tabBarActiveTintColor: 'black', // Gold color for active label
+        tabBarInactiveTintColor: '#FFFFFF', // White color for inactive label
+        tabBarStyle: {
+          backgroundColor: '#FF0000', // Pure Bright Red Background
+          borderTopLeftRadius: 20,
+          borderTopRightRadius: 20,
+          elevation: 5,
+          height: 65,
+          paddingBottom: 10,
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: 'bold',
+        },
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Search" component={SearchScreen} />
-      <Tab.Screen name="Cart" component={CartScreen} />
-      <Tab.Screen name="Messages" component={MessageScreen} />
-      <Tab.Screen name="Profile" component={ProfileScreen} />
+      <Tab.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
+      <Tab.Screen name="Search" component={SearchScreen} options={{ headerShown: false }} />
+      <Tab.Screen name="Cart" component={CartScreen} options={{ headerShown: false }} />
+      <Tab.Screen name="Messages" component={MessageScreen} options={{ headerShown: false }} />
+      <Tab.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
     </Tab.Navigator>
   );
 }

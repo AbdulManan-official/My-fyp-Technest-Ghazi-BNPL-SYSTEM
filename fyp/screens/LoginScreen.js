@@ -6,9 +6,13 @@ import {
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  Image,
+  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
-  Image
+  TouchableWithoutFeedback,
+  Keyboard,
+  StatusBar
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,9 +29,9 @@ const LoginScreen = ({ navigation }) => {
       setError("Please fill in all fields.");
       return;
     }
-  
+
     setIsLoading(true);
-  
+
     if (email === "admin" && password === "1234") {
       navigation.replace("AdminDashboardTabs");
     } else if (email === "user" && password === "1234") {
@@ -35,104 +39,118 @@ const LoginScreen = ({ navigation }) => {
     } else {
       setError("Invalid email or password.");
     }
-  
+
     setIsLoading(false);
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
-      {/* Gradient Header */}
-      <LinearGradient 
-        colors={["#C40000", "#FF0000"]} 
-        style={styles.gradientContainer}
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FAFAFA" />
+      
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : undefined} 
+        style={styles.container}
       >
-        <Image source={require("../assets/cart.png")} style={styles.image} />
-        <Text style={styles.title}>Welcome to TechNest Ghazi</Text>
-        <Text style={styles.subtitle}>Buy Now, Pay Later - Secure & Flexible Shopping</Text>
-      </LinearGradient>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.content}>
+            {/* Gradient Header */}
+            <LinearGradient 
+              colors={["#C40000", "#FF0000"]} 
+              style={styles.gradientContainer}
+            >
+              <Image source={require("../assets/cart.png")} style={styles.image} />
+              <Text style={styles.title}>Welcome to TechNest Ghazi</Text>
+              <Text style={styles.subtitle}>Buy Now, Pay Later - Secure & Flexible Shopping</Text>
+            </LinearGradient>
 
-      {/* Input Fields */}
-      <View style={styles.inputContainer}>
-        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+            {/* Input Fields */}
+            <View style={styles.inputContainer}>
+              {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
-        <View style={styles.inputWrapper}>
-          <Icon name="email" size={22} color="#FF0000" />
-          <TextInput
-            style={styles.input}
-            placeholder="Email"
-            keyboardType="email-address"
-            value={email}
-            onChangeText={setEmail}
-            placeholderTextColor="#777"
-            autoCapitalize="none"
-          />
-        </View>
+              <View style={styles.inputWrapper}>
+                <Icon name="email" size={22} color="#FF0000" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  keyboardType="email-address"
+                  value={email}
+                  onChangeText={setEmail}
+                  placeholderTextColor="#777"
+                  autoCapitalize="none"
+                />
+              </View>
 
-        <View style={styles.inputWrapper}>
-          <Icon name="lock" size={22} color="#FF0000" />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            secureTextEntry={!showPassword}
-            value={password}
-            onChangeText={setPassword}
-            placeholderTextColor="#777"
-            autoCapitalize="none"
-          />
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-            <Icon 
-              name={showPassword ? "eye-off" : "eye"} 
-              size={22} 
-              color="#FF0000" 
-            />
-          </TouchableOpacity>
-        </View>
+              <View style={styles.inputWrapper}>
+                <Icon name="lock" size={22} color="#FF0000" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password"
+                  secureTextEntry={!showPassword}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholderTextColor="#777"
+                  autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Icon 
+                    name={showPassword ? "eye-off" : "eye"} 
+                    size={22} 
+                    color="#FF0000" 
+                  />
+                </TouchableOpacity>
+              </View>
 
-        {/* Forgot Password */}
-        <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-        </TouchableOpacity>
-      </View>
+              {/* Forgot Password */}
+              <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+              </TouchableOpacity>
+            </View>
 
-      {/* Sign In Button */}
-      <TouchableOpacity
-        onPress={handleSignIn}
-        style={[styles.button, isLoading && styles.buttonDisabled]}
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <Text style={styles.buttonText}>Sign In</Text>
-        )}
-      </TouchableOpacity>
+            {/* Sign In Button */}
+            <TouchableOpacity
+              onPress={handleSignIn}
+              style={[styles.button, isLoading && styles.buttonDisabled]}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Sign In</Text>
+              )}
+            </TouchableOpacity>
 
-      {/* Signup Link */}
-      <TouchableOpacity onPress={() => navigation.navigate("Signup")}>
-        <Text style={styles.signupText}>Don't have an account? <Text style={styles.signupLink}>Sign up</Text></Text>
-      </TouchableOpacity>
-    </KeyboardAvoidingView>
+            {/* Signup Link */}
+            <TouchableOpacity onPress={() => navigation.navigate("Signup")}>
+              <Text style={styles.signupText}>Don't have an account? <Text style={styles.signupLink}>Sign up</Text></Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
     backgroundColor: "#FAFAFA",
-    justifyContent: "center",
-    alignItems: "center",
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight : 0,  // Moves content below status bar
+  },
+  container: {
+    flex: 1,
     paddingHorizontal: 20,
+  },
+  content: {
+    flex: 1,
+    justifyContent: "center",
   },
   gradientContainer: {
     width: "100%",
     height: "40%",
     justifyContent: "center",
     alignItems: "center",
-    borderBottomLeftRadius: 50,  
-    borderBottomRightRadius: 50, 
+    borderTopLeftRadius: 40,  
+    borderTopRightRadius: 40, 
     elevation: 8,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 5 },

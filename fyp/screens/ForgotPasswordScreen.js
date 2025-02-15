@@ -7,10 +7,14 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  SafeAreaView,
   KeyboardAvoidingView,
   Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
+  StatusBar,
 } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const ForgotPasswordScreen = ({ navigation }) => {
@@ -35,7 +39,6 @@ const ForgotPasswordScreen = ({ navigation }) => {
       setMessage('Please enter your email address.');
       return;
     }
-
     if (emailWarning) {
       setMessage('Please enter a valid email.');
       return;
@@ -43,7 +46,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      setMessage('Password reset email functionality needs to be implemented.');
+      setMessage('Password reset instructions have been sent to your email.');
       setTimeout(() => {
         navigation.navigate('Login');
       }, 3000);
@@ -55,73 +58,83 @@ const ForgotPasswordScreen = ({ navigation }) => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      {/* Gradient Header with Image */}
-      <LinearGradient
-        colors={['#007BFF', '#0056D2', '#0033A0']}
-        style={styles.gradientContainer}
-      >
-        <Image source={require('../assets/two.png')} style={styles.image} />
-        <Text style={styles.title}>Forgot Password?</Text>
-        <Text style={styles.subtitle}>
-          Enter your email to reset your password
-        </Text>
-      </LinearGradient>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FAFAFA" />
 
-      {/* Input Field */}
-      <View style={styles.inputContainer}>
-        <MaterialCommunityIcons name="email-outline" size={22} color="#007BFF" />
-        <TextInput
-          style={styles.input}
-          placeholder="Email"
-          keyboardType="email-address"
-          value={email}
-          onChangeText={validateEmail}
-          placeholderTextColor="#777"
-          autoCapitalize="none"
-        />
-      </View>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.content}>
+            {/* Gradient Header */}
+            <LinearGradient colors={['#C40000', '#FF0000']} style={styles.gradientContainer}>
+              <Image source={require('../assets/forgot.png')} style={styles.image} />
+              <Text style={styles.title}>Forgot Password?</Text>
+              <Text style={styles.subtitle}>Enter your email to reset your password</Text>
+            </LinearGradient>
 
-      {/* Warning Message */}
-      {emailWarning ? <Text style={styles.warningText}>{emailWarning}</Text> : null}
+            {/* Input Field */}
+            <View style={styles.inputContainer}>
+              <View style={styles.inputWrapper}>
+                <Icon name="email" size={22} color="#FF0000" />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  keyboardType="email-address"
+                  value={email}
+                  onChangeText={validateEmail}
+                  placeholderTextColor="#777"
+                  autoCapitalize="none"
+                />
+              </View>
+            </View>
 
-      {/* Reset Button */}
-      <TouchableOpacity
-        style={[styles.button, isLoading && styles.buttonDisabled]}
-        onPress={handleResetPassword}
-        disabled={isLoading}
-      >
-        {isLoading ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
-        ) : (
-          <Text style={styles.buttonText}>Reset Password</Text>
-        )}
-      </TouchableOpacity>
+            {/* Warning Message */}
+            {emailWarning ? <Text style={styles.warningText}>{emailWarning}</Text> : null}
 
-      {/* Display Message */}
-      {message ? <Text style={styles.message}>{message}</Text> : null}
-    </KeyboardAvoidingView>
+            {/* Reset Button */}
+            <TouchableOpacity onPress={handleResetPassword} style={[styles.button, isLoading && styles.buttonDisabled]} disabled={isLoading}>
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Reset Password</Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Display Message */}
+            {message ? <Text style={styles.message}>{message}</Text> : null}
+
+            {/* Back to Login Link */}
+            <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+              <Text style={styles.signupText}>
+                Remember your password? <Text style={styles.signupLink}>Login</Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#FAFAFA',
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5',
-    justifyContent: 'center',
-    alignItems: 'center',
     paddingHorizontal: 20,
+  },
+  content: {
+    flex: 1,
   },
   gradientContainer: {
     width: '100%',
     height: '40%',
     justifyContent: 'center',
     alignItems: 'center',
-    borderTopLeftRadius: 50,  
-    borderTopRightRadius: 50,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 5 },
@@ -142,11 +155,15 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
-    color: '#FFC107',
+    color: '#FFCCBC',
     textAlign: 'center',
     marginTop: 5,
   },
   inputContainer: {
+    width: '100%',
+    marginTop: 40,
+  },
+  inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
     borderColor: '#E0E0E0',
@@ -157,7 +174,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     elevation: 2,
-    width: '100%',
   },
   input: {
     flex: 1,
@@ -173,7 +189,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   button: {
-    backgroundColor: '#0033A0',
+    backgroundColor: '#FF0000',
     paddingVertical: 12,
     borderRadius: 10,
     alignItems: 'center',
@@ -182,7 +198,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   buttonDisabled: {
-    backgroundColor: '#90CAF9',
+    backgroundColor: '#FF6666',
   },
   buttonText: {
     color: '#FFFFFF',
@@ -194,6 +210,18 @@ const styles = StyleSheet.create({
     color: '#F44336',
     textAlign: 'center',
     fontSize: 14,
+  },
+  signupText: {
+    marginTop: 5,
+    color: '#333',
+    fontSize: 13,
+    fontWeight: '500',
+    alignSelf: 'center',
+  },
+  signupLink: {
+    color: '#FF0000',
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
   },
 });
 

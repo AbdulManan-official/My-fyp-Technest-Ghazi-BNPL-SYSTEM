@@ -10,6 +10,8 @@ import SignupScreen from './screens/SignupScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import BottomTabNavigation from './screens/userscreens/BottomTabNavigation'; // User Screens
 import AdminDashboardNavigation from './screens/AdminScreens/AdminDashboardNavigation'; // Admin Screens
+import HomeScreen from './screens/userscreens/HomeScreen'; // ✅ Import HomeScreen
+import ProductDetailScreen from './screens/userscreens/ProductDetailScreen'; // ✅ Import Product Detail Screen
 
 const Stack = createStackNavigator();
 
@@ -52,6 +54,16 @@ export default function App() {
 
         {/* Admin Dashboard Tabs */}
         <Stack.Screen name="AdminDashboardTabs" component={AdminDashboardNavigation} />
+
+        {/* ✅ Added HomeScreen (if it's not inside BottomTabs) */}
+        <Stack.Screen name="Home" component={HomeScreen} />
+
+        {/* ✅ Added Product Detail Screen */}
+        <Stack.Screen 
+          name="ProductDetail" 
+          component={ProductDetailScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details' })}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

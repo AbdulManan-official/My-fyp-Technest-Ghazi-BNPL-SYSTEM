@@ -41,7 +41,6 @@ export default function App() {
         <Stack.Screen 
           name="Signup" 
           component={SignupScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Sign Up' })}
         />
         <Stack.Screen 
           name="ForgotPassword" 

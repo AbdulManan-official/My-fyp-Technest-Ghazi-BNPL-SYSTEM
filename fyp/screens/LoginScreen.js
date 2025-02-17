@@ -115,7 +115,7 @@ const LoginScreen = ({ navigation }) => {
               {isLoading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.buttonText}>Sign In</Text>
+                <Text style={styles.buttonText}>Login</Text>
               )}
             </TouchableOpacity>
 
@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   },
   gradientContainer: {
     width: "100%",
-    height: "40%",
+    height: "50%",
     justifyContent: "center",
     alignItems: "center",
     borderTopLeftRadius: 40,  

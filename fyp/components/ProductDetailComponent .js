@@ -1,7 +1,5 @@
-// components/ProductDetailComponent.js
 import React from 'react';
 import { View, Text, Image, StyleSheet } from 'react-native';
-
 const ProductDetailComponent = ({ product }) => {
   return (
     <View style={styles.container}>

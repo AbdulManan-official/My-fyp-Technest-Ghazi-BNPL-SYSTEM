@@ -1,7 +1,7 @@
 // screens/ProductDetailScreen.js
 import React from 'react';
 import { View, Button } from 'react-native';
-import ProductDetailComponent from '../../components/ProductDetailComponent';
+import ProductDetailComponent from '../../Components/ProductDetailComponent ';
 const ProductDetailScreen = ({ route, navigation }) => {
   const { product } = route.params;
 

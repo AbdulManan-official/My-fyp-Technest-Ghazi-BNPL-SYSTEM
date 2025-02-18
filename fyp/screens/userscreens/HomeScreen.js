@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; 
 import { 
   View, Text, Image, FlatList, ScrollView, Dimensions, TouchableOpacity, StyleSheet 
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native'; // ✅ Import navigation hook
+import { useNavigation } from '@react-navigation/native'; 
 import { MaterialIcons } from '@expo/vector-icons';
 
 const { width } = Dimensions.get('window');
@@ -13,6 +13,7 @@ const banners = [
   require('../../assets/pic3.jpg'),
 ];
 
+// Example product data with dummy images
 const trendingProducts = [
   { id: '1', name: 'Wireless Headphones', price: '$59.99', image: 'https://via.placeholder.com/150/0000FF/808080?text=Headphones' },
   { id: '2', name: 'Smartwatch Series 7', price: '$249.99', image: 'https://via.placeholder.com/150/FF0000/FFFFFF?text=Smartwatch' },
@@ -28,7 +29,7 @@ const recommendedProducts = [
 ];
 
 const HomeScreen = () => {
-  const navigation = useNavigation(); // ✅ Hook for navigation
+  const navigation = useNavigation(); 
   const [currentIndex, setCurrentIndex] = useState(0);
   const scrollRef = useRef(null);
 
@@ -42,17 +43,15 @@ const HomeScreen = () => {
     return () => clearInterval(interval);
   }, [currentIndex]);
 
-  // ✅ Updated Product Card with Navigation
   const renderProductCard = ({ item }) => (
     <TouchableOpacity 
       style={styles.productCard}
-      onPress={() => navigation.navigate('ProductDetail', { product: item })} // ✅ Navigate to detail screen
+      onPress={() => navigation.navigate('ProductDetail', { product: item })} 
     >
       <Image source={{ uri: item.image }} style={styles.productImage} />
       <Text style={styles.productName}>{item.name}</Text>
       <Text style={styles.productPrice}>{item.price}</Text>
       
-      {/* ✅ BNPL Badge */}
       <View style={styles.bnplBadge}>
         <MaterialIcons name="verified" size={16} color="#00796B" />
         <Text style={styles.bnplText}>BNPL Available</Text>
@@ -61,78 +60,98 @@ const HomeScreen = () => {
   );
 
   return (
-    <ScrollView style={styles.container}>
-      {/* ✅ Banner Carousel */}
-      <View>
-        <ScrollView
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          ref={scrollRef}
-          onScroll={(event) => {
-            const index = Math.round(event.nativeEvent.contentOffset.x / width);
-            setCurrentIndex(index);
-          }}
-          scrollEventThrottle={16}
-        >
-          {banners.map((image, index) => (
-            <Image key={index} source={image} style={styles.banner} />
-          ))}
-        </ScrollView>
-        <View style={styles.dotContainer}>
-          {banners.map((_, index) => (
-            <View
-              key={index}
-              style={[styles.dot, { backgroundColor: index === currentIndex ? 'red' : 'lightgray' }]}
+    <FlatList
+      data={[
+        { type: 'banner' },
+        { type: 'section', title: '🔥 Trending Products' },
+        ...trendingProducts.map(product => ({ type: 'product', ...product })),
+        { type: 'section', title: '🌟 Recommended for You' },
+        ...recommendedProducts.map(product => ({ type: 'product', ...product })),
+      ]}
+      keyExtractor={(item, index) => index.toString()}
+      renderItem={({ item }) => {
+        if (item.type === 'banner') {
+          return (
+            <View style={styles.sliderContainer}>
+              <ScrollView
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onScroll={(event) => {
+                  const index = Math.round(event.nativeEvent.contentOffset.x / width);
+                  setCurrentIndex(index);
+                }}
+                scrollEventThrottle={16}
+                ref={scrollRef}
+              >
+                {banners.map((image, index) => (
+                  <Image key={index} source={image} style={styles.banner} />
+                ))}
+              </ScrollView>
+              
+              {/* Pagination Dots */}
+              <View style={styles.pagination}>
+                {banners.map((_, index) => (
+                  <View 
+                    key={index} 
+                    style={[styles.dot, currentIndex === index ? styles.activeDot : null]} 
+                  />
+                ))}
+              </View>
+            </View>
+          );
+        }
+
+        if (item.type === 'section') {
+          return <Text style={styles.sectionTitle}>{item.title}</Text>;
+        }
+
+        if (item.type === 'product') {
+          return (
+            <FlatList
+              horizontal // Ensure this list is horizontal
+              data={trendingProducts} // Ensure it uses the correct product data
+              renderItem={renderProductCard}
+              keyExtractor={(product) => product.id}
+              showsHorizontalScrollIndicator={false} // Hide horizontal scroll indicator
+              contentContainerStyle={styles.productListContainer} // Ensure only one row is shown
             />
-          ))}
-        </View>
-      </View>
-
-      {/* ✅ Trending Products */}
-      <Text style={styles.sectionTitle}>🔥 Trending Products</Text>
-      <FlatList
-        horizontal
-        data={trendingProducts}
-        keyExtractor={(item) => item.id}
-        renderItem={renderProductCard}
-        showsHorizontalScrollIndicator={false}
-      />
-
-      {/* ✅ Recommended Products */}
-      <Text style={styles.sectionTitle}>🌟 Recommended for You</Text>
-      <FlatList
-        data={recommendedProducts}
-        keyExtractor={(item) => item.id}
-        renderItem={renderProductCard}
-        numColumns={2}
-        contentContainerStyle={styles.gridContainer}
-        showsVerticalScrollIndicator={false}
-      />
-    </ScrollView>
+          );
+        }
+      }}
+      showsVerticalScrollIndicator={false} // Disable vertical scroll indicator
+    />
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: 'white',
+  sliderContainer: {
+    alignItems: 'center', 
+    justifyContent: 'center',
   },
   banner: {
     width: width,
     height: 200,
     resizeMode: 'cover',
   },
-  dotContainer: {
+  pagination: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    marginVertical: 8,
+    position: 'absolute',
+    bottom: 5,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.7)', 
+    padding: 5,
+    borderRadius: 10,
   },
   dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
     marginHorizontal: 5,
+    backgroundColor: '#A0A0A0',
+  },
+  activeDot: {
+    backgroundColor: '#FF7300',
   },
   sectionTitle: {
     fontSize: 18,
@@ -153,6 +172,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 8,
+    resizeMode: 'contain',  // Ensure image scales properly
   },
   productName: {
     marginTop: 5,
@@ -183,6 +203,9 @@ const styles = StyleSheet.create({
   },
   gridContainer: {
     paddingHorizontal: 10,
+  },
+  productListContainer: {
+    paddingLeft: 10, // Padding to the left so that the products start with a margin
   },
 });
 

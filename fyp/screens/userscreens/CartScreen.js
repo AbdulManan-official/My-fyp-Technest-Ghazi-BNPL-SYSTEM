@@ -115,9 +115,13 @@ export default function CartScreen() {
       {cartItems.length > 0 && (
         <View style={styles.totalContainer}>
           <Text style={styles.totalText}>Total: PKR {totalPrice.toLocaleString()}</Text>
-          <TouchableOpacity style={styles.checkoutButton}>
-            <Text style={styles.checkoutText}>Checkout</Text>
-          </TouchableOpacity>
+          <TouchableOpacity 
+  style={styles.checkoutButton} 
+  onPress={() => navigation.navigate('CheckoutScreen', { cartItems, totalPrice })}
+>
+  <Text style={styles.checkoutText}>Checkout</Text>
+</TouchableOpacity>
+
         </View>
       )}
     </View>

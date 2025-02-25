@@ -10,12 +10,14 @@ import SignupScreen from './screens/SignupScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import BottomTabNavigation from './screens/userscreens/BottomTabNavigation'; // User Screens
 import AdminDashboardNavigation from './screens/AdminScreens/AdminDashboardNavigation'; // Admin Screens
-import HomeScreen from './screens/userscreens/HomeScreen'; // ✅ Import HomeScreen
-import ProductDetailScreen from './screens/userscreens/ProductDetailScreen'; // ✅ Import Product Detail Screen
+import HomeScreen from './screens/userscreens/HomeScreen'; // ✅ Home Screen
+import ProductDetailScreen from './screens/userscreens/ProductDetailScreen'; // ✅ Product Detail Screen
+import CheckoutScreen from './screens/userscreens/CheckoutScreen'; // ✅ Checkout Screen Import
+import CartScreen from './screens/userscreens/CartScreen'; // ✅ Cart Screen Import
 
 const Stack = createStackNavigator();
 
-// Custom Header with Pure Bright Red
+// Custom Header with Bright Red Theme
 const CustomHeader = ({ navigation, title }) => ({
   headerShown: true,
   headerStyle: { backgroundColor: '#FF0000' }, // Pure Bright Red
@@ -38,10 +40,7 @@ export default function App() {
       >
         {/* Authentication Screens */}
         <Stack.Screen name="Login" component={LoginScreen} />
-        <Stack.Screen 
-          name="Signup" 
-          component={SignupScreen} 
-        />
+        <Stack.Screen name="Signup" component={SignupScreen} />
         <Stack.Screen 
           name="ForgotPassword" 
           component={ForgotPasswordScreen} 
@@ -54,14 +53,28 @@ export default function App() {
         {/* Admin Dashboard Tabs */}
         <Stack.Screen name="AdminDashboardTabs" component={AdminDashboardNavigation} />
 
-        {/* ✅ Added HomeScreen (if it's not inside BottomTabs) */}
+        {/* ✅ Home Screen */}
         <Stack.Screen name="Home" component={HomeScreen} />
 
-        {/* ✅ Added Product Detail Screen */}
+        {/* ✅ Product Detail Screen */}
         <Stack.Screen 
           name="ProductDetail" 
           component={ProductDetailScreen} 
           options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details' })}
+        />
+
+        {/* ✅ Cart Screen */}
+        <Stack.Screen 
+          name="CartScreen" 
+          component={CartScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Your Cart' })}
+        />
+
+        {/* ✅ Checkout Screen */}
+        <Stack.Screen 
+          name="CheckoutScreen" 
+          component={CheckoutScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout' })}
         />
       </Stack.Navigator>
     </NavigationContainer>

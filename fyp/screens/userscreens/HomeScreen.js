@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'; 
 import { 
-  View, Text, Image, FlatList, ScrollView, Dimensions, TouchableOpacity, StyleSheet 
+  View, Text, Image, FlatList, Dimensions, TouchableOpacity, StyleSheet 
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native'; 
 import { MaterialIcons } from '@expo/vector-icons';
@@ -13,44 +13,50 @@ const banners = [
   require('../../assets/pic3.jpg'),
 ];
 
-// Example product data with dummy images
 const trendingProducts = [
-  { id: '1', name: 'Wireless Headphones', price: '$59.99', image: 'https://via.placeholder.com/150/0000FF/808080?text=Headphones' },
-  { id: '2', name: 'Smartwatch Series 7', price: '$249.99', image: 'https://via.placeholder.com/150/FF0000/FFFFFF?text=Smartwatch' },
-  { id: '3', name: 'Gaming Laptop', price: '$1,499.99', image: 'https://via.placeholder.com/150/008000/FFFFFF?text=Laptop' },
-  { id: '4', name: 'Wireless Earbuds', price: '$79.99', image: 'https://via.placeholder.com/150/FFA500/FFFFFF?text=Earbuds' },
+  { id: '1', name: 'Wireless Headphones', originalPrice: '$79.99', discountedPrice: '$59.99', image: require('../../assets/p1.jpg') },
+  { id: '2', name: 'Smartwatch Series 7', originalPrice: '$299.99', discountedPrice: '$249.99', image: require('../../assets/p2.png') },
+  { id: '3', name: 'Gaming Laptop', originalPrice: '$1,799.99', discountedPrice: '$1,499.99', image: require('../../assets/p3.jpg') },
+  { id: '4', name: 'Wireless Earbuds', originalPrice: '$99.99', discountedPrice: '$79.99', image: require('../../assets/p4.jpg') },
+  { id: '5', name: 'Bluetooth Speaker', originalPrice: '$59.99', discountedPrice: '$49.99', image: require('../../assets/b1.jpg') },
+  { id: '6', name: 'Gaming Chair', originalPrice: '$249.99', discountedPrice: '$199.99', image: require('../../assets/b2.jpg') },
+  { id: '7', name: '4K TV', originalPrice: '$799.99', discountedPrice: '$599.99', image: require('../../assets/b1.jpg') },
+  { id: '8', name: 'Portable Power Bank', originalPrice: '$29.99', discountedPrice: '$19.99', image: require('../../assets/b2.jpg') },
 ];
 
 const recommendedProducts = [
-  { id: '5', name: 'Bluetooth Speaker', price: '$39.99', image: 'https://via.placeholder.com/150/0000FF/808080?text=Speaker' },
-  { id: '6', name: 'Mechanical Keyboard', price: '$99.99', image: 'https://via.placeholder.com/150/FF0000/FFFFFF?text=Keyboard' },
-  { id: '7', name: 'Smart TV', price: '$599.99', image: 'https://via.placeholder.com/150/008000/FFFFFF?text=SmartTV' },
-  { id: '8', name: 'Gaming Mouse', price: '$49.99', image: 'https://via.placeholder.com/150/FFA500/FFFFFF?text=Mouse' },
+  { id: '9', name: 'Mechanical Keyboard', originalPrice: '$149.99', discountedPrice: '$99.99', image: require('../../assets/b1.jpg') },
+  { id: '10', name: 'Smart TV', originalPrice: '$799.99', discountedPrice: '$599.99', image: require('../../assets/b2.jpg') },
+  { id: '11', name: 'Gaming Mouse', originalPrice: '$69.99', discountedPrice: '$49.99', image: require('../../assets/p3.jpg') },
+  { id: '12', name: 'Wireless Mouse', originalPrice: '$39.99', discountedPrice: '$29.99', image: require('../../assets/p4.jpg') },
+  { id: '13', name: 'Laptop Stand', originalPrice: '$79.99', discountedPrice: '$59.99', image: require('../../assets/pic1.jpg') },
+  { id: '14', name: 'Portable Speaker', originalPrice: '$129.99', discountedPrice: '$89.99', image: require('../../assets/pic2.jpg') },
+  { id: '15', name: 'Smartphone', originalPrice: '$699.99', discountedPrice: '$599.99', image: require('../../assets/b1.jpg') },
+  { id: '16', name: 'Action Camera', originalPrice: '$249.99', discountedPrice: '$199.99', image: require('../../assets/b2.jpg') },
 ];
 
 const HomeScreen = () => {
   const navigation = useNavigation(); 
   const [currentIndex, setCurrentIndex] = useState(0);
-  const scrollRef = useRef(null);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const nextIndex = (currentIndex + 1) % banners.length;
-      setCurrentIndex(nextIndex);
-      scrollRef.current?.scrollTo({ x: nextIndex * width, animated: true });
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [currentIndex]);
+  const onScroll = (event) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.floor(contentOffsetX / width);
+    setCurrentIndex(index);
+  };
 
   const renderProductCard = ({ item }) => (
     <TouchableOpacity 
       style={styles.productCard}
       onPress={() => navigation.navigate('ProductDetails', { product: item })} 
     >
-      <Image source={{ uri: item.image }} style={styles.productImage} />
+      <Image source={item.image} style={styles.productImage} />
       <Text style={styles.productName}>{item.name}</Text>
-      <Text style={styles.productPrice}>{item.price}</Text>
+      
+      <View style={styles.priceContainer}>
+        <Text style={styles.originalPrice}>{item.originalPrice}</Text>
+        <Text style={styles.discountedPrice}>{item.discountedPrice}</Text>
+      </View>
       
       <View style={styles.bnplBadge}>
         <MaterialIcons name="verified" size={16} color="#00796B" />
@@ -59,37 +65,28 @@ const HomeScreen = () => {
     </TouchableOpacity>
   );
 
+  const renderBanner = ({ item }) => (
+    <Image source={item} style={styles.banner} />
+  );
+
   return (
     <FlatList
-      data={[
-        { type: 'banner' },
-        { type: 'section', title: '🔥 Trending Products' },
-        ...trendingProducts.map(product => ({ type: 'product', ...product })),
-        { type: 'section', title: '🌟 Recommended for You' },
-        ...recommendedProducts.map(product => ({ type: 'product', ...product })),
-      ]}
-      keyExtractor={(item, index) => index.toString()}
-      renderItem={({ item }) => {
-        if (item.type === 'banner') {
+      data={[{ key: 'banner' }, { key: 'trending' }, { key: 'recommended' }]} // Adjusted data for sections
+      renderItem={({ item, index }) => {
+        if (item.key === 'banner') {
           return (
             <View style={styles.sliderContainer}>
-              <ScrollView
+              {/* Banner Section */}
+              <FlatList
                 horizontal
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
-                onScroll={(event) => {
-                  const index = Math.round(event.nativeEvent.contentOffset.x / width);
-                  setCurrentIndex(index);
-                }}
+                data={banners}
+                renderItem={renderBanner}
+                keyExtractor={(item, index) => index.toString()}
+                onScroll={onScroll}
                 scrollEventThrottle={16}
-                ref={scrollRef}
-              >
-                {banners.map((image, index) => (
-                  <Image key={index} source={image} style={styles.banner} />
-                ))}
-              </ScrollView>
-              
-              {/* Pagination Dots */}
+              />
               <View style={styles.pagination}>
                 {banners.map((_, index) => (
                   <View 
@@ -101,25 +98,39 @@ const HomeScreen = () => {
             </View>
           );
         }
-
-        if (item.type === 'section') {
-          return <Text style={styles.sectionTitle}>{item.title}</Text>;
-        }
-
-        if (item.type === 'product') {
+        if (item.key === 'trending') {
           return (
-            <FlatList
-              horizontal // Ensure this list is horizontal
-              data={trendingProducts} // Ensure it uses the correct product data
-              renderItem={renderProductCard}
-              keyExtractor={(product) => product.id}
-              showsHorizontalScrollIndicator={false} // Hide horizontal scroll indicator
-              contentContainerStyle={styles.productListContainer} // Ensure only one row is shown
-            />
+            <View>
+              <Text style={styles.sectionTitle}>🔥 Trending Products</Text>
+              <FlatList
+                horizontal
+                data={trendingProducts}
+                renderItem={renderProductCard}
+                keyExtractor={(item) => item.id}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.trendingContainer}
+              />
+            </View>
           );
         }
+        if (item.key === 'recommended') {
+          return (
+            <View>
+              <Text style={styles.sectionTitle}>🌟 Recommended for You</Text>
+              <FlatList
+                data={recommendedProducts}
+                renderItem={renderProductCard}
+                keyExtractor={(item) => item.id}
+                numColumns={2}
+                contentContainerStyle={styles.gridContainer}
+              />
+            </View>
+          );
+        }
+        return null;
       }}
-      showsVerticalScrollIndicator={false} // Disable vertical scroll indicator
+      keyExtractor={(item, index) => index.toString()}
+      showsVerticalScrollIndicator={false}
     />
   );
 };
@@ -129,17 +140,12 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     justifyContent: 'center',
   },
-  banner: {
-    width: width,
-    height: 200,
-    resizeMode: 'cover',
-  },
   pagination: {
     flexDirection: 'row',
     position: 'absolute',
     bottom: 5,
     alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.7)', 
+    backgroundColor: 'rgba(255,255,255,0.7)',
     padding: 5,
     borderRadius: 10,
   },
@@ -153,11 +159,19 @@ const styles = StyleSheet.create({
   activeDot: {
     backgroundColor: '#FF7300',
   },
+  banner: {
+    width: width,
+    height: 200,
+    resizeMode: 'cover',
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginHorizontal: 16,
     marginVertical: 10,
+  },
+  trendingContainer: {
+    paddingLeft: 10,
   },
   productCard: {
     backgroundColor: '#fff',
@@ -172,7 +186,7 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
     borderRadius: 8,
-    resizeMode: 'contain',  // Ensure image scales properly
+    resizeMode: 'contain',
   },
   productName: {
     marginTop: 5,
@@ -180,11 +194,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: 'bold',
   },
-  productPrice: {
-    fontSize: 14,
-    color: '#007BFF',
-    fontWeight: 'bold',
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 5,
+  },
+  originalPrice: {
+    fontSize: 12,
+    color: '#A0A0A0',
+    textDecorationLine: 'line-through',
+    marginRight: 5,
+  },
+  discountedPrice: {
+    fontSize: 14,
+    color: '#FF7300',
+    fontWeight: 'bold',
   },
   bnplBadge: {
     flexDirection: 'row',
@@ -203,9 +227,6 @@ const styles = StyleSheet.create({
   },
   gridContainer: {
     paddingHorizontal: 10,
-  },
-  productListContainer: {
-    paddingLeft: 10, // Padding to the left so that the products start with a margin
   },
 });
 

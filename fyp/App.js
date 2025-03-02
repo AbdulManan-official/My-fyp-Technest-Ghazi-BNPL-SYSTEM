@@ -34,6 +34,7 @@ export default function App() {
   return (
     <NavigationContainer>
       <Stack.Navigator
+        initialRouteName="Login" // This will set LoginScreen as the initial screen
         screenOptions={{
           headerShown: false, // Default: No headers
         }}
@@ -44,7 +45,7 @@ export default function App() {
         <Stack.Screen 
           name="ForgotPassword" 
           component={ForgotPasswordScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password' })}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password' })} 
         />
 
         {/* User Bottom Tab Navigation */}
@@ -60,21 +61,21 @@ export default function App() {
         <Stack.Screen 
           name="ProductDetails" 
           component={ProductDetailsScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details' })}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details' })} 
         />
 
         {/* ✅ Cart Screen */}
         <Stack.Screen 
           name="CartScreen" 
           component={CartScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Your Cart' })}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Your Cart' })} 
         />
 
         {/* ✅ Checkout Screen */}
         <Stack.Screen 
           name="CheckoutScreen" 
           component={CheckoutScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout' })}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout' })} 
         />
       </Stack.Navigator>
     </NavigationContainer>

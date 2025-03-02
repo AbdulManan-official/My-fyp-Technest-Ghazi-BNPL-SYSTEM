@@ -11,7 +11,7 @@ import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import BottomTabNavigation from './screens/userscreens/BottomTabNavigation'; // User Screens
 import AdminDashboardNavigation from './screens/AdminScreens/AdminDashboardNavigation'; // Admin Screens
 import HomeScreen from './screens/userscreens/HomeScreen'; // ✅ Home Screen
-import ProductDetailScreen from './screens/userscreens/ProductDetailScreen'; // ✅ Product Detail Screen
+import ProductDetailsScreen from './screens/userscreens/ProductDetailsScreen'; // ✅ Product Detail Screen
 import CheckoutScreen from './screens/userscreens/CheckoutScreen'; // ✅ Checkout Screen Import
 import CartScreen from './screens/userscreens/CartScreen'; // ✅ Cart Screen Import
 
@@ -58,8 +58,8 @@ export default function App() {
 
         {/* ✅ Product Detail Screen */}
         <Stack.Screen 
-          name="ProductDetail" 
-          component={ProductDetailScreen} 
+          name="ProductDetails" 
+          component={ProductDetailsScreen} 
           options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details' })}
         />
 

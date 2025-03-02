@@ -7,8 +7,7 @@ import { View } from 'react-native';
 import HomeScreen from './HomeScreen';
 import SearchScreen from './SearchScreen';
 import CartScreen from './CartScreen';
-import MessageScreen from './MessageScreen';
-import ProfileScreen from './ProfileScreen';
+import UserOrderScreen from './UserOrderScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -25,12 +24,9 @@ export default function BottomTabNavigation() {
             iconName = 'search';
           } else if (route.name === 'Cart') {
             iconName = 'shopping-cart';
-          } else if (route.name === 'Messages') {
-            iconName = 'message';
-          } else if (route.name === 'Profile') {
-            iconName = 'person';
-          }
-
+          } else if (route.name === 'Orders') {
+            iconName = 'shopping-bag';
+          } 
           return (
             <View style={{ alignItems: 'center', justifyContent: 'center' }}>
               <MaterialIcons
@@ -60,8 +56,7 @@ export default function BottomTabNavigation() {
       <Tab.Screen name="Home" component={HomeScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Search" component={SearchScreen} options={{ headerShown: false }} />
       <Tab.Screen name="Cart" component={CartScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Messages" component={MessageScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
-    </Tab.Navigator>
+      <Tab.Screen name="Orders" component={UserOrderScreen} options={{ headerShown: false }} /> 
+      </Tab.Navigator>
   );
 }

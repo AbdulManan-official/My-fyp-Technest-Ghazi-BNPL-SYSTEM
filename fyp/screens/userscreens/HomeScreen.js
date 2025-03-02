@@ -46,7 +46,7 @@ const HomeScreen = () => {
   const renderProductCard = ({ item }) => (
     <TouchableOpacity 
       style={styles.productCard}
-      onPress={() => navigation.navigate('ProductDetail', { product: item })} 
+      onPress={() => navigation.navigate('ProductDetails', { product: item })} 
     >
       <Image source={{ uri: item.image }} style={styles.productImage} />
       <Text style={styles.productName}>{item.name}</Text>

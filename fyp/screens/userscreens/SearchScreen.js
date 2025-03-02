@@ -67,7 +67,7 @@ export default function SearchScreen({ navigation }) {
 
   const handleProductClick = (productId) => {
     // Navigate to product detail screen, pass the product ID or full product data
-    navigation.navigate('ProductDetail', { productId });
+    navigation.navigate('ProductDetails', { productId });
   };
 
   return (

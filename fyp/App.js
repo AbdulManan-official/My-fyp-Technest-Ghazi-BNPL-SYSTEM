@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { TouchableOpacity } from 'react-native';
+import { TouchableOpacity, StatusBar } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 // Import Screens
@@ -14,6 +14,14 @@ import HomeScreen from './screens/userscreens/HomeScreen'; // ✅ Home Screen
 import ProductDetailsScreen from './screens/userscreens/ProductDetailsScreen'; // ✅ Product Detail Screen
 import CheckoutScreen from './screens/userscreens/CheckoutScreen'; // ✅ Checkout Screen Import
 import CartScreen from './screens/userscreens/CartScreen'; // ✅ Cart Screen Import
+
+// Newly Added Screens
+import UserProfileScreen from './screens/userscreens/UserProfileScreen'; // ✅ User Profile Screen
+import UserSecurityVerificationScreen from './screens/userscreens/UserVerficationScreen'; // ✅ User Security Verification Screen
+import PrivacyPolicyScreen from './screens/userscreens/PrivacyPolicyScreen'; // ✅ Privacy Policy Screen
+import RulesRegulationScreen from './screens/userscreens/RulesRegulationScreen'; // ✅ Rules & Regulations Screen
+import SupportChatScreen from './screens/userscreens/SupportChatScreen'; // ✅ Support Chat Screen
+import AboutUsScreen from './screens/userscreens/AboutUsScreen'; // ✅ About Us Screen
 
 const Stack = createStackNavigator();
 
@@ -33,6 +41,9 @@ const CustomHeader = ({ navigation, title }) => ({
 export default function App() {
   return (
     <NavigationContainer>
+      {/* ✅ Fix StatusBar Color */}
+      <StatusBar backgroundColor="black" barStyle="light-content" />
+
       <Stack.Navigator
         initialRouteName="Login" // This will set LoginScreen as the initial screen
         screenOptions={{
@@ -76,6 +87,38 @@ export default function App() {
           name="CheckoutScreen" 
           component={CheckoutScreen} 
           options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout' })} 
+        />
+
+        {/* ✅ User Screens */}
+        <Stack.Screen 
+          name="UserProfileScreen" 
+          component={UserProfileScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Profile' })} 
+        />
+        <Stack.Screen 
+          name="UserSecurityVerificationScreen" 
+          component={UserSecurityVerificationScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'User Security Verification' })} 
+        />
+        <Stack.Screen 
+          name="PrivacyPolicyScreen" 
+          component={PrivacyPolicyScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Privacy Policy' })} 
+        />
+        <Stack.Screen 
+          name="RulesRegulationScreen" 
+          component={RulesRegulationScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Rules & Regulations' })} 
+        />
+        <Stack.Screen 
+          name="SupportChatScreen" 
+          component={SupportChatScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Support Chat' })} 
+        />
+        <Stack.Screen 
+          name="AboutUsScreen" 
+          component={AboutUsScreen} 
+          options={({ navigation }) => CustomHeader({ navigation, title: 'About Us' })} 
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -1,100 +1,177 @@
 import React from "react";
-import { View, FlatList, StyleSheet } from "react-native";
-import { Card, Text, Avatar, Divider, List } from "react-native-paper";
-import Icon from "react-native-vector-icons/Ionicons";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  StatusBar,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { MaterialIcons } from "@expo/vector-icons";
 
-const messages = [
-  { id: "1", name: "John Doe", message: "Hey! How are you?", time: "2m ago", avatar: "https://via.placeholder.com/50" },
-  { id: "2", name: "Jane Smith", message: "Let's catch up later.", time: "5m ago", avatar: "https://via.placeholder.com/50" },
-  { id: "3", name: "Mike Johnson", message: "Can you send the report?", time: "10m ago", avatar: "https://via.placeholder.com/50" },
-];
-
-const notifications = [
-  { id: "1", text: "📢 Your order has been shipped!", time: "1h ago" },
-  { id: "2", text: "🔔 New friend request from Alex.", time: "3h ago" },
-];
-
-export default function UserOrderScreen() {
+const UserOrderScreen = ({ navigation }) => {
   return (
-    <View style={styles.container}>
-      {/* Messages Section */}
-      <Text style={styles.header}>Messages</Text>
-      <FlatList
-        data={messages}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <Card style={styles.messageCard}>
-            <View style={styles.messageRow}>
-              <Avatar.Image size={50} source={{ uri: item.avatar }} />
-              <View style={styles.messageContent}>
-                <Text style={styles.messageName}>{item.name}</Text>
-                <Text style={styles.messageText}>{item.message}</Text>
-              </View>
-              <Text style={styles.messageTime}>{item.time}</Text>
-            </View>
-          </Card>
-        )}
-      />
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#F8F8F8" }}>
+      <StatusBar barStyle="light-content" />
 
-      {/* Divider */}
-      <Divider style={styles.divider} />
+      {/* Header */}
+      <View style={styles.headerContainer}>
+        <Text style={styles.headerText}>Orders</Text>
+      </View>
 
-      {/* Notifications Section */}
-      <Text style={styles.header}>Notifications</Text>
-      <FlatList
-        data={notifications}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <List.Item
-            title={item.text}
-            description={item.time}
-            left={(props) => <Icon name="notifications-outline" size={24} color="black" {...props} />}
-          />
-        )}
-      />
-    </View>
+      <ScrollView contentContainerStyle={styles.scrollView} showsVerticalScrollIndicator={false}>
+        
+        {/* Extra Space Before Support & Information Section */}
+        <View style={{ height: 20 }}></View>
+
+        {/* 1. Support & Information (Icons in a Single Row) */}
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Support & Assistance</Text>
+          <View style={styles.iconRow}>
+            <MenuItem title="Support Chat" icon="chat" screen="ChatWithAdmin" navigation={navigation} />
+            <MenuItem title="FAQ" icon="help-outline" screen="FAQScreen" navigation={navigation} />
+            <MenuItem title="Privacy Policy" icon="privacy-tip" screen="PrivacyPolicyScreen" navigation={navigation} />
+          </View>
+        </View>
+
+        {/* 2. Orders & Payments (First Row: 2 Icons, Second Row: 3 Icons) */}
+        <LinearGradient colors={["#FF0000", "#CC0000"]} style={styles.gradientContainer}>
+          <View style={styles.curvedTop}>
+            <Text style={styles.sectionTitle}>Orders & Payments</Text>
+          </View>
+
+          {/* First Row (2 Items) */}
+          <View style={styles.gridContainer}>
+            <MenuItem title="Active Orders" icon="local-shipping" screen="ActiveOrders" navigation={navigation} />
+            <MenuItem title="Order History" icon="history" screen="OrdersHistory" navigation={navigation} />
+          </View>
+
+          {/* Second Row (3 Items) */}
+          <View style={styles.gridContainer}>
+            <MenuItem title="BNPL Schedule" icon="schedule" screen="BNPLSchedule" navigation={navigation} />
+            <MenuItem title="Promotions" icon="sell" screen="PromotionScreen" navigation={navigation} />
+            <MenuItem title="Reviews" icon="rate-review" screen="MyReviews" navigation={navigation} />
+          </View>
+        </LinearGradient>
+
+      </ScrollView>
+    </SafeAreaView>
   );
-}
+};
+
+// Reusable Menu Item Component
+const MenuItem = ({ title, icon, screen, navigation }) => (
+  <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate(screen)}>
+    <View style={styles.iconCircle}>
+      <MaterialIcons name={icon} size={22} color="red" />
+    </View>
+    <Text style={styles.menuText}>{title}</Text>
+  </TouchableOpacity>
+);
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 15,
-    backgroundColor: "#fff",
-  },
-  header: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 10,
-  },
-  messageCard: {
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 10,
-    backgroundColor: "#f9f9f9",
-    elevation: 2,
-  },
-  messageRow: {
-    flexDirection: "row",
+  headerContainer: {
+    paddingVertical: 30, 
+    justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#FF0000",
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  messageContent: {
-    flex: 1,
-    marginLeft: 10,
-  },
-  messageName: {
-    fontSize: 16,
+  headerText: {
+    fontSize: 22, 
     fontWeight: "bold",
+    color: "#FFF",
+    letterSpacing: 1,
   },
-  messageText: {
-    fontSize: 14,
-    color: "#555",
+  scrollView: {
+    paddingVertical: 10, 
+    paddingHorizontal: 12,
   },
-  messageTime: {
-    fontSize: 12,
-    color: "#888",
+  sectionContainer: {
+    backgroundColor: "#FF0000",
+    borderRadius: 25,
+    paddingVertical: 20, 
+    marginBottom: 12, 
+    marginTop: 15,  // Increased spacing above the section
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 7,
   },
-  divider: {
-    marginVertical: 15,
+  gradientContainer: {
+    borderRadius: 30,
+    paddingVertical: 25, 
+    marginBottom: 12,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.3,
+    shadowRadius: 7,
+    elevation: 8,
+  },
+  curvedTop: {
+    borderTopLeftRadius: 30, 
+    borderTopRightRadius: 30, 
+    overflow: "hidden",
+    width: "100%",
+    alignItems: "center",
+    paddingTop: 15,
+  },
+  sectionTitle: {
+    fontSize: 20, 
+    fontWeight: "bold",
+    color: "#FFF",
+    textAlign: "center",
+    marginBottom: 10,
+  },
+  iconRow: {
+    flexDirection: "row",
+    justifyContent: "space-evenly",
+    alignItems: "center",
+    width: "100%",
+  },
+  gridContainer: {
+    flexDirection: "row",
+    justifyContent: "space-evenly",
+    alignItems: "center",
+    width: "100%",
+    marginBottom: 10, 
+  },
+  menuItem: {
+    alignItems: "center",
+    width: "30%", 
+    paddingVertical: 5, 
+  },
+  iconCircle: {
+    backgroundColor: "white",
+    width: 50, 
+    height: 50,
+    borderRadius: 25,
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  menuText: {
+    fontSize: 14, 
+    fontWeight: "600",
+    color: "#FFF",
+    marginTop: 8,
+    textAlign: "center",
   },
 });
+
+export default UserOrderScreen;

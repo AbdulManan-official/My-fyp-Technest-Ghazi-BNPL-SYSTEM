@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { auth } from '../firebaseConfig'; // Firebase config for password reset
+import { sendPasswordResetEmail } from 'firebase/auth'; // Firebase method to send reset email
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -46,9 +48,10 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
     setIsLoading(true);
     try {
+      await sendPasswordResetEmail(auth, email);
       setMessage('Password reset instructions have been sent to your email.');
       setTimeout(() => {
-        navigation.navigate('Login');
+        navigation.navigate('Login'); // Navigate after successful password reset
       }, 3000);
     } catch (e) {
       setMessage('Failed to send reset email. Please try again.');

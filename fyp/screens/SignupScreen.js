@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { auth } from '../firebaseConfig'; // Firebase config
+import { createUserWithEmailAndPassword } from 'firebase/auth'; // Firebase signup method
 
 const SignupScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -26,7 +28,8 @@ const SignupScreen = ({ navigation }) => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSignUp = () => {
+  // Handle signup process
+  const handleSignUp = async () => {
     if (!email || !password || !confirmPassword) {
       setError('Please fill in all fields.');
       return;
@@ -38,11 +41,14 @@ const SignupScreen = ({ navigation }) => {
 
     setIsLoading(true);
 
-    // Simulating signup process
-    setTimeout(() => {
+    try {
+      await createUserWithEmailAndPassword(auth, email, password);
+      navigation.replace('BottomTabs'); // Navigate after successful signup
+    } catch (error) {
+      setError(error.message); // Display any Firebase error
+    } finally {
       setIsLoading(false);
-      navigation.replace('BottomTabs');
-    }, 1500);
+    }
   };
 
   return (

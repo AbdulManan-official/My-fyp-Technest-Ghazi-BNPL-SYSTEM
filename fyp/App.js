@@ -45,7 +45,7 @@ export default function App() {
       <StatusBar backgroundColor="black" barStyle="light-content" />
 
       <Stack.Navigator
-        initialRouteName="Login" // This will set LoginScreen as the initial screen
+        initialRouteName="BottomTabs" // This will set LoginScreen as the initial screen
         screenOptions={{
           headerShown: false, // Default: No headers
         }}

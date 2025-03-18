@@ -23,6 +23,11 @@ import RulesRegulationScreen from './screens/userscreens/RulesRegulationScreen';
 import SupportChatScreen from './screens/userscreens/SupportChatScreen'; // ✅ Support Chat Screen
 import AboutUsScreen from './screens/userscreens/AboutUsScreen'; // ✅ About Us Screen
 
+// Newly Added Active Orders Screen
+import UserActiveOrders from './screens/userscreens/UserActiveOrders'; // ✅ Active Orders Screen
+import UserBNPLSchedules from './screens/userscreens/UserBNPLSchedules'; // Newly Added BNPL Schedules Screen
+import OrderHistoryScreen from './screens/userscreens/OrderHistoryScreen'; // Newly Added Order History Screen
+
 const Stack = createStackNavigator();
 
 // Custom Header with Bright Red Theme
@@ -41,22 +46,21 @@ const CustomHeader = ({ navigation, title }) => ({
 export default function App() {
   return (
     <NavigationContainer>
-      {/* ✅ Fix StatusBar Color */}
       <StatusBar backgroundColor="black" barStyle="light-content" />
 
       <Stack.Navigator
-        initialRouteName="BottomTabs" // This will set LoginScreen as the initial screen
+        initialRouteName="BottomTabs"
         screenOptions={{
-          headerShown: false, // Default: No headers
+          headerShown: false,
         }}
       >
         {/* Authentication Screens */}
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
-        <Stack.Screen 
-          name="ForgotPassword" 
-          component={ForgotPasswordScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password' })} 
+        <Stack.Screen
+          name="ForgotPassword"
+          component={ForgotPasswordScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password' })}
         />
 
         {/* User Bottom Tab Navigation */}
@@ -69,56 +73,77 @@ export default function App() {
         <Stack.Screen name="Home" component={HomeScreen} />
 
         {/* ✅ Product Detail Screen */}
-        <Stack.Screen 
-          name="ProductDetails" 
-          component={ProductDetailsScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details' })} 
+        <Stack.Screen
+          name="ProductDetails"
+          component={ProductDetailsScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details' })}
         />
 
         {/* ✅ Cart Screen */}
-        <Stack.Screen 
-          name="CartScreen" 
-          component={CartScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Your Cart' })} 
+        <Stack.Screen
+          name="CartScreen"
+          component={CartScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Your Cart' })}
         />
 
         {/* ✅ Checkout Screen */}
-        <Stack.Screen 
-          name="CheckoutScreen" 
-          component={CheckoutScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout' })} 
+        <Stack.Screen
+          name="CheckoutScreen"
+          component={CheckoutScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout' })}
         />
 
         {/* ✅ User Screens */}
-        <Stack.Screen 
-          name="UserProfileScreen" 
-          component={UserProfileScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Profile' })} 
+        <Stack.Screen
+          name="UserProfileScreen"
+          component={UserProfileScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Profile' })}
         />
-        <Stack.Screen 
-          name="UserSecurityVerificationScreen" 
-          component={UserSecurityVerificationScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'User Security Verification' })} 
+        <Stack.Screen
+          name="UserSecurityVerificationScreen"
+          component={UserSecurityVerificationScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'User Security Verification' })}
         />
-        <Stack.Screen 
-          name="PrivacyPolicyScreen" 
-          component={PrivacyPolicyScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Privacy Policy' })} 
+        <Stack.Screen
+          name="PrivacyPolicyScreen"
+          component={PrivacyPolicyScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Privacy Policy' })}
         />
-        <Stack.Screen 
-          name="RulesRegulationScreen" 
-          component={RulesRegulationScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Rules & Regulations' })} 
+        <Stack.Screen
+          name="RulesRegulationScreen"
+          component={RulesRegulationScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Rules & Regulations' })}
         />
-        <Stack.Screen 
-          name="SupportChatScreen" 
-          component={SupportChatScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Support Chat' })} 
+        <Stack.Screen
+          name="SupportChatScreen"
+          component={SupportChatScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Support Chat' })}
         />
-        <Stack.Screen 
-          name="AboutUsScreen" 
-          component={AboutUsScreen} 
-          options={({ navigation }) => CustomHeader({ navigation, title: 'About Us' })} 
+        <Stack.Screen
+          name="AboutUsScreen"
+          component={AboutUsScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'About Us' })}
+        />
+
+        {/* Newly Added Active Orders Screen */}
+        <Stack.Screen
+          name="UserActiveOrders"
+          component={UserActiveOrders}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Active Orders' })}
+        />
+
+        {/* Newly Added BNPL Schedule Screen */}
+        <Stack.Screen
+          name="UserBNPLSchedules"
+          component={UserBNPLSchedules}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'BNPL Schedule' })}
+        />
+
+        {/* Newly Added Order History Screen */}
+        <Stack.Screen
+          name="OrderHistoryScreen"
+          component={OrderHistoryScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Order History' })}
         />
       </Stack.Navigator>
     </NavigationContainer>

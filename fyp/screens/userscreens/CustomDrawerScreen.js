@@ -75,10 +75,11 @@ const CustomDrawerScreen = ({ navigation, closeDrawer }) => {
           {/* Drawer Menu Items */}
           {[
             { name: 'user', label: 'Profile', route: 'UserProfileScreen' },
-            { name: 'id-badge', label: 'User Security Verification', route: 'UserSecurityVerificationScreen' },
+            // { name: 'shop-location', label: 'Shop Location / Address', route: 'ShopLocationScreen' },
+            { name: 'comments', label: 'Support Chat', route: 'SupportChatScreen' },  
+{ name: 'wishlist', label: 'User Wishlist', route: 'WishlistScreen', icon: 'fa-solid fa-heart' },
             { name: 'lock', label: 'Privacy Policy', route: 'PrivacyPolicyScreen' },  
             { name: 'balance-scale', label: 'Rules & Regulations', route: 'RulesRegulationScreen' }, 
-            { name: 'comments', label: 'Support Chat', route: 'SupportChatScreen' },  
             { name: 'info-circle', label: 'About Us', route: 'AboutUsScreen' }, 
           ].map((item, index) => (
             <DrawerItem

@@ -1,17 +1,24 @@
 import React from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
-  StatusBar,
-} from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, StatusBar, Image } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { MaterialIcons } from "@expo/vector-icons";
 
+// UserOrderScreen Component
 const UserOrderScreen = ({ navigation }) => {
+  // Define onPress handlers for each menu item
+  const handleActiveOrdersPress = () => {
+    navigation.navigate('UserActiveOrders'); 
+  };
+
+  const handleBNPLSchedulePress = () => {
+    navigation.navigate('UserBNPLSchedules'); // Navigate to BNPL Schedule Screen
+  };
+
+  const handleOrderHistoryPress = () => {
+    navigation.navigate('OrderHistoryScreen'); // Navigate to Order History Screen
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F8F8F8" }}>
       <StatusBar barStyle="light-content" />
@@ -28,42 +35,51 @@ const UserOrderScreen = ({ navigation }) => {
 
         {/* 1. Support & Information (Icons in a Single Row) */}
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Support & Assistance</Text>
-          <View style={styles.iconRow}>
-            <MenuItem title="Support Chat" icon="chat" screen="ChatWithAdmin" navigation={navigation} />
-            <MenuItem title="FAQ" icon="help-outline" screen="FAQScreen" navigation={navigation} />
-            <MenuItem title="Privacy Policy" icon="privacy-tip" screen="PrivacyPolicyScreen" navigation={navigation} />
-          </View>
+          {/* Replace Lottie animation with a local image */}
+          <Image
+            source={require("../../assets/file1.png")}  // Replace with your image path
+            style={styles.imageStyle}
+          />
         </View>
 
         {/* 2. Orders & Payments (First Row: 2 Icons, Second Row: 3 Icons) */}
         <LinearGradient colors={["#FF0000", "#CC0000"]} style={styles.gradientContainer}>
           <View style={styles.curvedTop}>
-            <Text style={styles.sectionTitle}>Orders & Payments</Text>
+            <Text style={styles.sectionTitle}>Orders & Schedules</Text>
           </View>
 
           {/* First Row (2 Items) */}
           <View style={styles.gridContainer}>
-            <MenuItem title="Active Orders" icon="local-shipping" screen="ActiveOrders" navigation={navigation} />
-            <MenuItem title="Order History" icon="history" screen="OrdersHistory" navigation={navigation} />
+            <MenuItem
+              title="Active Orders"
+              icon="local-shipping"
+              onPress={handleActiveOrdersPress}
+            />
+            <MenuItem
+              title="BNPL Schedule"
+              icon="schedule"
+              onPress={handleBNPLSchedulePress}
+            />
+
+            {/* Add Order History */}
+            <MenuItem
+              title="Order History"
+              icon="history"
+              onPress={handleOrderHistoryPress}
+            />
           </View>
 
           {/* Second Row (3 Items) */}
-          <View style={styles.gridContainer}>
-            <MenuItem title="BNPL Schedule" icon="schedule" screen="BNPLSchedule" navigation={navigation} />
-            <MenuItem title="Promotions" icon="sell" screen="PromotionScreen" navigation={navigation} />
-            <MenuItem title="Reviews" icon="rate-review" screen="MyReviews" navigation={navigation} />
-          </View>
+          <View style={styles.gridContainer}></View>
         </LinearGradient>
-
       </ScrollView>
     </SafeAreaView>
   );
 };
 
 // Reusable Menu Item Component
-const MenuItem = ({ title, icon, screen, navigation }) => (
-  <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate(screen)}>
+const MenuItem = ({ title, icon, onPress }) => (
+  <TouchableOpacity style={styles.menuItem} onPress={onPress}>
     <View style={styles.iconCircle}>
       <MaterialIcons name={icon} size={22} color="red" />
     </View>
@@ -128,7 +144,7 @@ const styles = StyleSheet.create({
     paddingTop: 15,
   },
   sectionTitle: {
-    fontSize: 20, 
+    fontSize: 22, 
     fontWeight: "bold",
     color: "#FFF",
     textAlign: "center",
@@ -171,6 +187,12 @@ const styles = StyleSheet.create({
     color: "#FFF",
     marginTop: 8,
     textAlign: "center",
+  },
+  imageStyle: {
+    width: 150,  // Adjust the size of the image
+    height: 150, 
+    marginBottom: 20,  // Space between image and text
+    borderRadius: 15,
   },
 });
 

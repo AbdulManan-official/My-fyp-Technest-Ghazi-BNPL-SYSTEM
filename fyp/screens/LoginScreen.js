@@ -65,7 +65,7 @@ const LoginScreen = ({ navigation }) => {
       console.error('Login Error:', err);
       setError('Invalid email or password.');
     } finally {
-      setIsLoading(false); // Stop loading spinner
+      setIsLoading(false); 
     }
   };
 

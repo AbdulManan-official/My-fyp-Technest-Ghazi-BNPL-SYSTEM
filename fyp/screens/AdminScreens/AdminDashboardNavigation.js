@@ -10,7 +10,17 @@ import AdminMessageScreen from './AdminMessageScreen';
 import ProductScreen from './ProductScreen';
 import CategoryScreen from './CategoryScreen';
 
+// Wrap screens with SafeAreaView so they start below the status bar
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 const Tab = createBottomTabNavigator();
+
+// 🧠 Wrapper to inject SafeAreaView
+const withSafeArea = (Component) => (props) => (
+  <SafeAreaView style={{ flex: 1, backgroundColor: '#F5F5F5' }}>
+    <Component {...props} />
+  </SafeAreaView>
+);
 
 export default function AdminDashboardNavigation() {
   return (
@@ -35,16 +45,16 @@ export default function AdminDashboardNavigation() {
             <View style={{ alignItems: 'center', justifyContent: 'center' }}>
               <MaterialIcons
                 name={iconName}
-                size={focused ? 30 : 25} // Reduced active & inactive size slightly
+                size={focused ? 30 : 25}
                 color={focused ? 'black' : '#FFFFFF'}
               />
             </View>
           );
         },
-        tabBarActiveTintColor: 'black', // Active label color
-        tabBarInactiveTintColor: '#FFFFFF', // White for inactive label
+        tabBarActiveTintColor: 'black',
+        tabBarInactiveTintColor: '#FFFFFF',
         tabBarStyle: {
-          backgroundColor: '#FF0000', // Pure Bright Red Background
+          backgroundColor: '#FF0000',
           borderTopLeftRadius: 20,
           borderTopRightRadius: 20,
           elevation: 5,
@@ -52,16 +62,17 @@ export default function AdminDashboardNavigation() {
           paddingBottom: 5,
         },
         tabBarLabelStyle: {
-          fontSize: 11, // Reduced label size
+          fontSize: 11,
           fontWeight: 'bold',
         },
+        headerShown: false,
       })}
     >
-      <Tab.Screen name="Home" component={AdminHomeScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Orders" component={OrderScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Messages" component={AdminMessageScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Products" component={ProductScreen} options={{ headerShown: false }} />
-      <Tab.Screen name="Categories" component={CategoryScreen} options={{ headerShown: false }} />
+      <Tab.Screen name="Home" component={withSafeArea(AdminHomeScreen)} />
+      <Tab.Screen name="Products" component={withSafeArea(ProductScreen)} />
+      <Tab.Screen name="Categories" component={withSafeArea(CategoryScreen)} />
+      <Tab.Screen name="Orders" component={withSafeArea(OrderScreen)} />
+      <Tab.Screen name="Messages" component={withSafeArea(AdminMessageScreen)} />
     </Tab.Navigator>
   );
 }

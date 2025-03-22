@@ -12,8 +12,8 @@ import BottomTabNavigation from './screens/userscreens/BottomTabNavigation'; // 
 import AdminDashboardNavigation from './screens/AdminScreens/AdminDashboardNavigation'; // Admin Screens
 import HomeScreen from './screens/userscreens/HomeScreen'; // ✅ Home Screen
 import ProductDetailsScreen from './screens/userscreens/ProductDetailsScreen'; // ✅ Product Detail Screen
-import CheckoutScreen from './screens/userscreens/CheckoutScreen'; // ✅ Checkout Screen Import
-import CartScreen from './screens/userscreens/CartScreen'; // ✅ Cart Screen Import
+import CheckoutScreen from './screens/userscreens/CheckoutScreen'; // ✅ Checkout Screen
+import CartScreen from './screens/userscreens/CartScreen'; // ✅ Cart Screen
 
 // Newly Added Screens
 import UserProfileScreen from './screens/userscreens/UserProfileScreen'; // ✅ User Profile Screen
@@ -21,19 +21,26 @@ import UserSecurityVerificationScreen from './screens/userscreens/UserVerficatio
 import PrivacyPolicyScreen from './screens/userscreens/PrivacyPolicyScreen'; // ✅ Privacy Policy Screen
 import RulesRegulationScreen from './screens/userscreens/RulesRegulationScreen'; // ✅ Rules & Regulations Screen
 import SupportChatScreen from './screens/userscreens/SupportChatScreen'; // ✅ Support Chat Screen
-import AboutUsScreen from './screens/userscreens/AboutUsScreen'; // ✅ About Us Screen
+import AboutUsScreen from './screens/userscreens/AboutUsScreen'; 
+import WishlistScreen from './screens/userscreens/WishlistScreen'; // ✅ Wishlist Screen
 
-// Newly Added Active Orders Screen
-import UserActiveOrders from './screens/userscreens/UserActiveOrders'; // ✅ Active Orders Screen
-import UserBNPLSchedules from './screens/userscreens/UserBNPLSchedules'; // Newly Added BNPL Schedules Screen
-import OrderHistoryScreen from './screens/userscreens/OrderHistoryScreen'; // Newly Added Order History Screen
+// Orders & BNPL
+import UserActiveOrders from './screens/userscreens/UserActiveOrders';
+import UserBNPLSchedules from './screens/userscreens/UserBNPLSchedules';
+import OrderHistoryScreen from './screens/userscreens/OrderHistoryScreen';
+
+// ✅ New Screens You Just Built
+import AdminMessageScreen from './screens/AdminScreens/AdminMessageScreen';
+import MessageDetailScreen from './screens/AdminScreens/MessageDetailScreen';
+import AdminDetailOrderScreen from './screens/AdminScreens/AdminDetailOrderScreen';
+
 
 const Stack = createStackNavigator();
 
-// Custom Header with Bright Red Theme
+// 🔴 Custom Header (bright red)
 const CustomHeader = ({ navigation, title }) => ({
   headerShown: true,
-  headerStyle: { backgroundColor: '#FF0000' }, // Pure Bright Red
+  headerStyle: { backgroundColor: '#FF0000' },
   headerTitleStyle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
   headerLeft: () => (
     <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: 10 }}>
@@ -49,12 +56,12 @@ export default function App() {
       <StatusBar backgroundColor="black" barStyle="light-content" />
 
       <Stack.Navigator
-        initialRouteName="BottomTabs"
+        initialRouteName="AdminDashboardTabs"
         screenOptions={{
           headerShown: false,
         }}
       >
-        {/* Authentication Screens */}
+        {/* Auth */}
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="Signup" component={SignupScreen} />
         <Stack.Screen
@@ -63,37 +70,31 @@ export default function App() {
           options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password' })}
         />
 
-        {/* User Bottom Tab Navigation */}
+        {/* User Navigation */}
         <Stack.Screen name="BottomTabs" component={BottomTabNavigation} />
 
-        {/* Admin Dashboard Tabs */}
+        {/* Admin Navigation */}
         <Stack.Screen name="AdminDashboardTabs" component={AdminDashboardNavigation} />
 
-        {/* ✅ Home Screen */}
+        {/* Product & Cart Screens */}
         <Stack.Screen name="Home" component={HomeScreen} />
-
-        {/* ✅ Product Detail Screen */}
         <Stack.Screen
           name="ProductDetails"
           component={ProductDetailsScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details' })}
         />
-
-        {/* ✅ Cart Screen */}
         <Stack.Screen
           name="CartScreen"
           component={CartScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Your Cart' })}
         />
-
-        {/* ✅ Checkout Screen */}
         <Stack.Screen
           name="CheckoutScreen"
           component={CheckoutScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout' })}
         />
 
-        {/* ✅ User Screens */}
+        {/* User Info Screens */}
         <Stack.Screen
           name="UserProfileScreen"
           component={UserProfileScreen}
@@ -124,27 +125,45 @@ export default function App() {
           component={AboutUsScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'About Us' })}
         />
+        <Stack.Screen
+          name="WishlistScreen"
+          component={WishlistScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Wishlist' })}
+        />
 
-        {/* Newly Added Active Orders Screen */}
+        {/* Orders & History */}
         <Stack.Screen
           name="UserActiveOrders"
           component={UserActiveOrders}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Active Orders' })}
         />
-
-        {/* Newly Added BNPL Schedule Screen */}
         <Stack.Screen
           name="UserBNPLSchedules"
           component={UserBNPLSchedules}
           options={({ navigation }) => CustomHeader({ navigation, title: 'BNPL Schedule' })}
         />
-
-        {/* Newly Added Order History Screen */}
         <Stack.Screen
           name="OrderHistoryScreen"
           component={OrderHistoryScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Order History' })}
         />
+
+        {/* ✅ New Admin Message Screens */}
+        <Stack.Screen
+          name="AdminMessageScreen"
+          component={AdminMessageScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'User Messages' })}
+        />
+        <Stack.Screen
+  name="MessageDetailScreen"
+  component={MessageDetailScreen}
+  options={{ headerShown: false }}
+/>
+<Stack.Screen
+  name="AdminDetailOrderScreen"
+  component={AdminDetailOrderScreen}
+  options={({ navigation }) => CustomHeader({ navigation, title: 'Order Details' })}
+/>
       </Stack.Navigator>
     </NavigationContainer>
   );

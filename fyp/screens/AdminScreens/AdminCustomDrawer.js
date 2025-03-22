@@ -9,7 +9,7 @@ import { FontAwesome } from '@expo/vector-icons';
 
 const { width, height } = Dimensions.get('window');
 
-const CustomDrawerScreen = ({ navigation, closeDrawer }) => {
+const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
   const translateX = useRef(new Animated.Value(width)).current;
 
   useEffect(() => {
@@ -203,4 +203,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default CustomDrawerScreen;
+export default AdminCustomDrawer;

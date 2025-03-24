@@ -3,63 +3,65 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { TouchableOpacity, StatusBar } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-
 // Import Screens
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
 import BottomTabNavigation from './screens/userscreens/BottomTabNavigation'; // User Screens
 import AdminDashboardNavigation from './screens/AdminScreens/AdminDashboardNavigation'; // Admin Screens
-import HomeScreen from './screens/userscreens/HomeScreen'; // ✅ Home Screen
-import ProductDetailsScreen from './screens/userscreens/ProductDetailsScreen'; // ✅ Product Detail Screen
-import CheckoutScreen from './screens/userscreens/CheckoutScreen'; // ✅ Checkout Screen
-import CartScreen from './screens/userscreens/CartScreen'; // ✅ Cart Screen
+import HomeScreen from './screens/userscreens/HomeScreen';
+import ProductDetailsScreen from './screens/userscreens/ProductDetailsScreen';
+import CheckoutScreen from './screens/userscreens/CheckoutScreen';
+import CartScreen from './screens/userscreens/CartScreen';
 
 // Newly Added Screens
-import UserProfileScreen from './screens/userscreens/UserProfileScreen'; // ✅ User Profile Screen
-import UserSecurityVerificationScreen from './screens/userscreens/UserVerficationScreen'; // ✅ User Security Verification Screen
-import PrivacyPolicyScreen from './screens/userscreens/PrivacyPolicyScreen'; // ✅ Privacy Policy Screen
-import RulesRegulationScreen from './screens/userscreens/RulesRegulationScreen'; // ✅ Rules & Regulations Screen
-import SupportChatScreen from './screens/userscreens/SupportChatScreen'; // ✅ Support Chat Screen
-import AboutUsScreen from './screens/userscreens/AboutUsScreen'; 
-import WishlistScreen from './screens/userscreens/WishlistScreen'; // ✅ Wishlist Screen
+import UserProfileScreen from './screens/userscreens/UserProfileScreen';
+import UserSecurityVerificationScreen from './screens/userscreens/UserVerficationScreen';
+import PrivacyPolicyScreen from './screens/userscreens/PrivacyPolicyScreen';
+import RulesRegulationScreen from './screens/userscreens/RulesRegulationScreen';
+import SupportChatScreen from './screens/userscreens/SupportChatScreen';
+import AboutUsScreen from './screens/userscreens/AboutUsScreen';
+import WishlistScreen from './screens/userscreens/WishlistScreen';
 
 // Orders & BNPL
 import UserActiveOrders from './screens/userscreens/UserActiveOrders';
 import UserBNPLSchedules from './screens/userscreens/UserBNPLSchedules';
 import OrderHistoryScreen from './screens/userscreens/OrderHistoryScreen';
 
-// ✅ New Screens You Just Built
+// Admin Screens
 import AdminMessageScreen from './screens/AdminScreens/AdminMessageScreen';
 import MessageDetailScreen from './screens/AdminScreens/MessageDetailScreen';
 import AdminDetailOrderScreen from './screens/AdminScreens/AdminDetailOrderScreen';
-
+import AdminProfileScreen from './screens/AdminScreens/AdminProfileScreen';
+import AdminUserVerficationScreen from './screens/AdminScreens/AdminUserVerficationScreen';
+import AdminCategoryScreen from './screens/AdminScreens/AdminCategoryScreen';
+import ReportsScreen from './screens/AdminScreens/ReportsScreen';
+import BNPLPlansScreen from './screens/AdminScreens/BNPLPlansScreen';
 
 const Stack = createStackNavigator();
 
-// 🔴 Custom Header (bright red)
 const CustomHeader = ({ navigation, title }) => ({
   headerShown: true,
   headerStyle: { backgroundColor: '#FF0000' },
   headerTitleStyle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
   headerLeft: () => (
-    <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: 10 }}>
-      <MaterialIcons name="arrow-back" size={28} color="white" />
-    </TouchableOpacity>
+    navigation.canGoBack() ? (
+      <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: 10 }}>
+        <MaterialIcons name="arrow-back" size={28} color="white" />
+      </TouchableOpacity>
+    ) : null // Don't show anything if can't go back
   ),
   headerTitle: title,
 });
+
 
 export default function App() {
   return (
     <NavigationContainer>
       <StatusBar backgroundColor="black" barStyle="light-content" />
-
       <Stack.Navigator
         initialRouteName="AdminDashboardTabs"
-        screenOptions={{
-          headerShown: false,
-        }}
+        screenOptions={{ headerShown: false }}
       >
         {/* Auth */}
         <Stack.Screen name="Login" component={LoginScreen} />
@@ -148,22 +150,50 @@ export default function App() {
           options={({ navigation }) => CustomHeader({ navigation, title: 'Order History' })}
         />
 
-        {/* ✅ New Admin Message Screens */}
+        {/* Admin Message Screens */}
         <Stack.Screen
           name="AdminMessageScreen"
           component={AdminMessageScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'User Messages' })}
         />
         <Stack.Screen
-  name="MessageDetailScreen"
-  component={MessageDetailScreen}
-  options={{ headerShown: false }}
-/>
-<Stack.Screen
+          name="MessageDetailScreen"
+          component={MessageDetailScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
   name="AdminDetailOrderScreen"
   component={AdminDetailOrderScreen}
   options={({ navigation }) => CustomHeader({ navigation, title: 'Order Details' })}
 />
+
+
+        {/* Admin Drawer Screens */}
+        <Stack.Screen
+          name="AdminProfileScreen"
+          component={AdminProfileScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Admin Profile' })}
+        />
+        <Stack.Screen
+          name="AdminUserVerficationScreen"
+          component={AdminUserVerficationScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'User Verification' })}
+        />
+        <Stack.Screen
+          name="AdminCategoryScreen"
+          component={AdminCategoryScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Manage Categories' })}
+        />
+        <Stack.Screen
+          name="ReportsScreen"
+          component={ReportsScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Reports' })}
+        />
+        <Stack.Screen
+          name="BNPLPlansScreen"
+          component={BNPLPlansScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'BNPL Plans' })}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );

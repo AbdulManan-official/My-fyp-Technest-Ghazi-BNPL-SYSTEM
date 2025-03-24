@@ -2,13 +2,12 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { MaterialIcons } from '@expo/vector-icons';
 import { View } from 'react-native';
+import OrdersTabView from './OrdersTabView'; // 🔁 Swapped here
 
 // Import Admin Screens
 import AdminHomeScreen from './AdminHomeScreen';
-import OrderScreen from './OrderScreen';
 import AdminMessageScreen from './AdminMessageScreen';
 import ProductScreen from './ProductScreen';
-import CategoryScreen from './CategoryScreen';
 
 // Wrap screens with SafeAreaView so they start below the status bar
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,8 +36,6 @@ export default function AdminDashboardNavigation() {
             iconName = 'message';
           } else if (route.name === 'Products') {
             iconName = 'inventory';
-          } else if (route.name === 'Categories') {
-            iconName = 'category';
           }
 
           return (
@@ -70,8 +67,8 @@ export default function AdminDashboardNavigation() {
     >
       <Tab.Screen name="Home" component={withSafeArea(AdminHomeScreen)} />
       <Tab.Screen name="Products" component={withSafeArea(ProductScreen)} />
-      <Tab.Screen name="Categories" component={withSafeArea(CategoryScreen)} />
-      <Tab.Screen name="Orders" component={withSafeArea(OrderScreen)} />
+   
+<Tab.Screen name="Orders" component={OrdersTabView} />
       <Tab.Screen name="Messages" component={withSafeArea(AdminMessageScreen)} />
     </Tab.Navigator>
   );

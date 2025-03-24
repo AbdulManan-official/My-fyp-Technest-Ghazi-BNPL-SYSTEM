@@ -2,10 +2,6 @@ import React, { useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Animated, Image, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
-import { FontAwesome } from '@expo/vector-icons';
-
-// Inside your component:
-<FontAwesome name="heart" size={24} color="red" />
 
 const { width, height } = Dimensions.get('window');
 
@@ -27,11 +23,10 @@ const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
       useNativeDriver: true,
     }).start(() => {
       closeDrawer();
-      if (callback) callback(); // Ensure navigation happens after drawer closes
+      if (callback) callback();
     });
   };
 
-  // Function to handle logout confirmation
   const handleLogout = () => {
     Alert.alert(
       "Logout Confirmation",
@@ -57,44 +52,39 @@ const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
         }}>
         <Animated.View style={[styles.drawerContainer, { transform: [{ translateX }] }]}>
 
-          {/* Close Button */}
           <TouchableOpacity style={styles.closeIcon} onPress={() => closeDrawerWithAnimation()}>
             <Icon name="times-circle" size={28} color="#FF0000" />
           </TouchableOpacity>
 
-          {/* User Profile Section */}
           <TouchableOpacity
             style={styles.profileSection}
-            onPress={() => closeDrawerWithAnimation(() => navigation.navigate('UserProfileScreen'))}
+            onPress={() => closeDrawerWithAnimation(() => navigation.navigate('AdminProfileScreen'))}
           >
             <Image source={{ uri: 'https://www.w3schools.com/w3images/avatar2.png' }} style={styles.profileImage} />
             <View style={styles.profileInfo}>
-              <Text style={styles.heading}>John Doe</Text>
-              <Text style={styles.subHeading}>johndoe@example.com</Text>
+              <Text style={styles.heading}>Admin User</Text>
+              <Text style={styles.subHeading}>admin@example.com</Text>
             </View>
           </TouchableOpacity>
 
           <View style={styles.divider} />
 
-          {/* Drawer Menu Items */}
           {[
-            { name: 'user', label: 'Profile', route: 'UserProfileScreen' },
-            { name: 'comments', label: 'Support Chat', route: 'SupportChatScreen' },
-            { name: 'heart', label: 'Wishlist', route: 'WishlistScreen' }, // ✅ FIXED ICON NAME
-            { name: 'lock', label: 'Privacy Policy', route: 'PrivacyPolicyScreen' },
-            { name: 'balance-scale', label: 'Rules & Regulations', route: 'RulesRegulationScreen' },
-            { name: 'info-circle', label: 'About Us', route: 'AboutUsScreen' },
-          ]
-            .map((item, index) => (
-              <DrawerItem
-                key={index}
-                icon={item.name}
-                label={item.label}
-                onPress={() => closeDrawerWithAnimation(() => navigation.navigate(item.route))}
-              />
-            ))}
+            { name: 'user', label: 'Profile', route: 'AdminProfileScreen' },
+            { name: 'list', label: 'Categories', route: 'AdminCategoryScreen' },
+            { name: 'credit-card', label: 'BNPL Plans', route: 'BNPLPlansScreen' },
+            { name: 'check-square-o', label: 'User Verifications', route: 'AdminUserVerficationScreen' },
 
-          {/* Logout Button */}
+            { name: 'bar-chart', label: 'Reports', route: 'ReportsScreen' },
+          ].map((item, index) => (
+            <DrawerItem
+              key={index}
+              icon={item.name}
+              label={item.label}
+              onPress={() => closeDrawerWithAnimation(() => navigation.navigate(item.route))}
+            />
+          ))}
+
           <TouchableOpacity style={styles.drawerItem} onPress={handleLogout}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Icon name="sign-out" size={22} color="#FF0000" />
@@ -109,7 +99,6 @@ const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
   );
 };
 
-/* Drawer Item Component */
 const DrawerItem = ({ icon, label, onPress }) => (
   <TouchableOpacity style={styles.drawerItem} onPress={onPress}>
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>

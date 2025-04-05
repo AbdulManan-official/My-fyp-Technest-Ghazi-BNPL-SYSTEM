@@ -33,11 +33,13 @@ import AdminMessageScreen from './screens/AdminScreens/AdminMessageScreen';
 import MessageDetailScreen from './screens/AdminScreens/MessageDetailScreen';
 import AdminDetailOrderScreen from './screens/AdminScreens/AdminDetailOrderScreen';
 import AdminProfileScreen from './screens/AdminScreens/AdminProfileScreen';
-import AdminUserVerficationScreen from './screens/AdminScreens/AdminUserVerficationScreen';
+import AdminUserVerificationScreen from './screens/AdminScreens/AdminUserVerficationScreen'; // 🔁 Add this import
 import AdminCategoryScreen from './screens/AdminScreens/AdminCategoryScreen';
 import ReportsScreen from './screens/AdminScreens/ReportsScreen';
 import BNPLPlansScreen from './screens/AdminScreens/BNPLPlansScreen';
 
+// New User Detail Screen Import
+import UserDetailScreen from './screens/AdminScreens/UserDetailScreen';
 const Stack = createStackNavigator();
 
 const CustomHeader = ({ navigation, title }) => ({
@@ -53,7 +55,6 @@ const CustomHeader = ({ navigation, title }) => ({
   ),
   headerTitle: title,
 });
-
 
 export default function App() {
   return (
@@ -162,22 +163,21 @@ export default function App() {
           options={{ headerShown: false }}
         />
         <Stack.Screen
-  name="AdminDetailOrderScreen"
-  component={AdminDetailOrderScreen}
-  options={({ navigation }) => CustomHeader({ navigation, title: 'Order Details' })}
-/>
+          name="AdminDetailOrderScreen"
+          component={AdminDetailOrderScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Order Details' })}
+        />
 
-
-        {/* Admin Drawer Screens */}
+        {/* Admin Screens */}
+        <Stack.Screen
+          name="AdminUserVerificationScreen" // 🔁 Add this new screen
+          component={AdminUserVerificationScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'User Verification' })}
+        />
         <Stack.Screen
           name="AdminProfileScreen"
           component={AdminProfileScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Admin Profile' })}
-        />
-        <Stack.Screen
-          name="AdminUserVerficationScreen"
-          component={AdminUserVerficationScreen}
-          options={({ navigation }) => CustomHeader({ navigation, title: 'User Verification' })}
         />
         <Stack.Screen
           name="AdminCategoryScreen"
@@ -193,6 +193,13 @@ export default function App() {
           name="BNPLPlansScreen"
           component={BNPLPlansScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'BNPL Plans' })}
+        />
+
+        {/* New User Detail Screen */}
+        <Stack.Screen
+          name="UserDetailScreen"
+          component={UserDetailScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'User Details' })}
         />
       </Stack.Navigator>
     </NavigationContainer>

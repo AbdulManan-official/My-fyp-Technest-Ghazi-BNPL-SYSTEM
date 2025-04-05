@@ -73,7 +73,7 @@ const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
             { name: 'user', label: 'Profile', route: 'AdminProfileScreen' },
             { name: 'list', label: 'Categories', route: 'AdminCategoryScreen' },
             { name: 'credit-card', label: 'BNPL Plans', route: 'BNPLPlansScreen' },
-            { name: 'check-square-o', label: 'User Verifications', route: 'AdminUserVerficationScreen' },
+            { name: 'check-square-o', label: 'User Verifications', route: 'AdminUserVerificationScreen' },
 
             { name: 'bar-chart', label: 'Reports', route: 'ReportsScreen' },
           ].map((item, index) => (

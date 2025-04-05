@@ -18,11 +18,11 @@ export default function BNPLPlansForm({
 }) {
   const [showEditForm, setShowEditForm] = useState(!editMode);
   const [localDeleting, setLocalDeleting] = useState(false);
+  const [focusedField, setFocusedField] = useState(null);
 
   const planNameRef = useRef(planData.planName || '');
   const durationRef = useRef(planData.duration || '');
   const interestRateRef = useRef(planData.interestRate || '');
-  const penaltyRef = useRef(planData.penalty || '');
 
   const handleChange = (field, value) => {
     setPlanData(prev => ({ ...prev, [field]: value }));
@@ -55,6 +55,30 @@ export default function BNPLPlansForm({
     ]);
   };
 
+  const handleFocus = (field) => {
+    setFocusedField(field); // Track the focused field
+  };
+
+  const handleBlur = () => {
+    setFocusedField(null); // Reset focused field when user leaves
+  };
+
+  // Form Validation Logic
+  const validateForm = () => {
+    if (!planData.planName || !planData.duration || !planData.planType) {
+      Alert.alert('Missing Fields', 'Please provide Plan Name, Duration, and Plan Type.');
+      return false;
+    }
+
+    // If it's an "Installment" plan, the interest rate is required
+    if (planData.planType === 'Installment' && !planData.interestRate) {
+      Alert.alert('Missing Fields', 'Please provide Interest Rate.');
+      return false;
+    }
+
+    return true;
+  };
+
   return (
     <View>
       <Text style={styles.modalTitle}>{editMode ? 'Plan Options' : 'Add BNPL Plan'}</Text>
@@ -68,10 +92,12 @@ export default function BNPLPlansForm({
           handleChange('planName', text);
         }}
         style={styles.input}
-        outlineColor="#bbb"
-        activeOutlineColor="#000"
+        outlineColor="black"
+        activeOutlineColor={focusedField === 'planName' ? '#FF0000' : '#FF0000'} // Active border color red
         disabled={editMode && !showEditForm}
-        textColor={editMode && !showEditForm ? '#444' : '#000'}
+        textColor={editMode && !showEditForm ? '#000' : '#000'}
+        onFocus={() => handleFocus('planName')}
+        onBlur={handleBlur}
       />
 
       <Text style={styles.label}>Select Plan Type:</Text>
@@ -96,10 +122,12 @@ export default function BNPLPlansForm({
           handleChange('duration', text);
         }}
         style={styles.input}
-        outlineColor="#bbb"
-        activeOutlineColor="#000"
+        outlineColor="black"
+        activeOutlineColor={focusedField === 'duration' ? '#FF0000' : '#FF0000'} // Active border color red
         disabled={editMode && !showEditForm}
-        textColor={editMode && !showEditForm ? '#444' : '#000'}
+        textColor={editMode && !showEditForm ? '#000' : '#000'}
+        onFocus={() => handleFocus('duration')}
+        onBlur={handleBlur}
       />
 
       {planData.planType === 'Installment' && (
@@ -114,25 +142,12 @@ export default function BNPLPlansForm({
               handleChange('interestRate', text);
             }}
             style={styles.input}
-            outlineColor="#bbb"
-            activeOutlineColor="#000"
+            outlineColor="black"
+            activeOutlineColor={focusedField === 'interestRate' ? '#FF0000' : '#FF0000'} // Active border color red
             disabled={editMode && !showEditForm}
-            textColor={editMode && !showEditForm ? '#444' : '#000'}
-          />
-          <PaperInput
-            label="Penalty on Delay (PKR) - Optional"
-            mode="outlined"
-            keyboardType="numeric"
-            defaultValue={planData.penalty || ''}
-            onChangeText={(text) => {
-              penaltyRef.current = text;
-              handleChange('penalty', text);
-            }}
-            style={styles.input}
-            outlineColor="#bbb"
-            activeOutlineColor="#000"
-            disabled={editMode && !showEditForm}
-            textColor={editMode && !showEditForm ? '#444' : '#000'}
+            textColor={editMode && !showEditForm ? '#000' : '#000'}
+            onFocus={() => handleFocus('interestRate')}
+            onBlur={handleBlur}
           />
         </>
       )}
@@ -186,7 +201,11 @@ export default function BNPLPlansForm({
             </Button>
             <Button
               mode="contained"
-              onPress={onSave}
+              onPress={() => {
+                if (validateForm()) {
+                  onSave();
+                }
+              }}
               loading={saving}
               disabled={saving}
               style={{ flex: 1, marginLeft: 5, backgroundColor: '#FF0000' }}
@@ -209,7 +228,7 @@ const styles = StyleSheet.create({
     borderColor: '#bbb',
     borderRadius: 8,
     marginBottom: 10,
-    backgroundColor: '#f1f1f1'
+    backgroundColor: '#f1f1f1',
   },
   label: {
     fontWeight: 'bold',

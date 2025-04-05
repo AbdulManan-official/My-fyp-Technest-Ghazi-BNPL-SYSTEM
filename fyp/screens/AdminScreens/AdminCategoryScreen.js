@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react'; 
 import {
   View, FlatList, TouchableOpacity, StyleSheet,
   Dimensions, Text, TextInput, RefreshControl,
@@ -22,7 +22,6 @@ import {
 
 const { width } = Dimensions.get('window');
 
-
 export default function AdminCategoryScreen({ navigation }) {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -33,7 +32,6 @@ export default function AdminCategoryScreen({ navigation }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
-
 
   const [modalVisible, setModalVisible] = useState(false);
   const [editCategory, setEditCategory] = useState(null);
@@ -66,8 +64,6 @@ export default function AdminCategoryScreen({ navigation }) {
       setHasFetched(true); // ✅ mark that we’ve finished loading once
     }
   };
-
-
 
   const handleSearch = (query) => {
     setSearchQuery(query);
@@ -149,7 +145,6 @@ export default function AdminCategoryScreen({ navigation }) {
     }
   };
 
-
   const handleDelete = async (id) => {
     Alert.alert("Delete Category", "Are you sure you want to delete this category?", [
       { text: "Cancel", style: "cancel" },
@@ -172,7 +167,6 @@ export default function AdminCategoryScreen({ navigation }) {
     ]);
   };
 
-
   return (
     <Provider>
       <View style={styles.container}>
@@ -193,8 +187,6 @@ export default function AdminCategoryScreen({ navigation }) {
             )}
           </View>
         </View>
-
-     
 
         {loading ? (
           <ActivityIndicator size="large" color="#FF0000" style={styles.loader} />
@@ -220,7 +212,6 @@ export default function AdminCategoryScreen({ navigation }) {
           />
         )}
 
-
         <FAB
           style={[styles.fab, { right: 16 }]}
           icon="plus" color='white' size='30'
@@ -238,8 +229,8 @@ export default function AdminCategoryScreen({ navigation }) {
                 onChangeText={(text) => tempNameRef.current = text}
                 mode="outlined"
                 style={{ marginBottom: 10 }}
-                outlineColor="#bbb"
-                activeOutlineColor="#000"
+                outlineColor="black"
+                activeOutlineColor="#FF0000"  // Red active border color
                 disabled={editCategory && !showEditForm}
                 textColor={editCategory && !showEditForm ? '#444' : '#000'}
               />
@@ -249,8 +240,8 @@ export default function AdminCategoryScreen({ navigation }) {
                 onChangeText={(text) => tempDescRef.current = text}
                 mode="outlined"
                 style={{ marginBottom: 20 }}
-                outlineColor="#bbb"
-                activeOutlineColor="#000"
+                outlineColor="black"
+                activeOutlineColor="#FF0000"  // Red active border color
                 disabled={editCategory && !showEditForm}
                 textColor={editCategory && !showEditForm ? '#444' : '#000'}
               />
@@ -282,8 +273,6 @@ export default function AdminCategoryScreen({ navigation }) {
                     >
                       {editCategory ? 'Update' : 'Save'}
                     </Button>
-
-
                   </>
                 )}
               </View>

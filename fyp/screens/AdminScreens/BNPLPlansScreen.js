@@ -52,7 +52,7 @@ export default function BNPLPlansScreen() {
         a.planName.localeCompare(b.planName)
       );
       setPlans(sorted);
-      setFilteredPlans(sorted);
+      setFilteredPlans(sorted);  // Show all plans initially
     } catch (error) {
       console.error('Failed to fetch plans:', error);
     } finally {
@@ -73,7 +73,7 @@ export default function BNPLPlansScreen() {
       );
       setFilteredPlans(filtered);
     } else {
-      setFilteredPlans(plans);
+      setFilteredPlans(plans);  // Reset to show all plans when the search is cleared
     }
   };
 
@@ -110,8 +110,13 @@ export default function BNPLPlansScreen() {
   const handleSave = async () => {
     const { planName, planType, duration, interestRate, penalty, paymentType, status } = planData;
 
-    if (!planName || !duration || (planType === 'Installment' && (!interestRate || !penalty))) {
+    if (!planName || !duration || !planType) {
       return alert('Please fill all required fields');
+    }
+
+    // If it's an "Installment" plan, the interest rate is required
+    if (planType === 'Installment' && !interestRate) {
+      return alert('Please provide Interest Rate.');
     }
 
     const isDuplicate = plans.some(p =>
@@ -181,7 +186,10 @@ export default function BNPLPlansScreen() {
               onChangeText={handleSearch}
             />
             {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <TouchableOpacity onPress={() => {
+                setSearchQuery('');
+                setFilteredPlans(plans);  // Reset the filtered list when search is cleared
+              }}>
                 <Icon name="times" size={18} color="#FF0000" />
               </TouchableOpacity>
             )}
@@ -216,21 +224,20 @@ export default function BNPLPlansScreen() {
 
         <Portal>
           <Modal visible={modalVisible} onDismiss={() => setModalVisible(false)} contentContainerStyle={styles.modal}>
-          <BNPLPlanForm
-  planData={planData}
-  setPlanData={setPlanData}
-  saving={saving}
-  deleting={deleting}
-  editMode={!!editPlan}
-  onSave={handleSave}
-  onCancel={() => setModalVisible(false)}
-  onDeleted={() => {
-    setModalVisible(false);
-    fetchPlans(); // Refresh list
-  }}
-  docId={editPlan?.id} // ✅ Pass ID separately!
-/>
-
+            <BNPLPlanForm
+              planData={planData}
+              setPlanData={setPlanData}
+              saving={saving}
+              deleting={deleting}
+              editMode={!!editPlan}
+              onSave={handleSave}
+              onCancel={() => setModalVisible(false)}
+              onDeleted={() => {
+                setModalVisible(false);
+                fetchPlans(); // Refresh list
+              }}
+              docId={editPlan?.id} // ✅ Pass ID separately!
+            />
           </Modal>
         </Portal>
       </View>

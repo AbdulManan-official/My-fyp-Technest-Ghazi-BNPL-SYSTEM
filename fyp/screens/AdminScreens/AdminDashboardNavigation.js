@@ -8,6 +8,7 @@ import OrdersTabView from './OrdersTabView'; // 🔁 Swapped here
 import AdminHomeScreen from './AdminHomeScreen';
 import AdminMessageScreen from './AdminMessageScreen';
 import ProductScreen from './ProductScreen';
+import UsersScreen from './UsersScreen'; // 🔁 Added UsersScreen import
 
 // Wrap screens with SafeAreaView so they start below the status bar
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,6 +37,8 @@ export default function AdminDashboardNavigation() {
             iconName = 'message';
           } else if (route.name === 'Products') {
             iconName = 'inventory';
+          } else if (route.name === 'Users') {
+            iconName = 'group';  // You can choose an appropriate icon here
           }
 
           return (
@@ -65,11 +68,11 @@ export default function AdminDashboardNavigation() {
         headerShown: false,
       })}
     >
-      <Tab.Screen name="Home" component={withSafeArea(AdminHomeScreen)} />
-      <Tab.Screen name="Products" component={withSafeArea(ProductScreen)} />
-   
-<Tab.Screen name="Orders" component={OrdersTabView} />
-      <Tab.Screen name="Messages" component={withSafeArea(AdminMessageScreen)} />
+      <Tab.Screen name="Home" component={AdminHomeScreen} />
+      <Tab.Screen name="Products" component={ProductScreen} />
+      <Tab.Screen name="Orders" component={OrdersTabView} />
+      <Tab.Screen name="Messages" component={AdminMessageScreen} />
+      <Tab.Screen name="Users" component={UsersScreen} /> 
     </Tab.Navigator>
   );
 }

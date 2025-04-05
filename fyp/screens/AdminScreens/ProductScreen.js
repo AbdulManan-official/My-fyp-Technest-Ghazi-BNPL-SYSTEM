@@ -1,200 +1,251 @@
-import React, { useState } from "react";
-import { View, FlatList, StyleSheet, Image, TouchableOpacity, Alert } from "react-native";
-import { Card, Text, Button, TextInput, Modal, Portal, Provider } from "react-native-paper";
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import * as ImagePicker from "expo-image-picker";
+import React, { useEffect, useState } from 'react';
+import { View, FlatList, Text, TextInput, StyleSheet, TouchableOpacity, Dimensions ,Modal} from 'react-native';
+import { FAB } from 'react-native-paper';
+import { collection, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { db } from '../../firebaseConfig'; 
+import UploadProductComponent from './../../Components/UploadProductComponent'; 
+
+const { width } = Dimensions.get('window');
 
 export default function ProductScreen() {
-  const [products, setProducts] = useState([
-    { id: "1", name: "Smartphone", price: "$699", image: "https://via.placeholder.com/150" },
-    { id: "2", name: "Laptop", price: "$999", image: "https://via.placeholder.com/150" },
-    { id: "3", name: "Headphones", price: "$199", image: "https://via.placeholder.com/150" },
-  ]);
+  const [products, setProducts] = useState([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [BNPLPlans, setBNPLPlans] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState(null); // For editing a product
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filteredProducts, setFilteredProducts] = useState([]);
 
-  const [visible, setVisible] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(null);
-  const [newProductName, setNewProductName] = useState("");
-  const [newProductPrice, setNewProductPrice] = useState("");
-  const [newProductImage, setNewProductImage] = useState(null);
+  // Fetch products, categories, and BNPL plans
+  const fetchData = async () => {
+    try {
+      const productSnapshot = await getDocs(collection(db, 'Products'));
+      const fetchedProducts = [];
+      productSnapshot.forEach((docSnap) => {
+        fetchedProducts.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setProducts(fetchedProducts);
+      setFilteredProducts(fetchedProducts);
 
-  const showModal = (product) => {
-    setSelectedProduct(product);
-    setNewProductName(product?.name || "");
-    setNewProductPrice(product?.price || "");
-    setNewProductImage(product?.image || null);
-    setVisible(true);
-  };
+      // Fetch categories
+      const categorySnapshot = await getDocs(collection(db, 'Category'));
+      const fetchedCategories = [];
+      categorySnapshot.forEach((docSnap) => {
+        fetchedCategories.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setCategories(fetchedCategories);
 
-  const hideModal = () => setVisible(false);
-
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 1,
-    });
-
-    if (!result.canceled) {
-      setNewProductImage(result.assets[0].uri);
+      // Fetch BNPL plans
+      const bnplSnapshot = await getDocs(collection(db, 'BNPL_plans'));
+      const fetchedBNPLPlans = [];
+      bnplSnapshot.forEach((docSnap) => {
+        fetchedBNPLPlans.push({ id: docSnap.id, ...docSnap.data() });
+      });
+      setBNPLPlans(fetchedBNPLPlans);
+    } catch (error) {
+      console.error('Error fetching data:', error);
     }
   };
 
-  const handleSave = () => {
-    if (selectedProduct) {
-      // Edit product
-      setProducts((prevProducts) =>
-        prevProducts.map((p) =>
-          p.id === selectedProduct.id ? { ...p, name: newProductName, price: newProductPrice, image: newProductImage } : p
-        )
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Handle search query
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    if (query) {
+      const filtered = products.filter((p) =>
+        p.name.toLowerCase().includes(query.toLowerCase())
       );
+      setFilteredProducts(filtered);
     } else {
-      // Add new product
-      const newProduct = {
-        id: Math.random().toString(),
-        name: newProductName,
-        price: newProductPrice,
-        image: newProductImage || "https://via.placeholder.com/150",
-      };
-      setProducts([...products, newProduct]);
+      setFilteredProducts(products);
     }
-    hideModal();
   };
 
-  const handleDelete = (id) => {
-    Alert.alert("Delete Product", "Are you sure you want to delete this product?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", onPress: () => setProducts(products.filter((p) => p.id !== id)), style: "destructive" },
-    ]);
+  // Open modal to add a new product
+  const openProductForm = () => {
+    setSelectedProduct(null); // Clear selected product for new product
+    setModalVisible(true);
+  };
+
+  // Open modal to edit an existing product
+  const openEditProductForm = (product) => {
+    setSelectedProduct(product); // Set selected product for editing
+    setModalVisible(true);
+  };
+
+  // Close modal
+  const closeProductForm = () => {
+    setModalVisible(false);
+  };
+
+  const handleProductSave = async (productData) => {
+    try {
+      if (selectedProduct) {
+        // Update product if it's in edit mode
+        await updateDoc(doc(db, 'Products', selectedProduct.id), productData);
+      } else {
+        // Add new product if it's in create mode
+        await addDoc(collection(db, 'Products'), productData);
+      }
+      fetchData(); // Fetch updated products list
+      closeProductForm();
+    } catch (error) {
+      console.error('Error saving product:', error);
+    }
+  };
+
+  const handleProductDelete = async (id) => {
+    try {
+      await deleteDoc(doc(db, 'Products', id));
+      fetchData(); // Refresh the product list
+    } catch (error) {
+      console.error('Error deleting product:', error);
+    }
   };
 
   const renderProduct = ({ item }) => (
-    <Card style={styles.productCard}>
-      <Image source={{ uri: item.image }} style={styles.productImage} />
+    <View style={styles.productItem}>
       <View style={styles.productInfo}>
         <Text style={styles.productName}>{item.name}</Text>
-        <Text style={styles.productPrice}>{item.price}</Text>
-        <View style={styles.actionButtons}>
-          <TouchableOpacity onPress={() => showModal(item)}>
-            <Icon name="pencil" size={24} color="blue" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleDelete(item.id)}>
-            <Icon name="trash-can" size={24} color="red" />
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.productPrice}>${item.discountedPrice}</Text>
       </View>
-    </Card>
+      <TouchableOpacity onPress={() => openEditProductForm(item)} style={styles.editBtn}>
+        <Text>Edit</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={() => handleProductDelete(item.id)} style={styles.deleteBtn}>
+        <Text>Delete</Text>
+      </TouchableOpacity>
+    </View>
   );
 
   return (
-    <Provider>
-      <View style={styles.container}>
-        <Text style={styles.header}>Product Management</Text>
-
-        {/* Product List */}
-        <FlatList data={products} keyExtractor={(item) => item.id} renderItem={renderProduct} />
-
-        {/* Add Product Button */}
-        <Button mode="contained" onPress={() => showModal(null)} style={styles.addButton}>
-          Add New Product
-        </Button>
-
-        {/* Modal for Adding/Editing Product */}
-        <Portal>
-          <Modal visible={visible} onDismiss={hideModal} contentContainerStyle={styles.modal}>
-            <Text style={styles.modalTitle}>{selectedProduct ? "Edit Product" : "Add Product"}</Text>
-
-            <TextInput label="Product Name" value={newProductName} onChangeText={setNewProductName} style={styles.input} />
-            <TextInput label="Price" value={newProductPrice} onChangeText={setNewProductPrice} style={styles.input} />
-
-            <Button icon="camera" mode="outlined" onPress={pickImage} style={styles.imageButton}>
-              {newProductImage ? "Change Image" : "Upload Image"}
-            </Button>
-
-            {newProductImage && <Image source={{ uri: newProductImage }} style={styles.previewImage} />}
-
-            <Button mode="contained" onPress={handleSave} style={styles.saveButton}>
-              Save
-            </Button>
-          </Modal>
-        </Portal>
+    <View style={styles.container}>
+      {/* Search Bar */}
+      <View style={styles.searchBar}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search products..."
+          value={searchQuery}
+          onChangeText={handleSearch}
+        />
       </View>
-    </Provider>
+
+      {/* Product List */}
+      {filteredProducts.length > 0 ? (
+        <FlatList
+          data={filteredProducts}
+          keyExtractor={(item) => item.id}
+          renderItem={renderProduct}
+        />
+      ) : (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No products found</Text>
+        </View>
+      )}
+
+      {/* Add Button */}
+      <FAB
+        style={styles.fab}
+        icon="plus"
+        onPress={openProductForm}
+      />
+
+      {/* Full-Screen Modal for Product Upload Form */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={false} // Makes the modal take up the full screen
+        onRequestClose={closeProductForm} // Close the modal when pressing back button
+      >
+        <View style={styles.modalContainer}>
+          <UploadProductComponent
+            visible={modalVisible}
+            onDismiss={closeProductForm}
+            onSave={handleProductSave}
+            categories={categories}
+            BNPLPlans={BNPLPlans}
+            product={selectedProduct} // Pass selected product for editing
+          />
+        </View>
+      </Modal>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 15,
-    backgroundColor: "#fff",
+    backgroundColor: '#f7f7f7',
+    paddingTop: 20,
   },
-  header: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 15,
-    textAlign: "center",
-  },
-  productCard: {
-    flexDirection: "row",
-    padding: 10,
-    marginBottom: 10,
-    borderRadius: 10,
-    backgroundColor: "#f9f9f9",
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 25,
+    marginHorizontal: 15,
+    paddingHorizontal: 15,
+    paddingVertical: 5,
     elevation: 3,
-    alignItems: "center",
+    marginBottom: 15,
   },
-  productImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 10,
-    resizeMode: "contain",
+  searchInput: {
+    flex: 1,
+    marginLeft: 10,
+    fontSize: 14,
+    color: '#333',
+  },
+  productItem: {
+    backgroundColor: '#fff',
+    padding: 12,
+    marginHorizontal: 15,
+    borderRadius: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
   },
   productInfo: {
     flex: 1,
     marginLeft: 10,
   },
   productName: {
-    fontSize: 16,
-    fontWeight: "bold",
+    fontSize: width < 375 ? 16 : 18,
+    fontWeight: 'bold',
+    color: '#0055a5',
   },
   productPrice: {
     fontSize: 14,
-    color: "#555",
+    color: '#666',
+    marginTop: 4,
   },
-  actionButtons: {
-    flexDirection: "row",
-    marginTop: 5,
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 100,
   },
-  addButton: {
-    marginTop: 15,
+  emptyText: {
+    fontSize: 16,
+    color: '#999',
   },
-  modal: {
-    backgroundColor: "white",
+  fab: {
+    position: 'absolute',
+    bottom: 30,
+    right: 16,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#FF0000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'white',
     padding: 20,
-    borderRadius: 10,
-    marginHorizontal: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 15,
-  },
-  input: {
-    marginBottom: 10,
-  },
-  imageButton: {
-    marginTop: 10,
-  },
-  previewImage: {
-    width: "100%",
-    height: 150,
-    borderRadius: 10,
-    marginTop: 10,
-    resizeMode: "contain",
-  },
-  saveButton: {
-    marginTop: 15,
   },
 });
-

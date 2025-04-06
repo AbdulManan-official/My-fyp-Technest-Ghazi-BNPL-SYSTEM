@@ -4,7 +4,9 @@ import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Video } from 'expo-av';
-import { TextInput as PaperInput, Button } from 'react-native-paper';
+import { TextInput as PaperInput } from 'react-native-paper';
+import * as FileSystem from 'expo-file-system'; // Ensure to import FileSystem for base64 encoding
+import { uploadImage, uploadVideo } from './UploadImage'; // Import the uploadImage function
 
 const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPlans, product }) => {
   const [productName, setProductName] = useState(product ? product.name : '');
@@ -15,9 +17,12 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
   const [discountedPrice, setDiscountedPrice] = useState(product ? product.discountedPrice : '');
   const [loading, setLoading] = useState(true);
   const [media, setMedia] = useState({
-    images: product ? product.images : [],
-    video: product ? product.video : null,
+    images: product ? product.media?.images : [],
+    video: product ? product.media?.video : null,
   });
+  const [paymentOption, setPaymentOption] = useState({ COD: true, BNPL: false });
+  const [loadingBNPL, setLoadingBNPL] = useState(false);
+  const [buttonLoading, setButtonLoading] = useState(false);
 
   const [imagePreview, setImagePreview] = useState(null);
   const [videoPreview, setVideoPreview] = useState(null);
@@ -32,27 +37,74 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
       setOriginalPrice(product.originalPrice);
       setDiscountedPrice(product.discountedPrice);
       setMedia({
-        images: product.images || [],
-        video: product.video || null,
+        images: product.media?.images || [],
+        video: product.media?.video || null,
       });
     }
     setLoading(false);
   }, [product]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    console.log("🚨 media.video:", media.video);  // Log the video object to check its value
+    
+    if (!productName || !description || !originalPrice || !category || media.images.length === 0 || !paymentOption.COD && !paymentOption.BNPL) {
+      Alert.alert('Error', 'Please fill all mandatory fields: Name, Description, Price, Category, and Payment Options with at least one image.');
+      return;
+    }
+  
+    setButtonLoading(true);
+  
+    // Upload images to Cloudinary
+    const uploadedImages = [];
+    for (let image of media.images) {
+      try {
+        const { cloudinaryUrl } = await uploadImage(image); // Upload each image to Cloudinary
+        uploadedImages.push(cloudinaryUrl); // Store the Cloudinary URL
+      } catch (error) {
+        console.error('❌ Error uploading image:', error);
+        Alert.alert('Error', 'Failed to upload images. Please try again.');
+        setButtonLoading(false);
+        return;
+      }
+    }
+  
+    // Upload video if selected and URI is valid
+    let uploadedVideoUrl = null;
+    if (media.video && media.video.uri) {  // Check if video.uri exists
+      console.log("📹 Video URI exists, proceeding with upload:", media.video.uri);
+      try {
+        const { cloudinaryUrl } = await uploadVideo(media.video); // Upload video to Cloudinary
+        uploadedVideoUrl = cloudinaryUrl; // Store the Cloudinary video URL
+      } catch (error) {
+        console.error('❌ Error uploading video:', error);
+        Alert.alert('Error', 'Failed to upload video. Please try again.');
+        setButtonLoading(false);
+        return;
+      }
+    } else if (media.video) {
+      // Handle the case where video.uri is undefined or invalid
+      console.error('❌ Error: Invalid video URI', media.video);
+      Alert.alert('Error', 'Video URI is invalid. Please select a valid video.');
+      setButtonLoading(false);
+      return;
+    }
+  
     const productData = {
       name: productName,
       category,
-      BNPLPlan: selectedPlans,
       description,
       originalPrice,
       discountedPrice,
       price: discountedPrice ? discountedPrice : originalPrice,
-      images: media.images,
-      video: media.video,
+      media: { images: uploadedImages, video: uploadedVideoUrl },
+      paymentOption,
+      BNPLPlans: selectedPlans,
     };
-
-    onSave(productData);
+  
+    setTimeout(() => {
+      setButtonLoading(false);
+      onSave(productData);
+    }, 3000);
   };
 
   const togglePlanSelection = (planId) => {
@@ -204,6 +256,17 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
     setVideoPreview(null);
   };
 
+  const handlePaymentOptionChange = (option) => {
+    setPaymentOption((prev) => ({ ...prev, [option]: !prev[option] }));
+
+    if (option === 'BNPL' && !paymentOption.BNPL) {
+      setLoadingBNPL(true);
+      setTimeout(() => {
+        setLoadingBNPL(false);
+      }, 2000);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
@@ -219,7 +282,7 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
         <Icon name="close-circle" size={30} color="white" />
       </TouchableOpacity>
 
-      <Text style={styles.label}>Select Product Media</Text>
+      <Text style={[styles.label, { color: 'black' }]}>Select Product Media</Text>
 
       <View style={styles.mediaPreviewContainer}>
         {media.images.map((img, index) => (
@@ -237,7 +300,7 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
           <TouchableOpacity onPress={() => handleVideoPreview(media.video)}>
             <View style={styles.mediaPreview}>
               <Video
-                source={{ uri: media.video }}   
+                source={{ uri: media.video }}
                 style={styles.mediaImage}
                 useNativeControls
                 resizeMode="contain"
@@ -268,15 +331,16 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
         outlineColor="black"
         activeOutlineColor="#FF0000"
       />
-      
+
       <PaperInput
         label="Description"
         mode="outlined"
         value={description}
         onChangeText={setDescription}
-        style={styles.input}
+        style={[styles.input, { height: 100 }]}
         outlineColor="black"
         activeOutlineColor="#FF0000"
+        multiline
       />
 
       <PaperInput
@@ -301,7 +365,7 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
         activeOutlineColor="#FF0000"
       />
 
-      <Text style={styles.label}>Select Category</Text>
+      <Text style={[styles.label, { color: 'black' }]}>Select Category</Text>
       <Picker selectedValue={category} onValueChange={setCategory} style={styles.picker}>
         <Picker.Item label="Select Category" value="" />
         {categories.map((cat) => (
@@ -309,40 +373,78 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
         ))}
       </Picker>
 
-      <Text style={styles.label}>Select BNPL Plan(s)</Text>
-
-      <View style={styles.checkboxContainer}>
-        <TouchableOpacity onPress={toggleSelectAllPlans} style={styles.checkbox}>
-          <View style={[styles.checkboxIcon, selectAll ? styles.checkedBox : null]} />
+      <Text style={[styles.label, { color: 'black' }]}>Select Payment Option</Text>
+      <View style={styles.paymentOptions}>
+        <TouchableOpacity
+          onPress={() => handlePaymentOptionChange('COD')}
+          style={[styles.paymentOptionButton, paymentOption.COD && styles.selectedPaymentOption]}
+        >
+          <Text style={[styles.paymentOptionText, paymentOption.COD && styles.selectedPaymentOptionText]}>
+            {paymentOption.COD && <Icon name="check-circle" size={20} color="#FF0000" />}
+            COD
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={toggleSelectAllPlans}>
-          <Text style={styles.selectAllPlansText}>
-            {selectAll ? 'Deselect All Plans' : 'Select All Plans'}
+        <TouchableOpacity
+          onPress={() => handlePaymentOptionChange('BNPL')}
+          style={[styles.paymentOptionButton, paymentOption.BNPL && styles.selectedPaymentOption]}
+        >
+          <Text style={[styles.paymentOptionText, paymentOption.BNPL && styles.selectedPaymentOptionText]}>
+            {paymentOption.BNPL && <Icon name="check-circle" size={20} color="#FF0000" />}
+            BNPL
           </Text>
         </TouchableOpacity>
       </View>
 
-      {BNPLPlans.map((plan) => (
-        <TouchableOpacity
-          key={plan.id}
-          style={[styles.planItem, selectedPlans.includes(plan.id) && styles.selectedPlan]}
-          onPress={() => togglePlanSelection(plan.id)} 
-        >
-          <View style={styles.checkbox}>
-            {selectedPlans.includes(plan.id) && <View style={styles.checkedBox} />}
-          </View>
-          <Text style={styles.planText}>{plan.planName}</Text>
-          <Text style={styles.planType}>({plan.planType})</Text>
-        </TouchableOpacity>
-      ))}
+      {paymentOption.BNPL && loadingBNPL ? (
+        <ActivityIndicator size="large" color="#FF0000" />
+      ) : (
+        paymentOption.BNPL && (
+          <>
+            <Text style={[styles.label, { color: 'black' }]}>Select BNPL Plan(s)</Text>
+
+            <View style={styles.checkboxContainer}>
+              <TouchableOpacity onPress={toggleSelectAllPlans} style={styles.checkbox}>
+                <View style={[styles.checkboxIcon, selectAll ? styles.checkedBox : null]} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={toggleSelectAllPlans}>
+                <Text style={styles.selectAllPlansText}>
+                  {selectAll ? 'Deselect All Plans' : 'Select All Plans'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {BNPLPlans.map((plan) => (
+              <TouchableOpacity
+                key={plan.id}
+                style={[styles.planItem, selectedPlans.includes(plan.id) && styles.selectedPlan]}
+                onPress={() => togglePlanSelection(plan.id)}
+              >
+                <View style={styles.checkbox}>
+                  {selectedPlans.includes(plan.id) && <View style={styles.checkedBox} />}
+                </View>
+                <Text style={styles.planText}>{plan.planName}</Text>
+                <Text style={styles.planType}>({plan.planType})</Text>
+              </TouchableOpacity>
+            ))}
+          </>
+        )
+      )}
 
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={[styles.button, styles.cancelButton]} onPress={onDismiss}>
           <Text style={styles.buttonText}>Cancel</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.button, styles.saveButton]} onPress={handleSubmit}>
-          <Text style={styles.buttonText}>{product ? 'Update Product' : 'Save Product'}</Text>
+        <TouchableOpacity
+          style={[styles.button, styles.saveButton]}
+          onPress={handleSubmit}
+          disabled={buttonLoading}
+        >
+          {buttonLoading ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Upload Product</Text>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -376,14 +478,13 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
     </ScrollView>
   );
 };
-
 const styles = StyleSheet.create({
   scrollContainer: {
-    flexGrow: 1, 
+    flexGrow: 1,
   },
   closeButton: {
     position: 'absolute',
-    top: 0.01,
+    top: 1,
     right: 1,
     backgroundColor: '#FF0000',
     padding: 4,
@@ -497,6 +598,31 @@ const styles = StyleSheet.create({
   selectAllPlansText: {
     fontSize: 16,
     fontWeight: '600',
+    color: '#FF0000',
+  },
+  paymentOptions: {
+    flexDirection: 'row',
+    marginBottom: 12,
+    justifyContent: 'space-around',
+  },
+  paymentOptionButton: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#f0f1f1',
+    flex: 1,
+    marginHorizontal: 5,
+    alignItems: 'center',
+  },
+  paymentOptionText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#444',
+  },
+  selectedPaymentOption: {
+    borderWidth: 1,
+    borderColor: 'black',
+  },
+  selectedPaymentOptionText: {
     color: '#FF0000',
   },
   buttonContainer: {

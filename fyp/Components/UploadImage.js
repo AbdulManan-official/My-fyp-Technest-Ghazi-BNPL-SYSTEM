@@ -1,66 +1,95 @@
 import * as FileSystem from 'expo-file-system';
 
-// Cloudinary API URL
-const cloudinaryUrl = 'https://api.cloudinary.com/v1_1/ddwqefs9o/video/upload';
-const uploadPreset = 'technest'; // Preset for unsigned upload
+// Cloudinary API URL for Images and Videos
+const cloudinaryImageUrl = 'https://api.cloudinary.com/v1_1/ddwqefs9o/image/upload';
+const cloudinaryVideoUrl = 'https://api.cloudinary.com/v1_1/ddwqefs9o/video/upload';
+const uploadPreset = 'technest'; // Cloudinary preset for unsigned upload
 
-// Function to upload an image to Cloudinary (with support for video)
-const uploadToCloudinary = async (file) => {
+// Function to upload to Cloudinary (Image or Video)
+const uploadToCloudinary = async (file, type) => {
   try {
     console.log("📂 Uploading to Cloudinary:", file.uri);
 
-    // Get the file data from the selected media (video or image)
-    const fileUri = file.uri;
-    const fileType = fileUri.split('.').pop(); // Extract file type (e.g., 'mp4', 'mov', 'jpg', etc.)
+    let fileUri = file.uri;
 
-    // Determine whether the file is an image or video
-    const isVideo = fileType === 'mp4' || fileType === 'mov';
+    // Handle video separately: If file is from the cache, copy it to a new location
+    if (type === 'video' && fileUri.startsWith('file://')) {
+      // Create a safe path in the document directory
+      const newVideoUri = FileSystem.documentDirectory + fileUri.split('/').pop(); // Generate a safe path
+      await FileSystem.copyAsync({
+        from: fileUri,
+        to: newVideoUri
+      });
+      fileUri = newVideoUri; // Update the file URI to the new one
+      console.log('📝 Video copied to:', newVideoUri);
+    }
 
-    // Form data for uploading
+    const fileType = fileUri.split('.').pop(); // Extract file type (e.g., 'jpg', 'png', 'jpeg', 'mp4')
+
+    let mimeType = '';
+    if (type === 'image') {
+      if (fileType === 'jpg' || fileType === 'jpeg') mimeType = 'image/jpeg';
+      else if (fileType === 'png') mimeType = 'image/png';
+      else mimeType = `image/${fileType}`;
+    } else if (type === 'video') {
+      // Handle different video types
+      if (fileType === 'mp4') mimeType = 'video/mp4';
+      else if (fileType === 'mov') mimeType = 'video/quicktime';
+      else mimeType = `video/${fileType}`;
+    }
+
+    // Prepare form data for Cloudinary upload
     const formData = new FormData();
     formData.append('file', {
       uri: fileUri,
-      type: isVideo ? `video/${fileType}` : `image/${fileType}`, // Dynamically set the file type
-      name: `media.${fileType}`, // Name the file based on its type (image/video)
+      type: mimeType,
+      name: `${type === 'video' ? 'video' : 'photo'}.${fileType}`,
     });
-    formData.append('upload_preset', uploadPreset); // Using preset for unsigned uploads
+    formData.append('upload_preset', uploadPreset);
+
+    // Select Cloudinary URL based on media type
+    const cloudinaryUrl = type === 'image' ? cloudinaryImageUrl : cloudinaryVideoUrl;
 
     const response = await fetch(cloudinaryUrl, {
       method: 'POST',
       body: formData,
     });
 
-    const responseData = await response.json(); // Parse the response from Cloudinary
-
+    const responseData = await response.json();
     if (responseData.error) {
-      throw new Error(`Error uploading file: ${responseData.error.message}`);
+      throw new Error(`Error uploading ${type}: ${responseData.error.message}`);
     }
 
-    console.log("✅ Cloudinary Upload Successful - Full Response:", responseData);
-    console.log("🌍 Cloudinary Media URL:", responseData.secure_url); // Logging the media URL (image or video)
-
-    return responseData; // Returning the full Cloudinary response
+    console.log(`✅ Cloudinary ${type.charAt(0).toUpperCase() + type.slice(1)} Upload Successful`);
+    return responseData;
   } catch (error) {
-    console.error('❌ Error uploading to Cloudinary:', error);
+    console.error(`❌ Error uploading ${type} to Cloudinary:`, error);
     throw error;
   }
 };
 
-// Function to upload a video (or image) to Cloudinary
-export const uploadMedia = async (file) => {
+// Function to upload image to Cloudinary
+export const uploadImage = async (image) => {
   try {
-    console.log("🚀 Starting upload to Cloudinary...");
-
-    const cloudinaryResponse = await uploadToCloudinary(file);
-
-    console.log("✅ Upload Completed - Cloudinary URL:", cloudinaryResponse.secure_url);
-
-    return {
-      cloudinaryUrl: cloudinaryResponse.secure_url,
-      cloudinaryData: cloudinaryResponse,
-    };
+    console.log("🚀 Starting image upload to Cloudinary...");
+    const cloudinaryResponse = await uploadToCloudinary(image, 'image');
+    return { cloudinaryUrl: cloudinaryResponse.secure_url };
   } catch (error) {
-    console.error('❌ Error uploading media:', error);
+    console.error('❌ Error uploading image:', error);
+    throw error;
+  }
+};
+
+// Function to upload video to Cloudinary
+export const uploadVideo = async (video) => {
+  try {
+    console.log("🚀 Starting video upload to Cloudinary...");
+    const cloudinaryResponse = await uploadToCloudinary(video, 'video');
+    const videoUrl = `https://res.cloudinary.com/ddwqefs9o/video/upload/${cloudinaryResponse.version}/${cloudinaryResponse.public_id}.${video.uri.split('.').pop()}`;
+    console.log("🌍 Cloudinary Video URL:", videoUrl);
+    return { cloudinaryUrl: videoUrl };
+  } catch (error) {
+    console.error('❌ Error uploading video:', error);
     throw error;
   }
 };

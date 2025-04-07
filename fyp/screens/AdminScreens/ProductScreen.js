@@ -1,50 +1,38 @@
 import React, { useEffect, useState } from 'react';
-import { View, FlatList, Text, TextInput, StyleSheet, TouchableOpacity, Dimensions ,Modal} from 'react-native';
+import { View, FlatList, Text, TextInput, StyleSheet, TouchableOpacity, Dimensions, Modal, ActivityIndicator, RefreshControl } from 'react-native';
 import { FAB } from 'react-native-paper';
-import { collection, getDocs, addDoc, updateDoc, doc } from 'firebase/firestore';
-import { db } from '../../firebaseConfig'; 
+import { collection, query, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { db } from '../../firebaseConfig';
 import UploadProductComponent from './../../Components/UploadProductComponent'; 
 
 const { width } = Dimensions.get('window');
 
 export default function ProductScreen() {
   const [products, setProducts] = useState([]);
+  const [filteredProducts, setFilteredProducts] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [categories, setCategories] = useState([]);
   const [BNPLPlans, setBNPLPlans] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null); // For editing a product
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredProducts, setFilteredProducts] = useState([]);
+  const [loading, setLoading] = useState(true); // Loader state to show until data is fetched
+  const [hasFetched, setHasFetched] = useState(false); // State to track if data has been fetched
 
-  // Fetch products, categories, and BNPL plans
+  // Fetch products in real-time
   const fetchData = async () => {
-    try {
-      const productSnapshot = await getDocs(collection(db, 'Products'));
+    const productRef = collection(db, 'Products');
+    const q = query(productRef, orderBy('name'), limit(10)); // Fetch the first 10 products
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedProducts = [];
-      productSnapshot.forEach((docSnap) => {
+      snapshot.forEach((docSnap) => {
         fetchedProducts.push({ id: docSnap.id, ...docSnap.data() });
       });
       setProducts(fetchedProducts);
       setFilteredProducts(fetchedProducts);
-
-      // Fetch categories
-      const categorySnapshot = await getDocs(collection(db, 'Category'));
-      const fetchedCategories = [];
-      categorySnapshot.forEach((docSnap) => {
-        fetchedCategories.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setCategories(fetchedCategories);
-
-      // Fetch BNPL plans
-      const bnplSnapshot = await getDocs(collection(db, 'BNPL_plans'));
-      const fetchedBNPLPlans = [];
-      bnplSnapshot.forEach((docSnap) => {
-        fetchedBNPLPlans.push({ id: docSnap.id, ...docSnap.data() });
-      });
-      setBNPLPlans(fetchedBNPLPlans);
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    }
+      setLoading(false); // Stop loader once data is fetched
+      setHasFetched(true); // Mark data as fetched
+    });
+    return unsubscribe; // Return unsubscribe function to stop real-time updates if needed
   };
 
   useEffect(() => {
@@ -112,12 +100,14 @@ export default function ProductScreen() {
         <Text style={styles.productName}>{item.name}</Text>
         <Text style={styles.productPrice}>${item.discountedPrice}</Text>
       </View>
-      <TouchableOpacity onPress={() => openEditProductForm(item)} style={styles.editBtn}>
-        <Text>Edit</Text>
-      </TouchableOpacity>
-      <TouchableOpacity onPress={() => handleProductDelete(item.id)} style={styles.deleteBtn}>
-        <Text>Delete</Text>
-      </TouchableOpacity>
+      <View style={styles.actionButtons}>
+        <TouchableOpacity onPress={() => openEditProductForm(item)} style={styles.editBtn}>
+          <Text>Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => handleProductDelete(item.id)} style={styles.deleteBtn}>
+          <Text>Delete</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -133,18 +123,27 @@ export default function ProductScreen() {
         />
       </View>
 
+      {/* Loader */}
+      {loading && !hasFetched && (
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color="#FF0000" />
+        </View>
+      )}
+
       {/* Product List */}
-      {filteredProducts.length > 0 ? (
+      {!loading && filteredProducts.length > 0 ? (
         <FlatList
           data={filteredProducts}
           keyExtractor={(item) => item.id}
           renderItem={renderProduct}
+          refreshControl={<RefreshControl refreshing={false} onRefresh={fetchData} />}
+          showsVerticalScrollIndicator={false} // Hide scroll indicator
         />
-      ) : (
+      ) : !loading && !filteredProducts.length ? (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No products found</Text>
         </View>
-      )}
+      ) : null}
 
       {/* Add Button */}
       <FAB
@@ -190,29 +189,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 5,
     elevation: 3,
-    marginBottom: 15,
+    marginBottom: 10,
   },
   searchInput: {
     flex: 1,
-    marginLeft: 10,
     fontSize: 14,
     color: '#333',
+  },
+  loaderContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   productItem: {
     backgroundColor: '#fff',
     padding: 12,
-    marginHorizontal: 15,
     borderRadius: 5,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 1,
+    width: '100%', // Ensure it takes up the full width
+    marginHorizontal: 0, // Remove any horizontal margin
   },
   productInfo: {
     flex: 1,
-    marginLeft: 10,
   },
   productName: {
-    fontSize: width < 375 ? 16 : 18,
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#0055a5',
   },
@@ -220,6 +223,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 4,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginLeft: 10,
+  },
+  editBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 5,
+  },
+  deleteBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 5,
   },
   emptyContainer: {
     flex: 1,

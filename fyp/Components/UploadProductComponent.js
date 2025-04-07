@@ -5,8 +5,8 @@ import * as ImagePicker from 'expo-image-picker';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { Video } from 'expo-av';
 import { TextInput as PaperInput } from 'react-native-paper';
-import * as FileSystem from 'expo-file-system'; // Ensure to import FileSystem for base64 encoding
-import { uploadImage, uploadVideo } from './UploadImage'; // Import the uploadImage function
+import * as FileSystem from 'expo-file-system';
+import { uploadImage, uploadVideo } from './UploadImage';
 
 const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPlans, product }) => {
   const [productName, setProductName] = useState(product ? product.name : '');
@@ -23,7 +23,6 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
   const [paymentOption, setPaymentOption] = useState({ COD: true, BNPL: false });
   const [loadingBNPL, setLoadingBNPL] = useState(false);
   const [buttonLoading, setButtonLoading] = useState(false);
-
   const [imagePreview, setImagePreview] = useState(null);
   const [videoPreview, setVideoPreview] = useState(null);
   const [selectAll, setSelectAll] = useState(false);
@@ -45,21 +44,18 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
   }, [product]);
 
   const handleSubmit = async () => {
-    console.log("🚨 media.video:", media.video);  // Log the video object to check its value
-    
-    if (!productName || !description || !originalPrice || !category || media.images.length === 0 || !paymentOption.COD && !paymentOption.BNPL) {
+    if (!productName || !description || !originalPrice || !category || media.images.length === 0 || (!paymentOption.COD && !paymentOption.BNPL)) {
       Alert.alert('Error', 'Please fill all mandatory fields: Name, Description, Price, Category, and Payment Options with at least one image.');
       return;
     }
   
     setButtonLoading(true);
   
-    // Upload images to Cloudinary
     const uploadedImages = [];
     for (let image of media.images) {
       try {
-        const { cloudinaryUrl } = await uploadImage(image); // Upload each image to Cloudinary
-        uploadedImages.push(cloudinaryUrl); // Store the Cloudinary URL
+        const { cloudinaryUrl } = await uploadImage(image); // Upload image
+        uploadedImages.push(cloudinaryUrl);
       } catch (error) {
         console.error('❌ Error uploading image:', error);
         Alert.alert('Error', 'Failed to upload images. Please try again.');
@@ -68,25 +64,19 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
       }
     }
   
-    // Upload video if selected and URI is valid
     let uploadedVideoUrl = null;
-    if (media.video && media.video.uri) {  // Check if video.uri exists
-      console.log("📹 Video URI exists, proceeding with upload:", media.video.uri);
+    if (media.video) {
       try {
-        const { cloudinaryUrl } = await uploadVideo(media.video); // Upload video to Cloudinary
-        uploadedVideoUrl = cloudinaryUrl; // Store the Cloudinary video URL
+        // Step 1: Upload the video to Cloudinary using base64
+        const { cloudinaryUrl } = await uploadVideo({ uri: media.video });
+  
+        uploadedVideoUrl = cloudinaryUrl;
       } catch (error) {
         console.error('❌ Error uploading video:', error);
         Alert.alert('Error', 'Failed to upload video. Please try again.');
         setButtonLoading(false);
         return;
       }
-    } else if (media.video) {
-      // Handle the case where video.uri is undefined or invalid
-      console.error('❌ Error: Invalid video URI', media.video);
-      Alert.alert('Error', 'Video URI is invalid. Please select a valid video.');
-      setButtonLoading(false);
-      return;
     }
   
     const productData = {
@@ -95,7 +85,7 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
       description,
       originalPrice,
       discountedPrice,
-      price: discountedPrice ? discountedPrice : originalPrice,
+      price: discountedPrice || originalPrice,
       media: { images: uploadedImages, video: uploadedVideoUrl },
       paymentOption,
       BNPLPlans: selectedPlans,
@@ -106,7 +96,8 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
       onSave(productData);
     }, 3000);
   };
-
+  
+  
   const togglePlanSelection = (planId) => {
     setSelectedPlans((prevPlans) => {
       if (prevPlans.includes(planId)) {
@@ -204,11 +195,12 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
           return;
         }
         setMedia((prevMedia) => {
-          return { ...prevMedia, video: result.assets[0].uri };
+          return { ...prevMedia, video: result.assets[0].uri }; // Assign the URI of the selected video
         });
       }
     }
   };
+  
 
   const takeVideo = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -238,10 +230,11 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
       });
     } else if (type === 'video') {
       setMedia((prevMedia) => {
-        return { ...prevMedia, video: null };
+        return { ...prevMedia, video: null }; // Set video to null when removed
       });
     }
   };
+  
 
   const handleImagePreview = (uri) => {
     setImagePreview(uri);
@@ -478,6 +471,7 @@ const UploadProductComponent = ({ visible, onDismiss, onSave, categories, BNPLPl
     </ScrollView>
   );
 };
+
 const styles = StyleSheet.create({
   scrollContainer: {
     flexGrow: 1,
@@ -507,7 +501,7 @@ const styles = StyleSheet.create({
     borderColor: 'black',
     marginBottom: 12,
     padding: 12,
-    height: 60,  
+    height: 60,
   },
   selectMediaButton: {
     backgroundColor: '#FF0000',

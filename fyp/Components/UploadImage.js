@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system';
+import * as ImagePicker from 'expo-image-picker';
 
 // Cloudinary API URL for Images and Videos
 const cloudinaryBaseUrl = 'https://api.cloudinary.com/v1_1/ddwqefs9o';
@@ -93,4 +94,44 @@ export const uploadVideo = async (video) => {
     console.error('❌ Error uploading video:', error);
     throw error;
   }
+};
+
+// Function to pick image from gallery or take a picture using the camera
+export const pickImageOrTakePicture = async (fromCamera = false) => {
+  const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+  if (permissionResult.granted === false) {
+    alert("Permission to access camera is required!");
+    return;
+  }
+
+  const result = fromCamera
+    ? await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 1,
+      })
+    : await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 1,
+      });
+
+  if (!result.canceled && result.assets) {
+    return result.assets[0];
+  }
+};
+
+// Sample usage within a React component
+export const handleChangePicture = async () => {
+  Alert.alert("Change Profile Picture", "Choose an option", [
+    { text: "Take Photo", onPress: async () => {
+      const image = await pickImageOrTakePicture(true); // true to use camera
+      if (image) await uploadImage(image);
+    }},
+    { text: "Choose from Gallery", onPress: async () => {
+      const image = await pickImageOrTakePicture(); // false to pick from gallery
+      if (image) await uploadImage(image);
+    }},
+    { text: "Cancel", style: "cancel" },
+  ]);
 };

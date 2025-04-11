@@ -61,7 +61,7 @@ export default function App() {
     <NavigationContainer>
       <StatusBar backgroundColor="black" barStyle="light-content" />
       <Stack.Navigator
-        initialRouteName="AdminDashboardTabs"
+        initialRouteName="BottomTabs"
         screenOptions={{ headerShown: false }}
       >
         {/* Auth */}

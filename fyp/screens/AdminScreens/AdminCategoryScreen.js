@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
     marginTop: 4, // Removed top margin, handled by name's bottom margin
   },
   chevronIcon: {
-    color:'black'
+    color: '#CCCCCC' // Lightened chevron color
   },
   // --- Empty List / Loader ---
   emptyListContainer: {

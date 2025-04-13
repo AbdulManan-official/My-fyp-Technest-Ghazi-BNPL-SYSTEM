@@ -382,8 +382,8 @@ const ProductListItem = React.memo(({ item, onEdit, onDelete, openRowRef }) => {
     const hasDiscount = typeof discountedPrice === 'number' && typeof originalPrice === 'number' && discountedPrice < originalPrice;
 
     // Format prices
-    const displayOriginalPrice = typeof originalPrice === 'number' ? `PKR ${originalPrice.toFixed(2)}` : 'N/A';
-    const displayDiscountedPrice = typeof discountedPrice === 'number' ? `PKR ${discountedPrice.toFixed(2)}` : '';
+    const displayOriginalPrice = typeof originalPrice === 'number' ? `RS ${originalPrice}` : 'N/A';
+    const displayDiscountedPrice = typeof discountedPrice === 'number' ? `RS ${discountedPrice}` : '';
 
     const description = item?.description || '';
     const isBNPLEnabled = item?.paymentOption?.BNPL === true;

@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
         textShadowRadius: 2,
     },
     gridContainer: { paddingHorizontal: 15, },
-    productCard: { backgroundColor: '#fff', borderRadius: 8, margin: 4, flex: 0.5, alignItems: 'center', padding: 18, paddingBottom: 4, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.20, shadowRadius: 1.41, minHeight: 280, justifyContent: 'space-between', },
+    productCard: { backgroundColor: '#fff', borderRadius: 8, margin: 5, flex: 0.5, alignItems: 'center', padding: 18, paddingBottom: 4, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.20, shadowRadius: 1.41, minHeight: 280, justifyContent: 'space-between', },
     productImage: { width: '100%', height: 110, borderRadius: 6, marginBottom: 8, backgroundColor: 'white' },
     productName: { fontSize: 14, fontWeight: '600', color: '#333', textAlign: 'center', minHeight: 18, marginBottom: 4, paddingHorizontal: 2 },
     priceContainer: { flexDirection: 'column', alignItems: 'center', marginTop: 4, minHeight: 35, marginBottom: 6, justifyContent: 'center' },

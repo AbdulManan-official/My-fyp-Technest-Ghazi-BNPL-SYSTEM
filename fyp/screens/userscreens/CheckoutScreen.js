@@ -10,21 +10,25 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 const AppBackgroundColor = '#FFFFFF';
 const TextColorPrimary = '#212121';
 const TextColorSecondary = '#666666';
-const AccentColor = '#D32F2F';
+const AccentColor = '#FF0000';
 const LightBorderColor = '#EEEEEE';
 const PlaceholderBgColor = '#F0F0F0';
-const DiscountedPriceColor = '#E53935';
+const DiscountedPriceColor = '#C70039';
 const BnplPlanDetailColor = TextColorSecondary;
 const BnplPlanValueColor = TextColorPrimary;
 const BnplPlanIconColor = '#757575';
-const QuantityButtonColor = AccentColor;
+const ERROR_COLOR = '#D32F2F';
+const ACCENT_COLOR_ADD = '#4CAF50';
+// *** Color for the standalone trash icon ***
+const REMOVE_ICON_COLOR = '#757575'; // Secondary grey, less prominent than quantity controls
 const QuantityButtonDisabledColor = '#cccccc';
+
 
 // Placeholder image path
 const placeholderImagePath = require('../../assets/p3.jpg'); // Adjust path as needed
 
 // --- Currency Symbol ---
-const CURRENCY_SYMBOL = 'PKR'; // Or 'RS'
+const CURRENCY_SYMBOL = 'PKR';
 
 export default function CheckoutScreen({ route }) {
     const navigation = useNavigation();
@@ -38,12 +42,16 @@ export default function CheckoutScreen({ route }) {
     const grandTotal = useMemo(() => subTotal + tax + shippingFee, [subTotal, tax, shippingFee]);
 
     useEffect(() => {
+        // console.log("Received cart items in Checkout:", JSON.stringify(cartItems, null, 2));
         let calculatedTotal = 0;
         cartItems.forEach(item => {
             if (item && typeof item.price === 'number' && typeof item.quantity === 'number') {
                 calculatedTotal += item.price * item.quantity;
+            } else {
+                 console.warn("Invalid item data for subtotal calculation:", item);
             }
         });
+        // console.log("Calculated Subtotal:", calculatedTotal);
         setSubTotal(calculatedTotal);
     }, [cartItems]);
 
@@ -70,95 +78,125 @@ export default function CheckoutScreen({ route }) {
                         : item
                 );
             } else {
-                Alert.alert("Remove Item", `Remove ${itemToUpdate.name} from your order?`,
-                    [{ text: "Cancel", style: "cancel" }, { text: "Remove", onPress: () => setCartItems(items => items.filter(item => item.id !== itemId)), style: "destructive" }]
-                );
-                return currentItems;
+                // Trigger removal confirmation
+                confirmRemoveItem(itemToUpdate);
+                return currentItems; // Return current state until confirmation
             }
         });
     };
 
-    // --- ** MODIFIED ** Function to render BNPL details ---
-    const renderBnplDetails = (item) => { // Accept full item
-        const { bnplPlan, quantity, price } = item; // Destructure needed props
+    // *** ADDED: Separate function for remove confirmation ***
+    const confirmRemoveItem = (itemToRemove) => {
+         Alert.alert(
+             "Remove Item",
+             `Remove ${itemToRemove.name || 'this item'} from your order?`,
+             [
+                 { text: "Cancel", style: "cancel" },
+                 {
+                     text: "Remove",
+                     onPress: () => setCartItems(items => items.filter(item => item.id !== itemToRemove.id)), // Filter out the item
+                     style: "destructive"
+                 }
+             ]
+         );
+    }
 
+
+    // --- Render BNPL details (Keep unchanged) ---
+    const renderBnplDetails = (item) => {
+        const { bnplPlan, quantity, price } = item;
         if (!bnplPlan || !bnplPlan.id || typeof price !== 'number' || typeof quantity !== 'number') return null;
-
-        const name = bnplPlan.name || 'BNPL Plan';
-        const duration = typeof bnplPlan.duration === 'number' ? bnplPlan.duration : null;
-        const interestRate = typeof bnplPlan.interestRate === 'number' ? bnplPlan.interestRate : null;
-        // Note: We don't use bnplPlan.calculatedMonthly anymore, we recalculate based on current quantity
+        const name = bnplPlan.name || 'Installment Plan';
+        const duration = bnplPlan.duration;
+        const interestRate = bnplPlan.interestRate;
         const planType = bnplPlan.planType || 'N/A';
-
         const formattedInterest = interestRate !== null ? `${interestRate.toFixed(1)}%` : 'N/A';
         const isFixed = planType === 'Fixed Duration';
         const numInstallments = !isFixed && duration ? duration : 1;
-
-        // ** Recalculate Monthly based on current total price and duration **
         let currentMonthlyPayment = null;
         if (!isFixed && duration && duration > 0) {
-            const currentTotalPrice = price * quantity; // Total price for current quantity
+            const currentTotalPrice = price * quantity;
             const monthlyRaw = currentTotalPrice / duration;
             currentMonthlyPayment = `${CURRENCY_SYMBOL} ${monthlyRaw.toFixed(0)}`;
         }
-
         return (
             <View style={styles.bnplDetailsContainer}>
                 <Text style={styles.bnplPlanTitle}>Payment Plan: {name}</Text>
-                <View style={styles.bnplDetailRow}><MaterialIcons name="info-outline" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Type: <Text style={styles.bnplDetailValue}>{planType}</Text></Text></View>
-                {duration && (<View style={styles.bnplDetailRow}><MaterialIcons name="schedule" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Duration: <Text style={styles.bnplDetailValue}>{duration} {duration === 1 ? 'Month' : 'Months'}</Text>{isFixed ? (<Text style={styles.bnplDetailValue}> (1 Pay)</Text>) : (<Text style={styles.bnplDetailValue}> / {numInstallments} Installments</Text>)}</Text></View>)}
-                {/* Show recalculated monthly payment */}
+                {planType !== 'N/A' && <View style={styles.bnplDetailRow}><MaterialIcons name="info-outline" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Type: <Text style={styles.bnplDetailValue}>{planType}</Text></Text></View>}
+                {duration && (<View style={styles.bnplDetailRow}><MaterialIcons name="schedule" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Duration: <Text style={styles.bnplDetailValue}>{duration} {duration === 1 ? 'Month' : 'Months'}</Text>{isFixed ? (<Text style={styles.bnplDetailValue}> (1 Pay)</Text>) : (<Text style={styles.bnplDetailValue}> / {numInstallments} Inst.</Text>)}</Text></View>)}
                 {currentMonthlyPayment && !isFixed && (
                     <View style={styles.bnplDetailRow}>
                          <MaterialIcons name="calculate" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} />
                          <Text style={styles.bnplDetailText}>Est. Monthly: <Text style={styles.bnplDetailValue}>{currentMonthlyPayment}</Text></Text>
                     </View>
                  )}
-                <View style={styles.bnplDetailRow}><MaterialIcons name="percent" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Interest: <Text style={styles.bnplDetailValue}>{formattedInterest}</Text></Text></View>
+                {interestRate !== null && <View style={styles.bnplDetailRow}><MaterialIcons name="percent" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Interest: <Text style={styles.bnplDetailValue}>{formattedInterest}</Text></Text></View>}
             </View>
         );
     };
 
-    // --- ** MODIFIED ** Render Cart Item ---
-    const renderCartItem = ({ item }) => {
-        if (!item || !item.id || typeof item.price !== 'number' || typeof item.quantity !== 'number') { console.warn("Invalid cart item data:", item); return null; }
+
+    // --- Render Cart Item ---
+    // *** ADDED Trash Icon ***
+    const renderCartItem = ({ item, index }) => { // Added index for last item check
+        if (!item || !item.id || typeof item.price !== 'number' || typeof item.quantity !== 'number') { console.warn("Invalid cart item data in Checkout:", item); return null; }
+
         const itemTotalPrice = item.price * item.quantity;
         const isBnpl = item.paymentMethod === 'BNPL' && item.bnplPlan;
+        const isLastItem = index === cartItems.length - 1; // Check if it's the last item
 
         return (
-            <View style={styles.cartItem}>
+            // Apply last item style conditionally
+            <View style={[styles.cartItem, isLastItem && styles.lastCartItem]}>
                 <Image
                     source={item.image ? { uri: item.image } : placeholderImagePath}
                     style={styles.productImage}
-                    onError={(e) => console.log(`Img Err: ${item.image}`, e.nativeEvent.error)}
+                    onError={(e) => console.log(`Img Err (Checkout): ${item.image}`, e.nativeEvent.error)}
                 />
+                {/* Details View takes most space */}
                 <View style={styles.details}>
                     <Text style={styles.productName} numberOfLines={1}>{item.name || 'Unnamed Product'}</Text>
                     <Text style={styles.productPrice}>
-                        {CURRENCY_SYMBOL} {itemTotalPrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        {`${CURRENCY_SYMBOL} ${itemTotalPrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
                     </Text>
                     {item.quantity > 1 && (
                         <Text style={styles.unitPriceText}>
-                            ({CURRENCY_SYMBOL} {item.price.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} each)
+                            {`(${CURRENCY_SYMBOL} ${item.price.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} each)`}
                         </Text>
                     )}
                     <View style={styles.quantityControlContainer}>
-                        <TouchableOpacity style={styles.quantityButton} onPress={() => decreaseQuantity(item.id)}>
-                            <Ionicons name={item.quantity === 1 ? "trash-outline" : "remove-outline"} size={18} color={item.quantity === 1 ? AccentColor : QuantityButtonColor} />
+                        <TouchableOpacity
+                            style={styles.quantityButton}
+                            onPress={() => decreaseQuantity(item.id)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 5 }}
+                        >
+                            <Ionicons name="remove-circle-outline" size={26} color={ERROR_COLOR} />
                         </TouchableOpacity>
                         <Text style={styles.quantityTextDisplay}>{item.quantity}</Text>
-                        <TouchableOpacity style={styles.quantityButton} onPress={() => increaseQuantity(item.id)}>
-                            <Ionicons name="add-outline" size={18} color={QuantityButtonColor} />
+                        <TouchableOpacity
+                            style={styles.quantityButton}
+                            onPress={() => increaseQuantity(item.id)}
+                            hitSlop={{ top: 10, bottom: 10, left: 5, right: 10 }}
+                        >
+                            <Ionicons name="add-circle-outline" size={26} color={ACCENT_COLOR_ADD} />
                         </TouchableOpacity>
                     </View>
-                    {/* Pass the full item to renderBnplDetails */}
                     {isBnpl && renderBnplDetails(item)}
                 </View>
+                {/* Standalone Remove Icon */}
+                <TouchableOpacity
+                    style={styles.removeIconContainer}
+                    onPress={() => confirmRemoveItem(item)} // Call confirmation directly
+                    hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }} // Adjust hitslop
+                >
+                    <Ionicons name="trash-outline" size={24} color={REMOVE_ICON_COLOR} />
+                </TouchableOpacity>
             </View>
         );
     };
 
 
+    // --- Main Render (Keep unchanged) ---
     return (
         <View style={styles.outerContainer}>
             <ScrollView
@@ -183,12 +221,12 @@ export default function CheckoutScreen({ route }) {
                 <Text style={styles.sectionTitle}>Order Items</Text>
                 <View style={styles.cartContainer}>
                     {cartItems.length === 0 ? (
-                        <Text style={styles.emptyCartText}>Your cart is empty.</Text>
+                        <Text style={styles.emptyCartText}>No items to checkout.</Text>
                     ) : (
                         <FlatList
                             data={cartItems}
-                            keyExtractor={(item, index) => item.id?.toString() ?? `checkout-${index}`}
-                            renderItem={renderCartItem}
+                            keyExtractor={(item, index) => item.cartItemId ?? item.id?.toString() ?? `checkout-${index}`}
+                            renderItem={renderCartItem} // Pass index here
                             scrollEnabled={false}
                         />
                     )}
@@ -197,27 +235,28 @@ export default function CheckoutScreen({ route }) {
                 {/* Order Summary Section */}
                 <Text style={styles.sectionTitle}>Order Summary</Text>
                 <View style={styles.summaryContainer}>
-                    <View style={styles.summaryRow}><Text style={styles.summaryText}>Subtotal:</Text><Text style={styles.summaryValue}>{CURRENCY_SYMBOL} {subTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</Text></View>
-                    <View style={styles.summaryRow}><Text style={styles.summaryText}>Tax ({ (taxRate * 100).toFixed(0) }%):</Text><Text style={styles.summaryValue}>{CURRENCY_SYMBOL} {tax.toFixed(0)}</Text></View>
+                    <View style={styles.summaryRow}><Text style={styles.summaryText}>Subtotal:</Text><Text style={styles.summaryValue}>{`${CURRENCY_SYMBOL} ${subTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}</Text></View>
+                    <View style={styles.summaryRow}><Text style={styles.summaryText}>{`Tax (${ (taxRate * 100).toFixed(0) }%)`}:</Text><Text style={styles.summaryValue}>{`${CURRENCY_SYMBOL} ${tax.toFixed(0)}`}</Text></View>
                     <View style={styles.summaryRow}><Text style={styles.summaryText}>Shipping:</Text><Text style={styles.summaryValue}>{shippingFee === 0 ? 'Free' : `${CURRENCY_SYMBOL} ${shippingFee}`}</Text></View>
                     <View style={styles.divider} />
-                    <View style={styles.summaryRow}><Text style={styles.totalText}>Total:</Text><Text style={styles.totalValue}>{CURRENCY_SYMBOL} {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</Text></View>
+                    <View style={styles.summaryRow}><Text style={styles.totalText}>Total:</Text><Text style={styles.totalValue}>{`${CURRENCY_SYMBOL} ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}</Text></View>
                 </View>
 
                 {/* Proceed to Payment Button */}
                 <TouchableOpacity
                     style={[styles.paymentButton, cartItems.length === 0 && styles.disabledButton]}
-                    onPress={() => { console.log("Proceed to Payment Pressed"); console.log("Order Details:", { user, items: cartItems, summary: { subtotal: subTotal, tax: tax, shipping: shippingFee, grandTotal: grandTotal } }); Alert.alert('Payment', 'Proceeding to Payment Gateway...'); /* navigation.navigate('PaymentScreen', { orderDetails: ... }); */}}
+                    onPress={() => { console.log("Proceed to Payment Pressed"); console.log("Final Order Details:", { user, items: cartItems, summary: { subtotal: subTotal, tax: tax, shipping: shippingFee, grandTotal: grandTotal } }); Alert.alert('Payment', 'Proceeding to Payment Gateway...'); /* navigation.navigate('PaymentScreen', { orderDetails: ... }); */}}
                     disabled={cartItems.length === 0}
                 >
-                    <Text style={styles.paymentText}>Proceed to Payment</Text>
+                    <Text style={styles.paymentText}>Place Order</Text>
                 </TouchableOpacity>
             </ScrollView>
         </View>
     );
 }
 
-// Styles
+// --- Styles ---
+// *** ADDED removeIconContainer style ***
 const styles = StyleSheet.create({
     outerContainer: {
       flex: 1,
@@ -288,7 +327,8 @@ const styles = StyleSheet.create({
         shadowRadius: 2,
         borderWidth: 1,
         borderColor: LightBorderColor,
-        padding: 5,
+        // No padding here, padding is on cartItem
+        overflow: 'hidden', // Clip items to rounded border
     },
     emptyCartText: {
         textAlign: 'center',
@@ -300,9 +340,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         paddingVertical: 12,
         paddingHorizontal: 10,
-        alignItems: 'center', // Vertically center image and details block
+        alignItems: 'center', // Vertically align image, details, and icon
         borderBottomWidth: 1,
-        borderBottomColor: '#F0F0F0',
+        borderBottomColor: LightBorderColor, // Use lighter border
+        backgroundColor: AppBackgroundColor, // Ensure background for items
+    },
+    lastCartItem: { // Style to remove border for the last item
+       borderBottomWidth: 0,
     },
     productImage: {
         width: 65,
@@ -310,11 +354,11 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         marginRight: 12,
         backgroundColor: PlaceholderBgColor,
-        // marginTop: 0, // Removed marginTop as alignItems: center handles it
     },
     details: {
-        flex: 1,
-        justifyContent: 'center', // Center content vertically within details if needed
+        flex: 1, // Allow details to take available space
+        justifyContent: 'center',
+        // Removed marginRight as spacing is handled by removeIconContainer padding
     },
     productName: {
         fontSize: 15,
@@ -336,27 +380,28 @@ const styles = StyleSheet.create({
     quantityControlContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 5,
+        marginTop: 8,
         marginBottom: 8,
     },
     quantityButton: {
-        borderWidth: 1,
-        borderColor: LightBorderColor,
-        borderRadius: 16, // Make it rounder
-        padding: 6,      // Adjust padding
-        marginHorizontal: 10, // Increase spacing
-        backgroundColor: '#fff', // White background
+        borderRadius: 18,
+        padding: 6,
+        marginHorizontal: 10,
     },
     quantityTextDisplay: {
-        fontSize: 15,
+        fontSize: 16,
         fontWeight: '600',
         color: TextColorPrimary,
         minWidth: 25,
         textAlign: 'center',
+        marginHorizontal: 5,
     },
-    quantityText: { // Keep original style if needed elsewhere, but renamed display one
-        fontSize: 13,
-        color: TextColorSecondary,
+    removeIconContainer: { // Style for the trash icon button
+        paddingLeft: 10, // Add padding to the left for spacing from details
+        paddingRight: 5, // Add padding to the right edge
+        paddingVertical: 10, // Vertical padding for tap area
+        justifyContent: 'center', // Center icon vertically
+        alignItems: 'center',     // Center icon horizontally
     },
     bnplDetailsContainer: {
         marginTop: 8,

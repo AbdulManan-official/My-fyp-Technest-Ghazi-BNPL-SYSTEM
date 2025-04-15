@@ -16,7 +16,7 @@ import CartScreen from './screens/userscreens/CartScreen';
 
 // Newly Added Screens
 import UserProfileScreen from './screens/userscreens/UserProfileScreen';
-import UserSecurityVerificationScreen from './screens/userscreens/UserVerficationScreen';
+import RequestVerificationScreen from './screens/userscreens/RequestVerificationScreen';
 import PrivacyPolicyScreen from './screens/userscreens/PrivacyPolicyScreen';
 import RulesRegulationScreen from './screens/userscreens/RulesRegulationScreen';
 import SupportChatScreen from './screens/userscreens/SupportChatScreen';
@@ -104,9 +104,9 @@ export default function App() {
           options={({ navigation }) => CustomHeader({ navigation, title: 'Profile' })}
         />
         <Stack.Screen
-          name="UserSecurityVerificationScreen"
-          component={UserSecurityVerificationScreen}
-          options={({ navigation }) => CustomHeader({ navigation, title: 'User Security Verification' })}
+          name="RequestVerificationScreen"
+          component={RequestVerificationScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Request Verification' })}
         />
         <Stack.Screen
           name="PrivacyPolicyScreen"

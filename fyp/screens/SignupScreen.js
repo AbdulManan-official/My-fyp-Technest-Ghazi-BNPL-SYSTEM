@@ -13,11 +13,16 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   StatusBar,
+  Alert // Make sure Alert is imported
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { auth } from '../firebaseConfig'; // Firebase config
-import { createUserWithEmailAndPassword } from 'firebase/auth'; // Firebase signup method
+// *** Import db and Firestore functions ***
+import { auth, db } from '../firebaseConfig'; // Assuming db is exported from firebaseConfig
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
+
+const USERS_COLLECTION = 'Users'; // Define collection name
 
 const SignupScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -30,6 +35,10 @@ const SignupScreen = ({ navigation }) => {
 
   // Handle signup process
   const handleSignUp = async () => {
+    // Reset error on new attempt
+    setError('');
+
+    // Keep existing validation
     if (!email || !password || !confirmPassword) {
       setError('Please fill in all fields.');
       return;
@@ -38,19 +47,67 @@ const SignupScreen = ({ navigation }) => {
       setError('Passwords do not match.');
       return;
     }
+    // Optional: Add password length check if needed
+    if (password.length < 6) {
+       setError('Password must be at least 6 characters long.');
+       return;
+    }
 
     setIsLoading(true);
 
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      navigation.replace('BottomTabs'); // Navigate after successful signup
+      // 1. Create user in Firebase Authentication
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password); // Trim email
+      const newUser = userCredential.user;
+      console.log('User created successfully in Auth:', newUser.uid);
+
+      // --- Start Firestore Logic ---
+      if (newUser) {
+        // 2. Create reference to the user's document in Firestore 'Users' collection
+        const userDocRef = doc(db, USERS_COLLECTION, newUser.uid); // Use UID as document ID
+
+        // 3. Define the data to save
+        const userData = {
+          uid: newUser.uid,                  // Store UID
+          email: newUser.email,              // Store email
+          verificationStatus: "Not Applied", // *** Add the required field ***
+          createdAt: serverTimestamp(),      // Add creation timestamp
+          // Add any other default fields needed at signup here
+        };
+
+        // 4. Write the data to Firestore
+        await setDoc(userDocRef, userData);
+        console.log('Firestore user document created successfully!');
+        // --- End Firestore Logic ---
+
+        // 5. Navigate only AFTER both Auth and Firestore succeed
+        navigation.replace('BottomTabs');
+      } else {
+          // Handle rare case where Auth user is null after creation
+          throw new Error("User account created but user data is not available.");
+      }
+
     } catch (error) {
-      setError(error.message); // Display any Firebase error
+      console.error("Signup Error:", error);
+      // Keep original error handling
+      let errorMessage = error.message;
+       // Optionally provide more specific messages
+      if (error.code === 'auth/email-already-in-use') {
+        errorMessage = 'This email address is already registered.';
+      } else if (error.code === 'auth/weak-password') {
+        errorMessage = 'Password is too weak (min. 6 characters).';
+      } else if (error.code === 'auth/invalid-email') {
+        errorMessage = 'Please enter a valid email address.';
+      }
+      setError(errorMessage);
+      // Use Alert for critical errors if needed, but setError is usually sufficient
+      // Alert.alert("Signup Failed", errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // --- Return Statement (Keep exactly as provided) ---
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FAFAFA" />
@@ -140,6 +197,7 @@ const SignupScreen = ({ navigation }) => {
   );
 };
 
+// --- Styles (Keep exactly as provided) ---
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -226,7 +284,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   signupText: {
-    marginTop: 5,
+    marginTop: 15, // Adjusted margin slightly
     color: '#333',
     fontSize: 13,
     fontWeight: '500',

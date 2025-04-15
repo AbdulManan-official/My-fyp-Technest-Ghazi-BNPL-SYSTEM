@@ -382,7 +382,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#FF0000',
         paddingTop: Platform.OS === 'ios' ? 10 : 15,
         paddingBottom: 15,
-        paddingHorizontal: 15,
+        paddingHorizontal: 15,borderBottomLeftRadius: 15, borderBottomRightRadius: 15,
     },
     searchBar: {
         flexDirection: 'row',

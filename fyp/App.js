@@ -39,7 +39,7 @@ import ReportsScreen from './screens/AdminScreens/ReportsScreen';
 import BNPLPlansScreen from './screens/AdminScreens/BNPLPlansScreen';
 
 // New User Detail Screen Import
-import UserDetailScreen from './screens/AdminScreens/UserDetailScreen';
+import UserVerificationDetailScreen from './screens/AdminScreens/UserVerificationDetailScreen';
 const Stack = createStackNavigator();
 
 const CustomHeader = ({ navigation, title }) => ({
@@ -61,7 +61,7 @@ export default function App() {
     <NavigationContainer>
       <StatusBar backgroundColor="black" barStyle="light-content" />
       <Stack.Navigator
-        initialRouteName="BottomTabs"
+        initialRouteName="AdminDashboardTabs"
         screenOptions={{ headerShown: false }}
       >
         {/* Auth */}
@@ -197,8 +197,8 @@ export default function App() {
 
         {/* New User Detail Screen */}
         <Stack.Screen
-          name="UserDetailScreen"
-          component={UserDetailScreen}
+          name="UserVerificationDetail"
+          component={UserVerificationDetailScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'User Details' })}
         />
       </Stack.Navigator>

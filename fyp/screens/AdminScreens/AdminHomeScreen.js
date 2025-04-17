@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Added useRef
 import {
     View,
     Text,
@@ -7,24 +7,33 @@ import {
     Dimensions,
     TouchableOpacity,
     Image,
-    StatusBar,
+    StatusBar, // React Native StatusBar component
     ActivityIndicator,
     Platform,
+    Alert
 } from 'react-native';
 import { LineChart, BarChart, PieChart } from 'react-native-chart-kit';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import AdminCustomDrawer from './AdminCustomDrawer'; // ✅ Update path if needed
+import AdminCustomDrawer from './AdminCustomDrawer';
 
-// Import Firebase Firestore functions
-import { getFirestore, collection, getDocs, FirestoreError } from 'firebase/firestore';
-import { app } from '../../firebaseConfig'; // Assuming firebase config is exported from here
+// --- Start: Firebase & AsyncStorage Imports ---
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, collection, query, limit, getDocs, FirestoreError } from 'firebase/firestore';
+import { app } from '../../firebaseConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+// --- End: Firebase & AsyncStorage Imports ---
 
 const db = getFirestore(app);
 console.log('Firestore Initialized:', db ? 'Yes' : 'No');
 
 const screenWidth = Dimensions.get('window').width;
 
-// --- Chart Configurations ---
+// --- Start: Constants ---
+const ADMIN_PROFILE_IMAGE_KEY = 'adminHeaderProfileImage';
+const defaultProfileImageUri = 'https://www.w3schools.com/w3images/avatar2.png';
+// --- End: Constants ---
+
+// --- Chart Configurations (Keep as is) ---
 const chartConfigBase = {
     backgroundGradientFrom: '#ffffff',
     backgroundGradientTo: '#ffffff',
@@ -38,9 +47,8 @@ const chartConfigBase = {
 const pieChartConfig = {
     ...chartConfigBase,
     color: (opacity = 1, index) => {
-        // Ensure colors match the data array order in usersData state
-        const colors = ['#36A2EB', '#FF6384']; // Verified (Blue), Unverified (Red)
-        return colors[index % colors.length] || `rgba(200, 200, 200, ${opacity})`; // Fallback grey
+        const colors = ['#36A2EB', '#FF6384'];
+        return colors[index % colors.length] || `rgba(200, 200, 200, ${opacity})`;
     },
     labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
 };
@@ -49,28 +57,84 @@ const pieChartConfig = {
 export default function AdminHomeScreen({ navigation }) {
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
-    // --- State for User Chart Data ---
+    // --- State for User Chart Data (Keep as is) ---
     const [loadingUsers, setLoadingUsers] = useState(true);
     const [errorUsers, setErrorUsers] = useState(null);
     const [totalUsers, setTotalUsers] = useState(0);
     const [usersData, setUsersData] = useState([
-        {
-            name: 'Verified',
-            population: 0,
-            color: '#36A2EB', // Blue
-            legendFontColor: '#333',
-            legendFontSize: 14,
-        },
-        {
-            name: 'Unverified',
-            population: 0,
-            color: '#FF6384', // Red
-            legendFontColor: '#333',
-            legendFontSize: 14,
-        },
+        { name: 'Verified', population: 0, color: '#36A2EB', legendFontColor: '#333', legendFontSize: 14 },
+        { name: 'Unverified', population: 0, color: '#FF6384', legendFontColor: '#333', legendFontSize: 14 },
     ]);
 
-    // --- Fetch User Data Effect ---
+    // --- Start: State for Admin Profile Picture ---
+    const [profileImage, setProfileImage] = useState(null);
+    const [loadingProfile, setLoadingProfile] = useState(true);
+    // --- End: State for Admin Profile Picture ---
+
+    // --- Start: Fetch Admin Profile Image Logic ---
+    const fetchAdminProfileImage = async () => {
+        setLoadingProfile(true);
+        const cacheKey = ADMIN_PROFILE_IMAGE_KEY;
+
+        try {
+            const cachedImage = await AsyncStorage.getItem(cacheKey);
+            if (cachedImage) {
+                setProfileImage(cachedImage);
+                setLoadingProfile(false);
+                return;
+            }
+
+            console.log("Fetching admin profile image for header...");
+            const adminQuery = query(collection(db, "Admin"), limit(1));
+            const querySnapshot = await getDocs(adminQuery);
+
+            if (!querySnapshot.empty) {
+                const adminDoc = querySnapshot.docs[0];
+                const data = adminDoc.data();
+                const imageUrl = data.profileImage?.trim() || null;
+
+                if (imageUrl) {
+                    setProfileImage(imageUrl);
+                    await AsyncStorage.setItem(cacheKey, imageUrl);
+                    console.log("Admin profile image cached for header.");
+                } else {
+                    console.log("Admin document found, but no profileImage URL present.");
+                    setProfileImage(null);
+                    await AsyncStorage.removeItem(cacheKey);
+                }
+            } else {
+                 console.warn("No documents found in the 'Admin' collection for profile image.");
+                 setProfileImage(null);
+                 await AsyncStorage.removeItem(cacheKey);
+            }
+        } catch (error) {
+            console.error("Error fetching admin profile image:", error);
+            if (!profileImage) {
+                 setProfileImage(null);
+            }
+        } finally {
+            setLoadingProfile(false);
+        }
+    };
+    // --- End: Fetch Admin Profile Image Logic ---
+
+    // --- Start: useEffect for Auth State and Profile Fetching ---
+    useEffect(() => {
+        const auth = getAuth();
+        const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+            if (user) {
+                fetchAdminProfileImage();
+            } else {
+                setProfileImage(null);
+                setLoadingProfile(false);
+            }
+        });
+        return () => unsubscribeAuth();
+    }, []);
+    // --- End: useEffect for Auth State ---
+
+
+    // --- Fetch User Data Effect (Keep as is) ---
     useEffect(() => {
         console.log('User data fetch effect starting...');
         const fetchUsersData = async () => {
@@ -79,11 +143,11 @@ export default function AdminHomeScreen({ navigation }) {
             setTotalUsers(0);
             try {
                 console.log("Attempting to fetch users from 'Users' collection...");
-                const usersCol = collection(db, 'Users'); // Collection Name: Users
+                const usersCol = collection(db, 'Users');
                 const userSnapshot = await getDocs(usersCol);
                 console.log(`Fetched ${userSnapshot.size} user documents from 'Users'.`);
 
-                setTotalUsers(userSnapshot.size); // Set total count
+                setTotalUsers(userSnapshot.size);
                 console.log(`Total users count set to: ${userSnapshot.size}`);
 
                 if (userSnapshot.empty) {
@@ -95,15 +159,13 @@ export default function AdminHomeScreen({ navigation }) {
 
                 userSnapshot.forEach((doc) => {
                     const userData = doc.data();
-                    const status = userData.verificationStatus; // Field Name: verificationStatus
+                    const status = userData.verificationStatus;
 
-                    // Log the first document's data structure for debugging
-                     if (verifiedCount === 0 && unverifiedCount === 0 && userData) {
-                        console.log("First user document data:", JSON.stringify(userData));
-                        console.log(`Checking field: verificationStatus = ${status}`);
-                     }
+                    if (verifiedCount === 0 && unverifiedCount === 0 && userData) {
+                       console.log("First user document data:", JSON.stringify(userData));
+                       console.log(`Checking field: verificationStatus = ${status}`);
+                    }
 
-                    // Check for 'verified' OR 'Verified'
                     if (status === 'verified' || status === 'Verified') {
                         verifiedCount++;
                     } else {
@@ -122,38 +184,42 @@ export default function AdminHomeScreen({ navigation }) {
 
             } catch (err) {
                 console.error("!!! Firebase Fetch Error (Users Collection):", err);
-                 let errorMessage = "Failed to load user data. Please check connection or configuration.";
+                let errorMessage = "Failed to load user data.";
                  if (err instanceof FirestoreError) {
                     errorMessage += ` (Code: ${err.code})`;
-                    if (err.code === 'permission-denied') {
-                        errorMessage = "Permission denied. Check Firestore security rules for the 'Users' collection.";
-                    } else if (err.code === 'unauthenticated') {
-                         errorMessage = "Authentication error. Please log in again.";
-                    }
-                } else if (err.message) {
-                    errorMessage += ` (${err.message})`;
-                }
+                    if (err.code === 'permission-denied') errorMessage = "Permission denied for 'Users' collection.";
+                    else if (err.code === 'unauthenticated') errorMessage = "Authentication error.";
+                } else if (err.message) errorMessage += ` (${err.message})`;
                 setErrorUsers(errorMessage);
             } finally {
                 setLoadingUsers(false);
-                console.log('User data fetch attempt finished. Loading set to false.');
+                console.log('User data fetch attempt finished.');
             }
         };
-
         fetchUsersData();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Runs once on mount
+    }, []);
+
 
     return (
         <View style={styles.safeArea}>
-            <StatusBar barStyle="dark-content" />
+             {/* ***** MODIFIED STATUS BAR ***** */}
+            <StatusBar barStyle="light-content" backgroundColor="#FF0000" />
+            {/* ******************************* */}
 
             {/* Header */}
             <View style={styles.headerBar}>
                 <Image source={require('../../assets/pic2.jpg')} style={styles.logo} />
                 <TouchableOpacity onPress={() => setIsDrawerOpen(true)}>
                     <View style={styles.profileIconContainer}>
-                        <Icon name="user" size={24} color="white" />
+                        {loadingProfile ? (
+                            <ActivityIndicator size="small" color="white" />
+                        ) : (
+                            <Image
+                                source={{ uri: profileImage || defaultProfileImageUri }}
+                                style={styles.profileImageStyle}
+                            />
+                        )}
                     </View>
                 </TouchableOpacity>
             </View>
@@ -163,23 +229,12 @@ export default function AdminHomeScreen({ navigation }) {
                 style={styles.container}
                 contentContainerStyle={styles.scrollContentContainer}
             >
-                {/* "Admin Dashboard" Header Removed */}
-                {/* <Text style={styles.header}>📊 Admin Dashboard</Text> */}
-
-                {/* --- User Status Pie Chart Section --- */}
-                {/* Container now holds title, count, and chart/loader/error */}
+                {/* User Status Pie Chart Section */}
                 <View style={styles.chartContainer}>
-                    {/* Title inside container */}
                     <Text style={styles.chartTitle}>👤 User Verification Status</Text>
-
-                    {/* Total Users Count inside container (conditional) */}
                     {!loadingUsers && !errorUsers && (
-                        <Text style={styles.totalUsersText}>
-                            Total Users: {totalUsers}
-                        </Text>
+                        <Text style={styles.totalUsersText}>Total Users: {totalUsers}</Text>
                     )}
-
-                    {/* Chart/Loader/Error Area */}
                     <View style={styles.chartRenderArea}>
                         {loadingUsers ? (
                             <ActivityIndicator size="large" color="red" />
@@ -188,15 +243,14 @@ export default function AdminHomeScreen({ navigation }) {
                         ) : (
                             usersData.some(item => item.population > 0) || totalUsers > 0 ? (
                                 <PieChart
-                                    data={usersData.filter(item => item.population > 0)} // Filter slices with 0
-                                    width={screenWidth - 60} // Adjust width considering container padding
-                                    height={180} // Can reduce height slightly if title/count takes space
+                                    data={usersData.filter(item => item.population > 0)}
+                                    width={screenWidth - 60}
+                                    height={180}
                                     chartConfig={pieChartConfig}
                                     accessor="population"
                                     backgroundColor="transparent"
                                     paddingLeft="15"
-                                    center={[10, 0]} // May need adjustment
-                                    // absolute
+                                    center={[10, 0]}
                                 />
                             ) : (
                                 <Text style={styles.noDataText}>No user status data available.</Text>
@@ -205,10 +259,9 @@ export default function AdminHomeScreen({ navigation }) {
                     </View>
                 </View>
 
-                {/* --- Total Orders Chart (Static Data) --- */}
+                {/* Total Orders Chart (Static Data) */}
                 <Text style={styles.chartTitleOutside}>📦 Total Orders</Text>
                 <View style={styles.chartContainer}>
-                    {/* No title inside this one */}
                     <LineChart
                         data={{
                             labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
@@ -222,10 +275,9 @@ export default function AdminHomeScreen({ navigation }) {
                     />
                 </View>
 
-                {/* --- Total Sales Bar Chart (Static Data) --- */}
+                {/* Total Sales Bar Chart (Static Data) */}
                 <Text style={styles.chartTitleOutside}>💰 Total Sales (USD)</Text>
                  <View style={styles.chartContainer}>
-                     {/* No title inside this one */}
                     <BarChart
                         data={{
                             labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May'],
@@ -256,7 +308,7 @@ export default function AdminHomeScreen({ navigation }) {
     );
 }
 
-// --- Styles ---
+// --- Styles --- (No changes needed in styles for this modification)
 const styles = StyleSheet.create({
     safeArea: {
         flex: 1,
@@ -269,6 +321,8 @@ const styles = StyleSheet.create({
         backgroundColor: '#FF0000', // Red header bar color
         paddingVertical: 10,
         paddingHorizontal: 15,
+        borderBottomLeftRadius: 15,
+        borderBottomRightRadius: 15,
     },
     logo: {
         width: 90,
@@ -276,13 +330,20 @@ const styles = StyleSheet.create({
         resizeMode: 'contain',
     },
     profileIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        borderWidth: 2,
+        width: 50,
+        height: 50,
+        borderRadius: 40, // Circular
+        borderWidth: 1, // Slightly thinner border
         borderColor: 'white',
         justifyContent: 'center',
         alignItems: 'center',
+        backgroundColor: '#D32F2F', // Darker red placeholder bg
+        overflow: 'hidden', // Important to clip the image
+    },
+    profileImageStyle: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 20, // Make the image circular *inside* the container
     },
     drawerOverlay: {
         position: 'absolute',
@@ -300,23 +361,14 @@ const styles = StyleSheet.create({
        padding: 15,
        paddingBottom: 30,
     },
-    // header: { // Removed - was for "Admin Dashboard"
-    //     fontSize: 24,
-    //     fontWeight: 'bold',
-    //     textAlign: 'center',
-    //     marginBottom: 20,
-    //     color: '#333',
-    // },
-    // Title style when INSIDE the container
     chartTitle: {
         fontSize: 18,
         fontWeight: '600',
         color: '#444',
-        textAlign: 'center', // Center title within container
-        marginBottom: 5, // Space below title, before total count
-        paddingHorizontal: 10, // Padding if text is long
+        textAlign: 'center',
+        marginBottom: 5,
+        paddingHorizontal: 10,
     },
-    // Title style when OUTSIDE the container (for other charts)
     chartTitleOutside: {
         fontSize: 18,
         fontWeight: '600',
@@ -324,40 +376,34 @@ const styles = StyleSheet.create({
         marginTop: 15,
         color: '#444',
     },
-    // Style for the Total Users text INSIDE container
     totalUsersText: {
         fontSize: 16,
         fontWeight: '500',
         color: '#666',
         textAlign: 'center',
-        marginBottom: 10, // Space below count, before chart area
+        marginBottom: 10,
     },
-    // Container for each chart section
     chartContainer: {
         backgroundColor: '#ffffff',
         borderRadius: 10,
-        paddingVertical: 15, // Vertical padding for the container
-        paddingHorizontal: 10, // Horizontal padding for the container
+        paddingVertical: 15,
+        paddingHorizontal: 10,
         marginBottom: 20,
-        minHeight: 240, // Keep min height
-        // alignItems: 'center', // Center items like title/count horizontally
+        minHeight: 240,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.23,
         shadowRadius: 2.62,
         elevation: 4,
-        // justifyContent is not needed here if content flows naturally top-down
     },
-    // Specific area for chart/loader/error to center these items
     chartRenderArea: {
-        flex: 1, // Take remaining space in container
-        justifyContent: 'center', // Center loader/error vertically
-        alignItems: 'center', // Center loader/error horizontally
-        minHeight: 180, // Min height for the chart itself
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: 180,
     },
-    // Specific style for the chart component itself (if needed)
     chartStyle: {
-       // marginVertical: 8, // Example
+       // Styles specific to the chart component if needed
     },
     errorText: {
         color: '#D8000C',
@@ -374,4 +420,4 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontStyle: 'italic',
     }
-});
+}); // Ensure this closing bracket is present

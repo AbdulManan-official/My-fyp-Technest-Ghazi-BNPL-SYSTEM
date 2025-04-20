@@ -64,7 +64,7 @@ export default function App() {
     <NavigationContainer>
       <StatusBar backgroundColor="black" barStyle="light-content" />
       <Stack.Navigator
-        initialRouteName="BottomTabs"
+        initialRouteName="Login"
         screenOptions={{ headerShown: false }}
       >
         {/* Auth */}
@@ -123,8 +123,8 @@ export default function App() {
         />
         <Stack.Screen
           name="SupportChatScreen"
-          component={SupportChatScreen}
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Support Chat' })}
+          component={SupportChatScreen}           options={{ headerShown: false }}
+
         />
         <Stack.Screen
           name="AboutUsScreen"

@@ -1,5 +1,5 @@
 // CheckoutScreen.js
-// Real-time User Updates via onSnapshot + Simplified Totals + VS Code Formatting
+// Navigates to Confirmation Screen, Uses Real-time Data
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
@@ -13,6 +13,7 @@ import {
     Alert,
     ScrollView,
     ActivityIndicator,
+    StatusBar, // Added StatusBar
 } from 'react-native';
 import {
     useNavigation,
@@ -20,23 +21,16 @@ import {
     useIsFocused,
 } from '@react-navigation/native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context'; // Using SafeAreaView
 
 // --- Firebase Imports ---
 import { db, auth } from '../../firebaseConfig'; // Adjust path as needed
 import {
     doc,
     onSnapshot, // Import the real-time listener
-    serverTimestamp,
-    addDoc,
-    collection,
-    query,
-    where,
-    documentId,
-    getDocs,
+    // Removed order placement related imports:
+    // serverTimestamp, addDoc, collection, query, where, documentId, getDocs
 } from 'firebase/firestore'; // Ensure all needed imports
-
-// --- HTTP Request Library ---
-import axios from 'axios';
 
 // --- Define Constants Locally ---
 const AppBackgroundColor = '#FFFFFF';
@@ -59,65 +53,11 @@ const ScreenBackgroundColor = '#F8F9FA';
 const PLACEHOLDER_ADDRESS = 'Tap to add delivery address';
 const PLACEHOLDER_PHONE = 'Tap to add phone';
 
-// --- Expo Push API Endpoint ---
-const EXPO_PUSH_ENDPOINT = 'https://exp.host/--/api/v2/push/send';
-
 // Placeholder image path
 const placeholderImagePath = require('../../assets/p3.jpg'); // Adjust path as needed
 
 // --- Currency Symbol ---
 const CURRENCY_SYMBOL = 'PKR';
-
-// --- Helper Function to Fetch Admin Tokens (Keep unchanged) ---
-async function getAdminExpoTokens() {
-    const tokens = [];
-    console.log('[getAdminExpoTokens] Fetching admin tokens...');
-    try {
-        const adminQuery = query(
-            collection(db, 'Admin'),
-            where('role', '==', 'admin')
-        );
-        const adminSnapshot = await getDocs(adminQuery);
-        if (adminSnapshot.empty) {
-            console.log('[getAdminExpoTokens] No admins found.');
-            return [];
-        }
-        const adminUserIds = adminSnapshot.docs.map((d) => d.id);
-        const MAX_IDS_PER_QUERY = 30;
-        const tokenPromises = [];
-        for (let i = 0; i < adminUserIds.length; i += MAX_IDS_PER_QUERY) {
-            const batchIds = adminUserIds.slice(i, i + MAX_IDS_PER_QUERY);
-            const tokensQuery = query(
-                collection(db, 'Admin'),
-                where(documentId(), 'in', batchIds)
-            );
-            tokenPromises.push(getDocs(tokensQuery));
-        }
-        const snapshots = await Promise.all(tokenPromises);
-        snapshots.forEach((tokensSnapshot) => {
-            tokensSnapshot.forEach((adminDoc) => {
-                const token = adminDoc.data()?.expoPushToken;
-                if (
-                    token &&
-                    typeof token === 'string' &&
-                    token.startsWith('ExponentPushToken[')
-                ) {
-                    tokens.push(token);
-                } else {
-                    console.warn(
-                        `[getAdminExpoTokens] Admin ${adminDoc.id} missing/invalid token.`
-                    );
-                }
-            });
-        });
-        console.log(
-            `[getAdminExpoTokens] Found ${tokens.length} valid token(s).`
-        );
-    } catch (error) {
-        console.error('[getAdminExpoTokens] Firestore error:', error);
-    }
-    return tokens;
-}
 
 // --- Helper function to format address from structured data (Keep unchanged) ---
 function formatAddressString(structuredAddr) {
@@ -141,12 +81,11 @@ export default function CheckoutScreen({ route }) {
 
     const [cartItems, setCartItems] = useState(route.params?.cartItems ?? []);
     const [subTotal, setSubTotal] = useState(0);
-    const [isLoadingUser, setIsLoadingUser] = useState(true);
-    const [isPlacingOrder, setIsPlacingOrder] = useState(false);
-    const [currentUserDetails, setCurrentUserDetails] = useState(null);
+    const [isLoadingUser, setIsLoadingUser] = useState(true); // For initial data load
+    const [currentUserDetails, setCurrentUserDetails] = useState(null); // Stores combined user details
 
     // --- Calculations ---
-    const grandTotal = useMemo(() => subTotal, [subTotal]);
+    const grandTotal = useMemo(() => subTotal, [subTotal]); // Simplified total
 
     // --- Subtotal Calculation Effect ---
     useEffect(() => {
@@ -182,7 +121,7 @@ export default function CheckoutScreen({ route }) {
                 console.log(
                     `[Auth/Snapshot Effect] User ${userId} logged in. Setting up listener.`
                 );
-                setIsLoadingUser(true);
+                setIsLoadingUser(true); // Set loading true when setting up listener
                 const userDocRef = doc(db, 'Users', userId);
 
                 unsubscribeSnapshot = onSnapshot(
@@ -199,6 +138,7 @@ export default function CheckoutScreen({ route }) {
                                 dbUserData
                             );
 
+                            // Process data (same logic as before)
                             const name =
                                 dbUserData.name ??
                                 userAuth.displayName ??
@@ -207,7 +147,6 @@ export default function CheckoutScreen({ route }) {
                                 dbUserData.phone ??
                                 userAuth.phoneNumber ??
                                 PLACEHOLDER_PHONE;
-
                             let addressString = PLACEHOLDER_ADDRESS;
                             let structuredAddress = null;
                             if (dbUserData.deliveryAddress) {
@@ -216,58 +155,42 @@ export default function CheckoutScreen({ route }) {
                                     formatAddressString(structuredAddress) ||
                                     PLACEHOLDER_ADDRESS;
                             }
-
                             processedData = {
-                                uid: userId,
-                                name: name,
-                                phone: phone,
-                                address: addressString,
-                                structuredAddress: structuredAddress,
-                                email: dbUserData.email || userAuth.email,
+                                uid: userId, name: name, phone: phone, address: addressString,
+                                structuredAddress: structuredAddress, email: dbUserData.email || userAuth.email,
                             };
                         } else {
-                            console.warn(
-                                `[Auth/Snapshot Effect] User document ${userId} missing.`
-                            );
+                             // Handle user doc not existing yet
+                            console.warn( `[Auth/Snapshot Effect] User document ${userId} missing.` );
                             processedData = {
-                                uid: userId,
-                                name:
-                                    userAuth.displayName ??
-                                    `User ${userId.substring(0, 5)}`,
-                                phone: userAuth.phoneNumber ?? PLACEHOLDER_PHONE,
-                                address: PLACEHOLDER_ADDRESS,
-                                structuredAddress: null,
-                                email: userAuth.email,
+                                uid: userId, name: userAuth.displayName ?? `User ${userId.substring(0, 5)}`,
+                                phone: userAuth.phoneNumber ?? PLACEHOLDER_PHONE, address: PLACEHOLDER_ADDRESS,
+                                structuredAddress: null, email: userAuth.email,
                             };
                         }
                         setCurrentUserDetails(processedData);
-                        setIsLoadingUser(false);
+                        setIsLoadingUser(false); // Stop loading after data is processed
                     },
                     (error) => {
-                        console.error(
-                            '[Auth/Snapshot Effect] Snapshot listener error:',
-                            error
-                        );
+                        // Handle snapshot errors
+                        console.error( '[Auth/Snapshot Effect] Snapshot listener error:', error );
                         setCurrentUserDetails({
-                            uid: userId,
-                            name:
-                                userAuth.displayName ||
-                                `User ${userId.substring(0, 5)}`,
-                            address: 'Error loading address',
-                            phone: userAuth.phoneNumber || PLACEHOLDER_PHONE,
-                            structuredAddress: null,
-                            email: userAuth.email,
+                            uid: userId, name: userAuth.displayName || `User ${userId.substring(0, 5)}`,
+                            address: 'Error loading address', phone: userAuth.phoneNumber || PLACEHOLDER_PHONE,
+                            structuredAddress: null, email: userAuth.email,
                         });
                         setIsLoadingUser(false);
                     }
                 );
             } else {
+                // User logged out
                 console.log('[Auth/Snapshot Effect] No user logged in.');
                 setCurrentUserDetails(null);
                 setIsLoadingUser(false);
             }
         });
 
+        // Cleanup function
         return () => {
             console.log('[Auth/Snapshot Effect] Cleaning up listeners.');
             unsubscribeAuth();
@@ -275,22 +198,21 @@ export default function CheckoutScreen({ route }) {
                 unsubscribeSnapshot();
             }
         };
-    }, []); // Runs once on mount
+    }, []); // Empty dependency array - runs once to set up listeners
 
     // --- Effect to Clear Navigation Params on Focus ---
     useEffect(() => {
+        // Only purpose is to clear params if returning from edit screen
         if (isFocused && currentRoute.params?.updatedUserDetails) {
-            console.log(
-                '[Focus Effect] Screen focused with param. Clearing param.'
-            );
+            console.log('[Focus Effect] Clearing updatedUserDetails param.');
             navigation.setParams({ updatedUserDetails: undefined });
         }
     }, [isFocused, currentRoute.params?.updatedUserDetails, navigation]);
 
-    // --- Navigation Handler ---
+    // --- Navigation Handler to Edit Address ---
     const navigateToEditAddress = useCallback(() => {
         if (!currentUserDetails) {
-            Alert.alert('Loading', 'Wait.');
+            Alert.alert('Loading', 'User data is still loading.');
             return;
         }
         const currentDetails = {
@@ -325,17 +247,12 @@ export default function CheckoutScreen({ route }) {
     const decreaseQuantity = useCallback(
         (itemId) => {
             setCartItems((currentItems) => {
-                const itemIndex = currentItems.findIndex(
-                    (item) => item.id === itemId
-                );
+                const itemIndex = currentItems.findIndex((item) => item.id === itemId);
                 if (itemIndex === -1) return currentItems;
                 const itemToUpdate = currentItems[itemIndex];
                 if (itemToUpdate.quantity > 1) {
                     const updatedItems = [...currentItems];
-                    updatedItems[itemIndex] = {
-                        ...itemToUpdate,
-                        quantity: itemToUpdate.quantity - 1,
-                    };
+                    updatedItems[itemIndex] = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 };
                     return updatedItems;
                 } else {
                     confirmRemoveItem(itemToUpdate);
@@ -343,7 +260,7 @@ export default function CheckoutScreen({ route }) {
                 }
             });
         },
-        [confirmRemoveItem]
+        [confirmRemoveItem] // Added dependency
     );
 
     const confirmRemoveItem = useCallback((itemToRemove) => {
@@ -368,106 +285,16 @@ export default function CheckoutScreen({ route }) {
     // --- Render BNPL details ---
     const renderBnplDetails = useCallback((item) => {
         const { bnplPlan, quantity, price } = item;
-        if (
-            !bnplPlan ||
-            !bnplPlan.id ||
-            typeof price !== 'number' ||
-            typeof quantity !== 'number' ||
-            quantity <= 0
-        )
-            return null;
-        const name = bnplPlan.name || 'Installment Plan';
-        const duration = bnplPlan.duration;
-        const interestRate = bnplPlan.interestRate;
-        const planType = bnplPlan.planType || 'N/A';
-        const formattedInterest =
-            interestRate != null
-                ? `${(interestRate * 100).toFixed(1)}%`
-                : 'N/A';
-        const isFixed = planType === 'Fixed Duration';
-        const numInstallments = !isFixed && duration ? duration : 1;
-        let currentMonthlyPayment = null;
-        if (!isFixed && duration && duration > 0) {
-            const currentTotalPrice = price * quantity;
-            const monthlyRaw = currentTotalPrice / duration;
-            currentMonthlyPayment = `${CURRENCY_SYMBOL} ${monthlyRaw.toLocaleString(
-                undefined,
-                { minimumFractionDigits: 0, maximumFractionDigits: 0 }
-            )}`;
-        }
+        if (!bnplPlan || !bnplPlan.id || typeof price !== 'number' || typeof quantity !== 'number' || quantity <= 0) return null;
+        const name = bnplPlan.name || 'Installment Plan'; const duration = bnplPlan.duration; const interestRate = bnplPlan.interestRate; const planType = bnplPlan.planType || 'N/A'; const formattedInterest = interestRate != null ? `${(interestRate * 100).toFixed(1)}%` : 'N/A'; const isFixed = planType === 'Fixed Duration'; const numInstallments = !isFixed && duration ? duration : 1; let currentMonthlyPayment = null; if (!isFixed && duration && duration > 0) { const currentTotalPrice = price * quantity; const monthlyRaw = currentTotalPrice / duration; currentMonthlyPayment = `${CURRENCY_SYMBOL} ${monthlyRaw.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`; }
         return (
             <View style={styles.bnplDetailsContainer}>
-                <Text style={styles.bnplPlanTitle}>Payment Plan: {name}</Text>
-                {planType !== 'N/A' && (
-                    <View style={styles.bnplDetailRow}>
-                        <MaterialIcons
-                            name="info-outline"
-                            size={14}
-                            color={BnplPlanIconColor}
-                            style={styles.bnplDetailIcon}
-                        />
-                        <Text style={styles.bnplDetailText}>
-                            Type:{' '}
-                            <Text style={styles.bnplDetailValue}>{planType}</Text>
-                        </Text>
-                    </View>
-                )}
-                {duration && (
-                    <View style={styles.bnplDetailRow}>
-                        <MaterialIcons
-                            name="schedule"
-                            size={14}
-                            color={BnplPlanIconColor}
-                            style={styles.bnplDetailIcon}
-                        />
-                        <Text style={styles.bnplDetailText}>
-                            Duration:{' '}
-                            <Text style={styles.bnplDetailValue}>
-                                {duration} {duration === 1 ? 'Month' : 'Months'}
-                            </Text>
-                            {isFixed ? (
-                                <Text style={styles.bnplDetailValue}> (1 Payment)</Text>
-                            ) : (
-                                <Text style={styles.bnplDetailValue}>
-                                    {' '}
-                                    / {numInstallments} Installments
-                                </Text>
-                            )}
-                        </Text>
-                    </View>
-                )}
-                {currentMonthlyPayment && !isFixed && (
-                    <View style={styles.bnplDetailRow}>
-                        <MaterialIcons
-                            name="calculate"
-                            size={14}
-                            color={BnplPlanIconColor}
-                            style={styles.bnplDetailIcon}
-                        />
-                        <Text style={styles.bnplDetailText}>
-                            Est. Monthly:{' '}
-                            <Text style={styles.bnplDetailValue}>
-                                {currentMonthlyPayment}
-                            </Text>
-                        </Text>
-                    </View>
-                )}
-                {interestRate !== null && (
-                    <View style={styles.bnplDetailRow}>
-                        <MaterialIcons
-                            name="percent"
-                            size={14}
-                            color={BnplPlanIconColor}
-                            style={styles.bnplDetailIcon}
-                        />
-                        <Text style={styles.bnplDetailText}>
-                            Interest:{' '}
-                            <Text style={styles.bnplDetailValue}>
-                                {formattedInterest}
-                            </Text>
-                        </Text>
-                    </View>
-                )}
+                <Text style={styles.bnplPlanTitle}>Plan: {name}</Text>
+                {/* ... other BNPL details ... */}
+                 {planType !== 'N/A' && (<View style={styles.bnplDetailRow}><MaterialIcons name="info-outline" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Type: <Text style={styles.bnplDetailValue}>{planType}</Text></Text></View>)}
+                {duration && (<View style={styles.bnplDetailRow}><MaterialIcons name="schedule" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Duration: <Text style={styles.bnplDetailValue}>{duration} {duration === 1 ? 'Month' : 'Months'}</Text>{isFixed ? (<Text style={styles.bnplDetailValue}> (1 Pay)</Text>) : (<Text style={styles.bnplDetailValue}> / {numInstallments} Inst.</Text>)}</Text></View>)}
+                {currentMonthlyPayment && !isFixed && (<View style={styles.bnplDetailRow}><MaterialIcons name="calculate" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Est. Monthly: <Text style={styles.bnplDetailValue}>{currentMonthlyPayment}</Text></Text></View>)}
+                {interestRate !== null && (<View style={styles.bnplDetailRow}><MaterialIcons name="percent" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Interest: <Text style={styles.bnplDetailValue}>{formattedInterest}</Text></Text></View>)}
             </View>
         );
     }, []);
@@ -475,318 +302,90 @@ export default function CheckoutScreen({ route }) {
     // --- Render Cart Item ---
     const renderCartItem = useCallback(
         ({ item, index }) => {
-            if (
-                !item ||
-                !item.id ||
-                typeof item.price !== 'number' ||
-                typeof item.quantity !== 'number' ||
-                item.quantity <= 0
-            ) {
-                return null;
-            }
-            const itemTotalPrice = item.price * item.quantity;
-            const isBnpl = item.paymentMethod === 'BNPL' && item.bnplPlan;
-            const isLastItem = index === cartItems.length - 1;
+            if (!item || !item.id || typeof item.price !== 'number' || typeof item.quantity !== 'number' || item.quantity <= 0) { return null; }
+            const itemTotalPrice = item.price * item.quantity; const isBnpl = item.paymentMethod === 'BNPL' && item.bnplPlan; const isLastItem = index === cartItems.length - 1;
             return (
-                <View
-                    style={[styles.cartItem, isLastItem && styles.lastCartItem]}
-                >
-                    <Image
-                        source={
-                            item.image
-                                ? { uri: item.image }
-                                : placeholderImagePath
-                        }
-                        style={styles.productImage}
-                        onError={(e) =>
-                            console.log(
-                                `Image Error: ${item.image}`,
-                                e.nativeEvent.error
-                            )
-                        }
-                        defaultSource={placeholderImagePath}
-                    />
+                <View style={[styles.cartItem, isLastItem && styles.lastCartItem]}>
+                    <Image source={item.image ? { uri: item.image } : placeholderImagePath} style={styles.productImage} onError={(e) => console.log(`ImgErr:${item.image}`, e.nativeEvent.error)} defaultSource={placeholderImagePath} />
                     <View style={styles.details}>
-                        <Text style={styles.productName} numberOfLines={1}>
-                            {item.name || 'Unnamed'}
-                        </Text>
-                        <Text style={styles.productPrice}>{`${CURRENCY_SYMBOL} ${itemTotalPrice.toLocaleString(
-                            undefined,
-                            { minimumFractionDigits: 0, maximumFractionDigits: 0 }
-                        )}`}</Text>
-                        {item.quantity > 1 && (
-                            <Text style={styles.unitPriceText}>{`(${CURRENCY_SYMBOL} ${item.price.toLocaleString(
-                                undefined,
-                                {
-                                    minimumFractionDigits: 0,
-                                    maximumFractionDigits: 0,
-                                }
-                            )} each)`}</Text>
-                        )}
+                        <Text style={styles.productName} numberOfLines={1}>{item.name || 'Unnamed'}</Text>
+                        <Text style={styles.productPrice}>{`${CURRENCY_SYMBOL} ${itemTotalPrice.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})}`}</Text>
+                        {item.quantity > 1 && (<Text style={styles.unitPriceText}>{`(${CURRENCY_SYMBOL} ${item.price.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})} each)`}</Text>)}
                         <View style={styles.quantityControlContainer}>
-                            <TouchableOpacity
-                                style={styles.quantityButton}
-                                onPress={() => decreaseQuantity(item.id)}
-                                hitSlop={{
-                                    top: 10,
-                                    bottom: 10,
-                                    left: 10,
-                                    right: 5,
-                                }}
-                            >
-                                <Ionicons
-                                    name="remove-circle-outline"
-                                    size={26}
-                                    color={ERROR_COLOR}
-                                />
-                            </TouchableOpacity>
-                            <Text style={styles.quantityTextDisplay}>
-                                {item.quantity}
-                            </Text>
-                            <TouchableOpacity
-                                style={styles.quantityButton}
-                                onPress={() => increaseQuantity(item.id)}
-                                hitSlop={{
-                                    top: 10,
-                                    bottom: 10,
-                                    left: 5,
-                                    right: 10,
-                                }}
-                            >
-                                <Ionicons
-                                    name="add-circle-outline"
-                                    size={26}
-                                    color={ACCENT_COLOR_ADD}
-                                />
-                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.quantityButton} onPress={() => decreaseQuantity(item.id)} hitSlop={{top:10,bottom:10,left:10,right:5}}><Ionicons name="remove-circle-outline" size={26} color={ERROR_COLOR} /></TouchableOpacity>
+                            <Text style={styles.quantityTextDisplay}>{item.quantity}</Text>
+                            <TouchableOpacity style={styles.quantityButton} onPress={() => increaseQuantity(item.id)} hitSlop={{top:10,bottom:10,left:5,right:10}}><Ionicons name="add-circle-outline" size={26} color={ACCENT_COLOR_ADD} /></TouchableOpacity>
                         </View>
                         {isBnpl && renderBnplDetails(item)}
                     </View>
-                    <TouchableOpacity
-                        style={styles.removeIconContainer}
-                        onPress={() => confirmRemoveItem(item)}
-                        hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
-                    >
-                        <Ionicons
-                            name="trash-outline"
-                            size={24}
-                            color={REMOVE_ICON_COLOR}
-                        />
-                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.removeIconContainer} onPress={() => confirmRemoveItem(item)} hitSlop={{top:15,bottom:15,left:10,right:10}}><Ionicons name="trash-outline" size={24} color={REMOVE_ICON_COLOR} /></TouchableOpacity>
                 </View>
             );
         },
-        [
-            cartItems.length,
-            increaseQuantity,
-            decreaseQuantity,
-            confirmRemoveItem,
-            renderBnplDetails,
-        ]
+        [ cartItems.length, increaseQuantity, decreaseQuantity, confirmRemoveItem, renderBnplDetails ]
     );
 
-    // --- Handle Place Order ---
-    const handlePlaceOrder = useCallback(async () => {
-        const isAddressValid =
-            currentUserDetails?.address &&
-            currentUserDetails.address !== PLACEHOLDER_ADDRESS;
-        const isPhoneValid =
-            currentUserDetails?.phone &&
-            currentUserDetails.phone !== PLACEHOLDER_PHONE;
+    // --- Handle Proceed to Confirmation ---
+    const handleProceedToConfirmation = useCallback(() => {
+        // Validation
+        const isAddressValid = currentUserDetails?.address && currentUserDetails.address !== PLACEHOLDER_ADDRESS;
+        const isPhoneValid = currentUserDetails?.phone && currentUserDetails.phone !== PLACEHOLDER_PHONE;
+
         if (!currentUserDetails || !currentUserDetails.uid) {
-            Alert.alert('Error', 'User info missing.');
-            return;
+            Alert.alert('Loading', 'User data still loading.'); return;
         }
         if (!isAddressValid || !isPhoneValid) {
-            Alert.alert(
-                'Missing Info',
-                'Add address & phone.',
-                [
-                    { text: 'Add Address', onPress: navigateToEditAddress },
-                    { text: 'Cancel', style: 'cancel' },
-                ],
-                { cancelable: true }
-            );
-            return;
+            Alert.alert('Missing Information', 'Please add address & phone.', [{ text: "Add Address", onPress: navigateToEditAddress }, { text: "Cancel", style: "cancel" }]); return;
         }
         if (cartItems.length === 0) {
-            Alert.alert('Empty Cart', 'Cart empty.');
-            return;
+            Alert.alert('Empty Cart', 'Your cart is empty.'); return;
         }
-        setIsPlacingOrder(true);
-        let newOrderId = null;
-        try {
-            const orderDetailsToSave = {
-                userId: currentUserDetails.uid,
-                userName: currentUserDetails.name,
-                userAddress: currentUserDetails.address,
-                userPhone: currentUserDetails.phone,
-                items: cartItems.map((item) => ({
-                    id: item.id,
-                    name: item.name,
-                    price: item.price,
-                    quantity: item.quantity,
-                    image: item.image || null,
-                    ...(item.paymentMethod === 'BNPL' &&
-                        item.bnplPlan && {
-                            paymentMethod: 'BNPL',
-                            bnplPlan: {
-                                id: item.bnplPlan.id,
-                                name: item.bnplPlan.name,
-                                duration: item.bnplPlan.duration,
-                                interestRate: item.bnplPlan.interestRate,
-                                planType: item.bnplPlan.planType,
-                            },
-                        }),
-                })),
-                subtotal: subTotal,
-                grandTotal: grandTotal,
-                status: 'Pending',
-                createdAt: serverTimestamp(),
-            };
-            const orderCollectionRef = collection(db, 'orders');
-            const docRef = await addDoc(orderCollectionRef, orderDetailsToSave);
-            newOrderId = docRef.id;
-            if (!newOrderId) throw new Error('Failed to get Order ID.');
-            console.log('[handlePlaceOrder] Order saved:', newOrderId);
-            getAdminExpoTokens()
-                .then((adminTokens) => {
-                    if (adminTokens && adminTokens.length > 0) {
-                        const messages = adminTokens
-                            .map((token) => {
-                                if (
-                                    !token ||
-                                    typeof token !== 'string' ||
-                                    !token.startsWith('ExponentPushToken[')
-                                )
-                                    return null;
-                                return {
-                                    to: token,
-                                    sound: 'default',
-                                    title: '🚀 New Order Received!',
-                                    body: `Order #${newOrderId.substring(
-                                        0,
-                                        6
-                                    )}... from ${
-                                        currentUserDetails.name
-                                    }. Total: ${CURRENCY_SYMBOL} ${grandTotal.toLocaleString(
-                                        undefined,
-                                        {
-                                            minimumFractionDigits: 0,
-                                            maximumFractionDigits: 0,
-                                        }
-                                    )}`,
-                                    data: { orderId: newOrderId, type: 'new_order' },
-                                    priority: 'high',
-                                    channelId: 'new-orders',
-                                };
-                            })
-                            .filter((msg) => msg !== null);
-                        if (messages.length > 0) {
-                            axios
-                                .post(EXPO_PUSH_ENDPOINT, messages, {
-                                    headers: {
-                                        Accept: 'application/json',
-                                        'Accept-encoding': 'gzip, deflate',
-                                        'Content-Type': 'application/json',
-                                        Host: 'exp.host',
-                                    },
-                                    timeout: 15000,
-                                })
-                                .then((response) =>
-                                    console.log(
-                                        '[handlePlaceOrder] Notif send complete.'
-                                    )
-                                )
-                                .catch((pushError) =>
-                                    console.error(
-                                        '[handlePlaceOrder] Notif send error:',
-                                        pushError
-                                    )
-                                );
-                        }
-                    }
-                })
-                .catch((tokenError) =>
-                    console.error(
-                        '[handlePlaceOrder] Token fetch error:',
-                        tokenError
-                    )
-                );
-            Alert.alert(
-                'Success!',
-                `Order (#${newOrderId}) placed.`,
-                [
-                    {
-                        text: 'OK',
-                        onPress: () =>
-                            navigation.replace('OrderConfirmationScreen', {
-                                orderId: newOrderId,
-                            }),
-                    },
-                ]
-            );
-        } catch (error) {
-            console.error('[handlePlaceOrder] Error:', error);
-            Alert.alert(
-                'Order Failed',
-                `Could not place order. ${error.message || ''}`
-            );
-        } finally {
-            setIsPlacingOrder(false);
-        }
-    }, [
-        currentUserDetails,
-        cartItems,
-        subTotal,
-        grandTotal,
-        navigation,
-        navigateToEditAddress,
-    ]);
+
+        // Navigate to Confirmation Screen, passing ALL necessary data
+        console.log("[CheckoutScreen] Navigating to Confirmation with:", { currentUserDetails, cartItems, subTotal, grandTotal });
+        navigation.navigate('OrderConfirmationScreen', {
+            currentUserDetails: currentUserDetails, // Pass the whole object
+            cartItems: cartItems,
+            subTotal: subTotal,
+            grandTotal: grandTotal, // Pass calculated total
+        });
+    }, [currentUserDetails, cartItems, subTotal, grandTotal, navigation, navigateToEditAddress]);
+
 
     // --- Render Logic ---
     if (isLoadingUser) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={AccentColor} />
-                <Text style={styles.loadingText}>Loading...</Text>
-            </View>
+            <SafeAreaView style={styles.safeAreaContainer}>
+                <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="large" color={AccentColor} />
+                    <Text style={styles.loadingText}>Loading...</Text>
+                </View>
+            </SafeAreaView>
         );
     }
 
     if (!currentUserDetails) {
         return (
-            <View style={styles.loadingContainer}>
-                <Ionicons
-                    name="log-in-outline"
-                    size={60}
-                    color={TextColorSecondary}
-                />
-                <Text style={styles.errorText}>Please log in.</Text>
-                <TouchableOpacity
-                    style={styles.loginButton}
-                    onPress={() => navigation.navigate('Login')}
-                >
-                    <Text style={styles.loginButtonText}>Login</Text>
-                </TouchableOpacity>
-            </View>
+            <SafeAreaView style={styles.safeAreaContainer}>
+                <View style={styles.loadingContainer}>
+                    <Ionicons name="log-in-outline" size={60} color={TextColorSecondary} />
+                    <Text style={styles.errorText}>Please log in.</Text>
+                    <TouchableOpacity style={styles.loginButton} onPress={() => navigation.navigate('Login')}>
+                        <Text style={styles.loginButtonText}>Login</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
         );
     }
 
-    const isAddressMissing =
-        !currentUserDetails.address ||
-        currentUserDetails.address === PLACEHOLDER_ADDRESS;
-    const isPhoneMissing =
-        !currentUserDetails.phone ||
-        currentUserDetails.phone === PLACEHOLDER_PHONE;
-    const isCheckoutDisabled =
-        cartItems.length === 0 ||
-        isPlacingOrder ||
-        isAddressMissing ||
-        isPhoneMissing;
+    // Determine button disabled state
+    const isAddressMissing = !currentUserDetails.address || currentUserDetails.address === PLACEHOLDER_ADDRESS;
+    const isPhoneMissing = !currentUserDetails.phone || currentUserDetails.phone === PLACEHOLDER_PHONE;
+    const isCheckoutDisabled = cartItems.length === 0 || isAddressMissing || isPhoneMissing;
 
     return (
-        <View style={styles.outerContainer}>
+        <SafeAreaView style={styles.safeAreaContainer}>
+            <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
             <ScrollView
                 style={styles.scrollView}
                 contentContainerStyle={styles.scrollContentContainer}
@@ -794,34 +393,14 @@ export default function CheckoutScreen({ route }) {
                 keyboardShouldPersistTaps="handled"
             >
                 {/* User Info Section */}
-                <TouchableOpacity
-                    style={styles.userInfoContainer}
-                    onPress={navigateToEditAddress}
-                    activeOpacity={0.7}
-                >
-                    <Ionicons
-                        name="location-outline"
-                        size={24}
-                        color={TextColorSecondary}
-                        style={styles.infoIcon}
-                    />
+                <TouchableOpacity style={styles.userInfoContainer} onPress={navigateToEditAddress} activeOpacity={0.7} >
+                    <Ionicons name="location-outline" size={24} color={TextColorSecondary} style={styles.infoIcon} />
                     <View style={styles.userInfo}>
-                        <Text style={styles.userName}>
-                            {currentUserDetails.name}
-                        </Text>
-                        <Text style={styles.userAddress} numberOfLines={2}>
-                            {currentUserDetails.address}
-                        </Text>
-                        <Text style={styles.userPhone}>
-                            {currentUserDetails.phone}
-                        </Text>
+                        <Text style={styles.userName}>{currentUserDetails.name}</Text>
+                        <Text style={styles.userAddress} numberOfLines={2}>{currentUserDetails.address}</Text>
+                        <Text style={styles.userPhone}>{currentUserDetails.phone}</Text>
                     </View>
-                    <Ionicons
-                        name="chevron-forward-outline"
-                        size={24}
-                        color={AccentColor}
-                        style={styles.chevronIcon}
-                    />
+                    <Ionicons name="chevron-forward-outline" size={24} color={AccentColor} style={styles.chevronIcon}/>
                 </TouchableOpacity>
 
                 {/* Order Items Section */}
@@ -829,80 +408,58 @@ export default function CheckoutScreen({ route }) {
                 <View style={styles.cartListContainer}>
                     {cartItems.length === 0 ? (
                         <View style={styles.emptyCartContainer}>
-                            <Ionicons
-                                name="cart-outline"
-                                size={50}
-                                color={TextColorSecondary}
-                            />
-                            <Text style={styles.emptyCartText}>
-                                Cart is empty.
-                            </Text>
-                            <TouchableOpacity
-                                onPress={() => navigation.navigate('Home')}
-                            >
-                                <Text style={styles.browseProductsLink}>
-                                    Browse
-                                </Text>
+                            <Ionicons name="cart-outline" size={50} color={TextColorSecondary} />
+                            <Text style={styles.emptyCartText}>Cart is empty.</Text>
+                            <TouchableOpacity onPress={() => navigation.navigate('Home')}>
+                                <Text style={styles.browseProductsLink}>Browse Products</Text>
                             </TouchableOpacity>
                         </View>
-                    ) : (
+                     ) : (
                         <FlatList
                             data={cartItems}
-                            keyExtractor={(item) =>
-                                item.cartItemId ||
-                                item.id?.toString() ||
-                                `checkout-${Math.random()}`
-                            }
+                            keyExtractor={(item) => item.cartItemId || item.id?.toString() || `checkout-${Math.random()}`}
                             renderItem={renderCartItem}
                             scrollEnabled={false}
                         />
                     )}
                 </View>
 
-                {/* Order Summary Section (Simplified) */}
+                {/* Order Summary Section */}
                 <Text style={styles.sectionTitle}>Order Summary</Text>
                 <View style={styles.summaryContainer}>
                     <View style={styles.summaryRow}>
                         <Text style={styles.summaryText}>Subtotal:</Text>
-                        <Text style={styles.summaryValue}>{`${CURRENCY_SYMBOL} ${subTotal.toLocaleString(
-                            undefined,
-                            { minimumFractionDigits: 0, maximumFractionDigits: 0 }
-                        )}`}</Text>
+                        <Text style={styles.summaryValue}>{`${CURRENCY_SYMBOL} ${subTotal.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})}`}</Text>
                     </View>
                     <View style={styles.divider} />
                     <View style={styles.summaryRow}>
                         <Text style={styles.totalText}>Total:</Text>
-                        <Text style={styles.totalValue}>{`${CURRENCY_SYMBOL} ${grandTotal.toLocaleString(
-                            undefined,
-                            { minimumFractionDigits: 0, maximumFractionDigits: 0 }
-                        )}`}</Text>
+                        <Text style={styles.totalValue}>{`${CURRENCY_SYMBOL} ${grandTotal.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})}`}</Text>
                     </View>
                 </View>
 
-                {/* Place Order Button */}
+                {/* Review Order Button */}
                 <TouchableOpacity
-                    style={[
-                        styles.paymentButton,
-                        isCheckoutDisabled && styles.disabledButton,
-                    ]}
-                    onPress={handlePlaceOrder}
+                    style={[ styles.paymentButton, isCheckoutDisabled && styles.disabledButton, ]}
+                    onPress={handleProceedToConfirmation}
                     disabled={isCheckoutDisabled}
                     activeOpacity={0.8}
                 >
-                    {isPlacingOrder ? (
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                    ) : (
-                        <Text style={styles.paymentText}>Place Order</Text>
-                    )}
+                    {/* Removed loading indicator as order isn't placed here */}
+                    <Text style={styles.paymentText}>Review Order</Text>
                 </TouchableOpacity>
             </ScrollView>
-        </View>
+        </SafeAreaView>
     );
 }
 
 // --- Styles ---
 const styles = StyleSheet.create({
-    outerContainer: { flex: 1, backgroundColor: ScreenBackgroundColor },
+    safeAreaContainer: {
+        flex: 1,
+        backgroundColor: ScreenBackgroundColor,
+    },
+    // outerContainer: { flex: 1, backgroundColor: ScreenBackgroundColor, }, // Can likely be removed
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',
@@ -910,7 +467,11 @@ const styles = StyleSheet.create({
         backgroundColor: ScreenBackgroundColor,
         padding: 20,
     },
-    loadingText: { marginTop: 15, fontSize: 16, color: TextColorSecondary },
+    loadingText: {
+        marginTop: 15,
+        fontSize: 16,
+        color: TextColorSecondary,
+    },
     errorText: {
         fontSize: 16,
         color: ERROR_COLOR,
@@ -928,8 +489,13 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold',
     },
-    scrollView: { flex: 1 },
-    scrollContentContainer: { padding: 15, paddingBottom: 30 },
+    scrollView: {
+        flex: 1,
+    },
+    scrollContentContainer: {
+        padding: 15,
+        paddingBottom: 30, // Ensures space at the bottom
+    },
     sectionTitle: {
         fontSize: 18,
         fontWeight: 'bold',
@@ -944,7 +510,7 @@ const styles = StyleSheet.create({
         paddingVertical: 15,
         paddingHorizontal: 15,
         borderRadius: 12,
-        marginBottom: 20,
+        marginBottom: 10,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
@@ -954,7 +520,10 @@ const styles = StyleSheet.create({
     infoIcon: {
         marginRight: 15,
     },
-    userInfo: { flex: 1, justifyContent: 'center' },
+    userInfo: {
+        flex: 1,
+        justifyContent: 'center',
+    },
     userName: {
         fontSize: 16,
         fontWeight: '600',
@@ -967,12 +536,17 @@ const styles = StyleSheet.create({
         lineHeight: 20,
         marginBottom: 4,
     },
-    userPhone: { fontSize: 14, color: TextColorSecondary },
-    chevronIcon: { marginLeft: 10 },
+    userPhone: {
+        fontSize: 14,
+        color: TextColorSecondary,
+    },
+    chevronIcon: {
+        marginLeft: 10,
+    },
     cartListContainer: {
         backgroundColor: AppBackgroundColor,
         borderRadius: 12,
-        marginBottom: 20,
+        marginBottom: 10,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.08,
@@ -1006,7 +580,9 @@ const styles = StyleSheet.create({
         borderBottomColor: LightBorderColor,
         backgroundColor: AppBackgroundColor,
     },
-    lastCartItem: { borderBottomWidth: 0 },
+    lastCartItem: {
+        borderBottomWidth: 0,
+    },
     productImage: {
         width: 70,
         height: 70,
@@ -1014,7 +590,10 @@ const styles = StyleSheet.create({
         marginRight: 15,
         backgroundColor: PlaceholderBgColor,
     },
-    details: { flex: 1, justifyContent: 'center' },
+    details: {
+        flex: 1,
+        justifyContent: 'center',
+    },
     productName: {
         fontSize: 15,
         fontWeight: '600',
@@ -1037,7 +616,10 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginTop: 5,
     },
-    quantityButton: { padding: 4, marginHorizontal: 8 },
+    quantityButton: {
+        padding: 4,
+        marginHorizontal: 8,
+    },
     quantityTextDisplay: {
         fontSize: 16,
         fontWeight: '600',
@@ -1069,19 +651,26 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 5,
     },
-    bnplDetailIcon: { marginRight: 8, width: 16, textAlign: 'center' },
+    bnplDetailIcon: {
+        marginRight: 8,
+        width: 16,
+        textAlign: 'center',
+    },
     bnplDetailText: {
         fontSize: 12,
         color: BnplPlanDetailColor,
         flexShrink: 1,
         lineHeight: 16,
     },
-    bnplDetailValue: { fontWeight: '600', color: BnplPlanValueColor },
+    bnplDetailValue: {
+        fontWeight: '600',
+        color: BnplPlanValueColor,
+    },
     summaryContainer: {
         backgroundColor: AppBackgroundColor,
         padding: 20,
         borderRadius: 12,
-        marginBottom: 25,
+        marginBottom: 15,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
@@ -1093,7 +682,10 @@ const styles = StyleSheet.create({
         justifyContent: 'space-between',
         marginBottom: 12,
     },
-    summaryText: { fontSize: 15, color: TextColorSecondary },
+    summaryText: {
+        fontSize: 15,
+        color: TextColorSecondary,
+    },
     summaryValue: {
         fontSize: 15,
         fontWeight: '500',
@@ -1104,8 +696,16 @@ const styles = StyleSheet.create({
         backgroundColor: LightBorderColor,
         marginVertical: 12,
     },
-    totalText: { fontSize: 17, fontWeight: 'bold', color: TextColorPrimary },
-    totalValue: { fontSize: 17, fontWeight: 'bold', color: AccentColor },
+    totalText: {
+        fontSize: 17,
+        fontWeight: 'bold',
+        color: TextColorPrimary,
+    },
+    totalValue: {
+        fontSize: 17,
+        fontWeight: 'bold',
+        color: AccentColor,
+    },
     paymentButton: {
         backgroundColor: AccentColor,
         paddingVertical: 16,
@@ -1121,6 +721,14 @@ const styles = StyleSheet.create({
         elevation: 6,
         minHeight: 52,
     },
-    disabledButton: { backgroundColor: '#BDBDBD', elevation: 0, shadowOpacity: 0 },
-    paymentText: { color: 'white', fontSize: 17, fontWeight: 'bold' },
+    disabledButton: {
+        backgroundColor: '#BDBDBD',
+        elevation: 0,
+        shadowOpacity: 0,
+    },
+    paymentText: {
+        color: 'white',
+        fontSize: 17,
+        fontWeight: 'bold',
+    },
 });

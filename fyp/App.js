@@ -42,6 +42,7 @@ import BNPLPlansScreen from './screens/AdminScreens/BNPLPlansScreen';
 // New User Detail Screen Import
 import UserVerificationDetailScreen from './screens/AdminScreens/UserVerificationDetailScreen';
 import AddressEditScreen from './screens/userscreens/AddressEditScreen';
+import OrderConfirmationScreen from './screens/userscreens/OrderConfirmationScreen';
 const Stack = createStackNavigator();
 
 const CustomHeader = ({ navigation, title }) => ({
@@ -211,6 +212,11 @@ export default function App() {
           name="AddressEditScreen" // Name used to navigate to this screen
           component={AddressEditScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Edit Delivery Address' })} // Use CustomHeader
+        />
+         <Stack.Screen
+          name="OrderConfirmationScreen" // Name used to navigate to this screen
+          component={OrderConfirmationScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Order Confirmation ' })} // Use CustomHeader
         />
       </Stack.Navigator>
     </NavigationContainer>

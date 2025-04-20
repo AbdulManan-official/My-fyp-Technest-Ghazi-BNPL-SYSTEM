@@ -41,6 +41,7 @@ import BNPLPlansScreen from './screens/AdminScreens/BNPLPlansScreen';
 
 // New User Detail Screen Import
 import UserVerificationDetailScreen from './screens/AdminScreens/UserVerificationDetailScreen';
+import AddressEditScreen from './screens/userscreens/AddressEditScreen';
 const Stack = createStackNavigator();
 
 const CustomHeader = ({ navigation, title }) => ({
@@ -62,7 +63,7 @@ export default function App() {
     <NavigationContainer>
       <StatusBar backgroundColor="black" barStyle="light-content" />
       <Stack.Navigator
-        initialRouteName="AdminDashboardTabs"
+        initialRouteName="BottomTabs"
         screenOptions={{ headerShown: false }}
       >
         {/* Auth */}
@@ -175,10 +176,10 @@ export default function App() {
           component={UsersScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Users ' })}
         />
-           <Stack.Screen
+        <Stack.Screen
           name="UserDetail"
           component={UserDetailScreen}
-          options={({ navigation }) => CustomHeader({ navigation, title: 'User Verification' })}/>
+          options={({ navigation }) => CustomHeader({ navigation, title: 'User Verification' })} />
         <Stack.Screen
           name="AdminProfileScreen"
           component={AdminProfileScreen}
@@ -205,6 +206,11 @@ export default function App() {
           name="UserVerificationDetail"
           component={UserVerificationDetailScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'User Details' })}
+        />
+        <Stack.Screen
+          name="AddressEditScreen" // Name used to navigate to this screen
+          component={AddressEditScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Edit Delivery Address' })} // Use CustomHeader
         />
       </Stack.Navigator>
     </NavigationContainer>

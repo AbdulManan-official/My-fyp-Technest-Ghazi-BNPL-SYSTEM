@@ -27,6 +27,7 @@
     "expo-image-manipulator": "^13.0.6",
     "expo-image-picker": "~16.0.6",
     "expo-linear-gradient": "~14.0.2",
+    "expo-notifications": "~0.29.14",
     "expo-status-bar": "~2.0.1",
     "firebase": "^11.4.0",
     "onesignal-expo-plugin": "^2.0.3",

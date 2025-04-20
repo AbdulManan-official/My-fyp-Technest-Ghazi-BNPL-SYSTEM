@@ -20,8 +20,13 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+       "googleServicesFile": "./google-services.json",
       "windowSoftInputMode": "adjustResize",
-      "softwareKeyboardLayoutMode": "pan"
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -36,6 +41,12 @@
         }
       ]
     ],
-    "scheme": "fyp"
+    "scheme": "fyp",
+    "extra": {
+      "eas": {
+        "projectId": "fef3f4ee-64c8-4aea-a1e6-bee7fb87dd1e"
+      }
+    },
+    "owner": "abdul_manan7777"
   }
 }

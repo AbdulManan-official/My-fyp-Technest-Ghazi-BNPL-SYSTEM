@@ -1,4 +1,4 @@
-// OrderConfirmationScreen.js (Complete Code - Stores BNPL Choice in Firestore)
+// OrderConfirmationScreen.js (COMPLETE - Fixed Cart Clearing & Empty Cart Handling)
 
 import React, { useState, useMemo, useCallback } from 'react';
 import {
@@ -11,7 +11,8 @@ import { MaterialIcons as Icon } from '@expo/vector-icons';
 import { db, auth } from '../../firebaseConfig'; // Adjust path if needed
 import {
     doc, serverTimestamp, addDoc, collection, query, where,
-    documentId, getDocs, updateDoc, Timestamp, getFirestore, limit // Import updateDoc
+    documentId, getDocs, updateDoc, Timestamp, getFirestore, limit,
+    setDoc // *** Import setDoc ***
 } from 'firebase/firestore';
 import axios from 'axios';
 
@@ -43,7 +44,6 @@ const BNPL_FIXED_METHODS = ['BNPL', 'Fixed Duration'];
 
 // --- Helper: Fetch Admin Tokens ---
 async function getAdminExpoTokens() {
-    // ... (Function remains unchanged - warning already removed) ...
     const tokens = [];
     console.log('[getAdminExpoTokens] Fetching admin push tokens...');
     try {
@@ -71,7 +71,7 @@ async function getAdminExpoTokens() {
                 const token = adminDoc.data()?.expoPushToken;
                 if (token && typeof token === 'string' && token.startsWith('ExponentPushToken[')) {
                     tokens.push(token);
-                } // Removed warning here
+                }
             });
         });
         console.log(`[getAdminExpoTokens] Found ${tokens.length} valid admin tokens.`);
@@ -84,7 +84,6 @@ async function getAdminExpoTokens() {
 
 // --- Helper: Render BNPL Details ---
 const renderBnplDetailsSection = (item) => {
-    // ... (Function remains unchanged) ...
      const { bnplPlan, quantity, price } = item;
     if (!bnplPlan?.id || typeof price !== 'number' || typeof quantity !== 'number' || quantity <= 0) return null;
     const name = bnplPlan.name || 'Installment Plan';
@@ -104,7 +103,7 @@ const renderBnplDetailsSection = (item) => {
         <View style={styles.bnplDetailsContainer}>
             <Text style={styles.bnplPlanTitle}>Payment Plan: {name}</Text>
             {planType !== 'N/A' && (<View style={styles.bnplDetailRow}><Icon name="info-outline" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Type:{' '}<Text style={styles.bnplDetailValue}>{planType}</Text></Text></View>)}
-            {duration != null && (<View style={styles.bnplDetailRow}><Icon name="schedule" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Duration:{' '}<Text style={styles.bnplDetailValue}>{duration} {duration === 1 ? 'Month' : 'Months'}</Text>{isFixed ? (<Text style={styles.bnplDetailValue}> (1 Payment)</Text>) : (<Text style={styles.bnplDetailValue}>{' '}/ {numInstallments} Inst.</Text>)}</Text></View>)}
+            {duration != null && duration > 0 && (<View style={styles.bnplDetailRow}><Icon name="schedule" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Duration:{' '}<Text style={styles.bnplDetailValue}>{duration} {duration === 1 ? 'Month' : 'Months'}</Text>{isFixed ? (<Text style={styles.bnplDetailValue}> (1 Payment)</Text>) : (<Text style={styles.bnplDetailValue}>{' '}/ {numInstallments} Inst.</Text>)}</Text></View>)}
             {currentMonthlyPayment && !isFixed && (<View style={styles.bnplDetailRow}><Icon name="calculate" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Est. Monthly:{' '}<Text style={styles.bnplDetailValue}>{currentMonthlyPayment}</Text></Text></View>)}
             {interestRate !== null && (<View style={styles.bnplDetailRow}><Icon name="percent" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Interest:{' '}<Text style={styles.bnplDetailValue}>{formattedInterest}</Text></Text></View>)}
         </View>
@@ -114,7 +113,6 @@ const renderBnplDetailsSection = (item) => {
 
 // --- Helper: Calculate Due Date ---
 const calculateDueDate = (baseDateInput, monthOffset) => {
-    // ... (Function remains unchanged) ...
     let baseDate;
     if (baseDateInput instanceof Timestamp) { baseDate = baseDateInput.toDate(); }
     else if (baseDateInput instanceof Date) { baseDate = new Date(baseDateInput.getTime()); }
@@ -127,14 +125,17 @@ const calculateDueDate = (baseDateInput, monthOffset) => {
 
 // --- Helper: Generate ALL BNPL Installments (Initially Unpaid) ---
 const generateBnplInstallments = (bnplTotal, bnplPlanDetails, orderTimestampInput) => {
-    // ... (Function remains unchanged) ...
-    if (!bnplPlanDetails || bnplPlanDetails.planType !== 'Installment' || !bnplPlanDetails.duration || bnplPlanDetails.duration <= 0 || bnplTotal <= 0) { return []; }
+     if (!bnplPlanDetails || bnplPlanDetails.planType !== 'Installment' || !bnplPlanDetails.duration || bnplPlanDetails.duration <= 0 || bnplTotal <= 0) { return []; }
     let orderDate;
     if (orderTimestampInput instanceof Timestamp) { orderDate = orderTimestampInput.toDate(); }
     else if (orderTimestampInput instanceof Date) { orderDate = new Date(orderTimestampInput.getTime()); }
     else { orderDate = new Date(); }
     const installments = []; const duration = bnplPlanDetails.duration; const total = Number(bnplTotal);
     const installmentAmount = Math.round((total / duration) * 100) / 100;
+    if (isNaN(installmentAmount) || installmentAmount < 0) {
+         console.error("[generateBnplInstallments] Invalid installment amount calculated. Aborting.");
+         return [];
+    }
     for (let i = 0; i < duration; i++) {
         const dueDate = calculateDueDate(orderDate, i + 1);
         installments.push({ installmentNumber: i + 1, amount: parseFloat(installmentAmount.toFixed(2)), dueDate: dueDate, paid: false, paidAt: null, penalty: 0, status: 'Pending' });
@@ -142,7 +143,15 @@ const generateBnplInstallments = (bnplTotal, bnplPlanDetails, orderTimestampInpu
     if (installments.length > 0) {
         const totalCalculated = installments.reduce((sum, inst) => sum + inst.amount, 0);
         const difference = Math.round((total - totalCalculated) * 100) / 100;
-        if (difference !== 0) { installments[installments.length - 1].amount = Math.round((installments[installments.length - 1].amount + difference) * 100) / 100; }
+        if (difference !== 0) {
+             const adjustedAmount = Math.round((installments[installments.length - 1].amount + difference) * 100) / 100;
+             if (adjustedAmount >= 0) {
+                 installments[installments.length - 1].amount = adjustedAmount;
+             } else {
+                 console.warn("[generateBnplInstallments] Final installment adjustment resulted in negative amount. Setting to 0.");
+                 installments[installments.length - 1].amount = 0;
+             }
+        }
     }
     console.log("[ConfirmScreen] Generated BNPL Installments (all initially unpaid):", installments);
     return installments;
@@ -155,16 +164,23 @@ export default function OrderConfirmationScreen() {
     const route = useRoute();
     const { currentUserDetails, cartItems = [], subTotal = 0, grandTotal = 0 } = route.params || {};
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
-    const totalItemCount = useMemo(() => cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0), [cartItems]);
+
+    const totalItemCount = useMemo(() => {
+        if (!Array.isArray(cartItems)) return 0;
+        return cartItems.reduce((sum, item) => sum + (item?.quantity || 0), 0);
+    }, [cartItems]);
+
+    const isCartEmpty = !cartItems || cartItems.length === 0;
 
     // --- Render Confirmation Item ---
     const renderConfirmationItem = useCallback(({ item, index }) => {
-            // ... (Function remains unchanged) ...
-            if (!item?.id || typeof item.price !== 'number' || typeof item.quantity !== 'number' || item.quantity <= 0) { console.warn("Skipping rendering invalid cart item:", item); return null; }
-            const itemTotalPrice = item.price * item.quantity; const isLastItem = index === cartItems.length - 1; const isBnpl = item.paymentMethod === 'BNPL' && item.bnplPlan;
+             if (!item?.id || typeof item.price !== 'number' || typeof item.quantity !== 'number' || item.quantity <= 0) { console.warn("Skipping rendering invalid cart item:", item); return null; }
+            const itemTotalPrice = item.price * item.quantity;
+            const isLastItem = index === cartItems.length - 1;
+            const isBnpl = item.paymentMethod === 'BNPL' && item.bnplPlan;
             return (
                 <View style={[styles.cartItem, isLastItem && styles.lastCartItem]}>
-                    <Image source={item.image ? { uri: item.image } : placeholderImagePath} style={styles.productImage} defaultSource={placeholderImagePath} onError={(e) => console.warn(`Image failed to load: ${item.image}`, e.nativeEvent.error)} />
+                    <Image source={item.image ? { uri: item.image } : placeholderImagePath} style={styles.productImage} defaultSource={placeholderImagePath} onError={(e) => console.warn(`Image failed to load: ${item.image || 'N/A'}`, e.nativeEvent.error)} />
                     <View style={styles.itemDetails}>
                         <Text style={styles.productName} numberOfLines={2}>{item.name || 'Unnamed Product'}</Text>
                         <Text style={styles.itemQuantityPrice}>Qty: {item.quantity} x{' '}{`${CURRENCY_SYMBOL} ${item.price.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}</Text>
@@ -173,16 +189,20 @@ export default function OrderConfirmationScreen() {
                     </View>
                 </View>
             );
-        }, [cartItems]
+        }, [cartItems] // Keep dependencies specific
     );
 
 
     // --- Handle Confirm & Place Order ---
     const handleConfirmAndPlaceOrder = useCallback(async () => {
-        if (!currentUserDetails?.uid || !cartItems?.length) {
-            Alert.alert('Error', 'User details or cart items are missing. Cannot place order.');
+        // Enhanced Initial Check
+        if (!currentUserDetails?.uid || !Array.isArray(cartItems) || cartItems.length === 0) {
+            Alert.alert('Error', 'Cannot place order: User details missing or cart is empty.');
+            console.warn("Order placement stopped due to missing details or empty cart.", { hasUser: !!currentUserDetails?.uid, cartLength: cartItems?.length });
+            setIsPlacingOrder(false);
             return;
         }
+
         setIsPlacingOrder(true);
         const userId = currentUserDetails.uid;
         let newOrderId = null;
@@ -191,26 +211,31 @@ export default function OrderConfirmationScreen() {
 
         try {
             // === Check for Existing Incomplete BNPL/Fixed Orders ===
-            const newOrderHasBnplOrFixed = cartItems.some(item => item.paymentMethod === 'BNPL' || item.paymentMethod === 'Fixed Duration');
+            const newOrderHasBnplOrFixed = cartItems.some(item => item?.paymentMethod === 'BNPL' || item?.paymentMethod === 'Fixed Duration');
             if (newOrderHasBnplOrFixed) {
-                 // ... (Existing order check logic remains unchanged) ...
                  console.log("[ConfirmScreen] Checking for existing incomplete BNPL/Fixed orders for user:", userId);
                 const ordersRef = collection(db, ORDERS_COLLECTION);
                 const qExisting = query( ordersRef, where('userId', '==', userId), where('paymentMethod', 'in', BNPL_FIXED_METHODS), where('paymentStatus', 'in', INCOMPLETE_BNPL_FIXED_STATUSES), limit(1) );
-                const existingIncompleteSnapshot = await getDocs(qExisting);
-                if (!existingIncompleteSnapshot.empty) {
-                    console.warn(`[ConfirmScreen] User ${userId} has an active incomplete BNPL/Fixed order. Blocking new order.`);
-                    Alert.alert( 'Order Restriction', 'You have an existing payment plan that is not yet complete. Please settle your current BNPL or Fixed Duration payments before placing a new order with these options.', [{ text: 'OK' }] );
-                    setIsPlacingOrder(false); return;
-                } else { console.log("[ConfirmScreen] No existing incomplete BNPL/Fixed orders found. Proceeding."); }
+                 try {
+                    const existingIncompleteSnapshot = await getDocs(qExisting);
+                    if (!existingIncompleteSnapshot.empty) {
+                        console.warn(`[ConfirmScreen] User ${userId} has an active incomplete BNPL/Fixed order. Blocking new order.`);
+                        Alert.alert( 'Order Restriction', 'You have an existing payment plan that is not yet complete. Please settle your current BNPL or Fixed Duration payments before placing a new order with these options.', [{ text: 'OK' }] );
+                        setIsPlacingOrder(false); return;
+                    } else { console.log("[ConfirmScreen] No existing incomplete BNPL/Fixed orders found. Proceeding."); }
+                 } catch (queryError) {
+                     console.error("[ConfirmScreen] Error querying existing orders:", queryError);
+                     Alert.alert('Error', 'Could not verify existing payments. Please check your connection and try again.');
+                     setIsPlacingOrder(false); return;
+                 }
             }
             // === End Existing Order Check ===
 
             // === Determine Order Characteristics ===
-            const codItems = cartItems.filter(item => item.paymentMethod === 'COD');
-            const bnplItems = cartItems.filter(item => item.paymentMethod === 'BNPL' && item.bnplPlan);
-            const bnplSubTotal = bnplItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-            const codSubTotal = codItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const codItems = cartItems.filter(item => item?.paymentMethod === 'COD');
+            const bnplItems = cartItems.filter(item => item?.paymentMethod === 'BNPL' && item.bnplPlan);
+            const bnplSubTotal = bnplItems.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
+            const codSubTotal = codItems.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
             const firstBnplItem = bnplItems.length > 0 ? bnplItems[0] : null;
             const relevantBnplPlan = firstBnplItem?.bnplPlan || null;
             const planType = relevantBnplPlan?.planType;
@@ -221,25 +246,20 @@ export default function OrderConfirmationScreen() {
             let overallPaymentStatus = 'Pending';
             let orderSpecificData = {};
             let fullInstallmentSchedule = [];
-            // --- MODIFICATION: Determine if it's BNPL Installment for the new field ---
-            const isBnplInstallmentOrder = (
-                (overallPaymentMethod === 'BNPL' || overallPaymentMethod === 'Mixed')
-                 && planType === 'Installment'
-            );
+            const isBnplInstallmentOrder = ( (overallPaymentMethod === 'BNPL' || overallPaymentMethod === 'Mixed') && planType === 'Installment' );
 
-            // --- Logic based on Payment Method ---
-             if (relevantBnplPlan && (overallPaymentMethod === 'BNPL' || overallPaymentMethod === 'Mixed' || overallPaymentMethod === 'Fixed Duration')) {
+            if (relevantBnplPlan && (overallPaymentMethod === 'BNPL' || overallPaymentMethod === 'Mixed' || overallPaymentMethod === 'Fixed Duration')) {
                 const bnplPlanDetails = { id: relevantBnplPlan.id || null, name: relevantBnplPlan.name || 'Payment Plan', duration: relevantBnplPlan.duration, interestRate: relevantBnplPlan.interestRate ?? 0, planType: planType };
                 if (planType === 'Installment' && relevantBnplPlan.duration > 0 && bnplSubTotal > 0) {
                     overallPaymentStatus = overallPaymentMethod === 'Mixed' ? 'Mixed (COD/BNPL Pending)' : 'Unpaid (BNPL)';
                     fullInstallmentSchedule = generateBnplInstallments(bnplSubTotal, relevantBnplPlan, jsOrderPlacementDate);
                     orderSpecificData = { paymentStatus: overallPaymentStatus, bnplPlanDetails: bnplPlanDetails, installments: fullInstallmentSchedule };
                 } else if (planType === 'Fixed Duration' && relevantBnplPlan.duration >= 0 && bnplSubTotal > 0) {
-                    overallPaymentMethod = 'Fixed Duration';
+                    // Ensure method is set correctly if not mixed
+                    if(overallPaymentMethod !== 'Mixed') overallPaymentMethod = 'Fixed Duration';
                     overallPaymentStatus = overallPaymentMethod === 'Mixed' ? 'Mixed (COD/Fixed Pending)' : 'Unpaid (Fixed Duration)';
-                    const dueDate = calculateDueDate(jsOrderPlacementDate, relevantBnplPlan.duration);
+                    const dueDate = calculateDueDate(jsOrderPlacementDate, relevantBnplPlan.duration > 0 ? relevantBnplPlan.duration : 1); // Handle duration 0
                     orderSpecificData = { paymentStatus: overallPaymentStatus, fixedDurationDetails: bnplPlanDetails, paymentDueDate: dueDate, penalty: 0, fixedDurationAmountDue: bnplSubTotal };
-                    if (relevantBnplPlan.duration === 0) { console.warn("[ConfirmScreen] Fixed Duration plan with 0 months duration used. Due date calculated based on `calculateDueDate(..., 0)` logic."); }
                 } else {
                     overallPaymentStatus = 'Pending Review';
                     orderSpecificData = { paymentStatus: overallPaymentStatus, bnplPlanDetails: bnplPlanDetails };
@@ -255,20 +275,27 @@ export default function OrderConfirmationScreen() {
             // --- End Payment Method Logic ---
 
             // === Step 1: Prepare Order Data for Firestore ===
-             // --- MODIFICATION: Add default value for the new preference field ---
-            let firstInstallmentPref = null; // Default to null if not BNPL Installment
+            let firstInstallmentPref = null;
             if (isBnplInstallmentOrder) {
-                firstInstallmentPref = 'Pending Choice'; // Set initial state for BNPL Inst.
+                firstInstallmentPref = 'Pending Choice';
             }
-
             const orderDetailsToSave = {
                 userId: userId, userName: currentUserDetails.name || 'N/A', userAddress: currentUserDetails.address || 'N/A', userPhone: currentUserDetails.phone || 'N/A',
-                items: cartItems.map((item) => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, image: item.image || null, paymentMethod: item.paymentMethod || 'COD', ...(item.paymentMethod === 'BNPL' && item.bnplPlan && { bnplPlan: { id: item.bnplPlan.id, name: item.bnplPlan.name, duration: item.bnplPlan.duration, interestRate: item.bnplPlan.interestRate, planType: item.bnplPlan.planType } }) })),
+                items: cartItems.map((item) => ({ // Safely map items
+                    id: item?.id || null, name: item?.name || 'N/A', price: item?.price || 0, quantity: item?.quantity || 0, image: item?.image || null, paymentMethod: item?.paymentMethod || 'COD',
+                    ...(item?.paymentMethod === 'BNPL' && item.bnplPlan && { bnplPlan: { id: item.bnplPlan.id, name: item.bnplPlan.name, duration: item.bnplPlan.duration, interestRate: item.bnplPlan.interestRate, planType: item.bnplPlan.planType } })
+                 })).filter(item => item.id && item.quantity > 0), // Ensure valid items are saved
                 subtotal: subTotal, grandTotal: grandTotal, codAmount: codSubTotal, bnplAmount: bnplSubTotal,
                 status: 'Pending', createdAt: firestoreWriteTimestamp, orderDate: firestoreWriteTimestamp, paymentMethod: overallPaymentMethod,
-                ...orderSpecificData, // Includes paymentStatus, installments etc.
-                firstInstallmentPaymentPreference: firstInstallmentPref // Add the new field
+                ...orderSpecificData,
+                firstInstallmentPaymentPreference: firstInstallmentPref
             };
+
+             // Final check before saving
+             if (!orderDetailsToSave.items || orderDetailsToSave.items.length === 0) {
+                  throw new Error("Order contains no valid items after processing.");
+             }
+
 
             // === Step 2: Save Order to Firestore ===
             console.log('[ConfirmScreen] Attempting to save order:', orderDetailsToSave);
@@ -278,18 +305,25 @@ export default function OrderConfirmationScreen() {
             if (!newOrderId) { throw new Error('Failed to get Order ID after saving.'); }
             console.log('[ConfirmScreen] Order successfully saved with ID:', newOrderId);
 
-            // === Step 3: Clear User's Cart ===
+
+            // === Step 3: Clear User's Cart (Using setDoc) ===
             try {
                 const cartDocRef = doc(db, CARTS_COLLECTION, userId);
-                await updateDoc(cartDocRef, { items: [], lastUpdated: serverTimestamp() });
-                console.log(`[ConfirmScreen] Cart cleared successfully for user ${userId}.`);
+                // Use setDoc with merge to handle missing cart document gracefully
+                await setDoc(cartDocRef,
+                    { items: [], lastUpdated: serverTimestamp() },
+                    { merge: true }
+                );
+                console.log(`[ConfirmScreen] Cart document ensured empty for user ${userId}.`);
             } catch (cartError) {
-                console.error('[ConfirmScreen] Failed to clear user cart after order placement:', cartError);
+                // Log error if setDoc fails (e.g., permission issues)
+                console.error('[ConfirmScreen] Error ensuring user cart was empty after order placement:', cartError);
             }
+            // --- END MODIFICATION ---
+
 
             // === Step 4: Send Admin Push Notifications ===
-             getAdminExpoTokens().then((adminTokens) => {
-                // ... (notification sending logic remains unchanged) ...
+            getAdminExpoTokens().then((adminTokens) => {
                 if (!adminTokens || adminTokens.length === 0) { console.warn('[ConfirmScreen] No admin tokens found or fetched. Skipping notification.'); return; }
                 const messages = adminTokens.map((token) => { if (!token?.startsWith('ExponentPushToken[')) return null; return { to: token, sound: 'default', title: '🚀 New Order Received!', body: `Order #${newOrderId.substring(0, 6)}... from ${currentUserDetails.name || 'User'}. Total: ${CURRENCY_SYMBOL} ${grandTotal.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, data: { orderId: newOrderId, type: 'new_order' }, priority: 'high', channelId: 'new-orders' }; }).filter(Boolean);
                 if (messages.length > 0) {
@@ -299,88 +333,65 @@ export default function OrderConfirmationScreen() {
                     .catch((err) => { console.error('[ConfirmScreen] Axios error sending push notification:', err.response?.data || err.message); });
                 } else { console.log('[ConfirmScreen] No valid admin notification messages to send.'); }
             }).catch((tokenError) => { console.error('[ConfirmScreen] Error occurred during the process of fetching admin tokens for notification:', tokenError); });
-            // === End Admin Notification ===
+
 
             // === Step 5: Show Success Message & Handle User Choice (with Update) ===
-            setIsPlacingOrder(false);
-
+             setIsPlacingOrder(false);
             if (isBnplInstallmentOrder) {
-                 // --- MODIFICATION: Added async and updateDoc calls in onPress ---
-                Alert.alert(
-                    'Order Placed & First Installment',
-                    `Your Order (#${newOrderId.substring(0, 8)}...) has been confirmed.\n\nHow would you like to handle the first installment payment?`,
+                Alert.alert( 'Order Placed & First Installment', `Your Order (#${newOrderId.substring(0, 8)}...) has been confirmed.\n\nHow would you like to handle the first installment payment?`,
                     [
-                        {
-                            text: 'Pay Now',
-                            onPress: async () => { // Make async
-                                console.log(`[ConfirmScreen] User chose 'Pay Now' for order ${newOrderId}.`);
-                                try {
-                                    // Update Firestore document with preference
-                                    const orderDocRef = doc(db, ORDERS_COLLECTION, newOrderId);
-                                    await updateDoc(orderDocRef, {
-                                        firstInstallmentPaymentPreference: 'Pay Now'
-                                    });
-                                    console.log(`[ConfirmScreen] Order ${newOrderId} preference updated to 'Pay Now'.`);
-                                } catch (updateError) {
-                                    console.error(`[ConfirmScreen] Error updating order preference to 'Pay Now':`, updateError);
-                                    // Non-critical error for user, just log it for now
-                                } finally {
-                                    navigation.popToTop(); // Navigate after attempting update
-                                }
-                            }
-                        },
-                        {
-                            text: 'Pay at Delivery',
-                            onPress: async () => { // Make async
-                                console.log(`[ConfirmScreen] User chose 'Pay at Delivery' for order ${newOrderId}.`);
-                                try {
-                                    // Update Firestore document with preference
-                                    const orderDocRef = doc(db, ORDERS_COLLECTION, newOrderId);
-                                    await updateDoc(orderDocRef, {
-                                        firstInstallmentPaymentPreference: 'Pay at Delivery'
-                                    });
-                                    console.log(`[ConfirmScreen] Order ${newOrderId} preference updated to 'Pay at Delivery'.`);
-                                } catch (updateError) {
-                                    console.error(`[ConfirmScreen] Error updating order preference to 'Pay at Delivery':`, updateError);
-                                    // Non-critical error for user, just log it for now
-                                } finally {
-                                    navigation.popToTop(); // Navigate after attempting update
-                                }
-                            }
-                        }
+                        { text: 'Pay Now', onPress: async () => { console.log(`[ConfirmScreen] User chose 'Pay Now' for order ${newOrderId}.`); try { const orderDocRef = doc(db, ORDERS_COLLECTION, newOrderId); await updateDoc(orderDocRef, { firstInstallmentPaymentPreference: 'Pay Now' }); console.log(`[ConfirmScreen] Order ${newOrderId} preference updated to 'Pay Now'.`); } catch (updateError) { console.error(`[ConfirmScreen] Error updating order preference to 'Pay Now':`, updateError); } finally { navigation.popToTop(); } } },
+                        { text: 'Pay at Delivery', onPress: async () => { console.log(`[ConfirmScreen] User chose 'Pay at Delivery' for order ${newOrderId}.`); try { const orderDocRef = doc(db, ORDERS_COLLECTION, newOrderId); await updateDoc(orderDocRef, { firstInstallmentPaymentPreference: 'Pay at Delivery' }); console.log(`[ConfirmScreen] Order ${newOrderId} preference updated to 'Pay at Delivery'.`); } catch (updateError) { console.error(`[ConfirmScreen] Error updating order preference to 'Pay at Delivery':`, updateError); } finally { navigation.popToTop(); } } }
                     ],
                     { cancelable: false }
                 );
             } else {
-                // Standard success for non-BNPL-Installment orders
-                Alert.alert(
-                    'Order Placed Successfully!',
-                    `Your Order (#${newOrderId.substring(0, 8)}...) has been confirmed.`,
-                    [ { text: 'OK', onPress: () => navigation.popToTop() } ],
-                    { cancelable: false }
-                );
+                Alert.alert( 'Order Placed Successfully!', `Your Order (#${newOrderId.substring(0, 8)}...) has been confirmed.`, [ { text: 'OK', onPress: () => navigation.popToTop() } ], { cancelable: false } );
             }
 
         } catch (error) {
-            // ... (Error handling remains unchanged) ...
-            console.error('[ConfirmScreen] Critical error during order placement process:', error);
+             console.error('[ConfirmScreen] Critical error during order placement process:', error);
             setIsPlacingOrder(false);
             let errorMessage = 'Could not place your order due to an unexpected issue. Please try again.';
             if (error.code === 'permission-denied') { errorMessage = 'Permission Error: Could not save the order or check existing payments. Please ensure you are logged in with the correct account and try again.'; }
-            else if (error.message?.includes('Firestore Index Required')) { errorMessage = 'There was a problem checking your payment history. Please try again shortly. (Index error possible)'; }
+            else if (error.message?.includes('Firestore Index Required') || error.message?.includes('requires an index')) { errorMessage = 'There was a problem checking your payment history. Please try again shortly. (Index error possible)'; }
             else if (error.message) { errorMessage = `Failed to place order: ${error.message}`; }
             Alert.alert('Order Placement Failed', errorMessage);
         }
     }, [currentUserDetails, cartItems, subTotal, grandTotal, navigation]);
 
 
-    // --- Loading/Error Check before render ---
-    if (!currentUserDetails || !cartItems) {
-         // ... (Component remains unchanged) ...
-         return ( <SafeAreaView style={styles.container}><View style={styles.loadingContainer}><Text style={styles.errorText}>Error: Missing required order details.</Text><TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.errorLink}>Go Back</Text></TouchableOpacity></View></SafeAreaView> );
+    // --- Loading/Error Check before main render ---
+    if (!currentUserDetails) {
+         return (
+            <SafeAreaView style={styles.container}>
+                <View style={styles.loadingContainer}>
+                    <Text style={styles.errorText}>Error: User details are missing.</Text>
+                    <TouchableOpacity onPress={() => navigation.goBack()}><Text style={styles.errorLink}>Go Back</Text></TouchableOpacity>
+                </View>
+            </SafeAreaView>
+         );
     }
 
-    // --- Render Main Screen ---
+    // --- Empty Cart Check ---
+    if (isCartEmpty) {
+        return (
+            <SafeAreaView style={styles.container}>
+                <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
+                <View style={styles.emptyCartContainer}>
+                    <Icon name="remove-shopping-cart" size={60} color={TextColorSecondary} />
+                    <Text style={styles.emptyCartText}>Your cart is empty.</Text>
+                    <Text style={styles.emptyCartSubText}>Add items to your cart before placing an order.</Text>
+                    <TouchableOpacity style={styles.goBackButton} onPress={() => navigation.goBack()}>
+                        <Text style={styles.goBackButtonText}>Go Back</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
+    }
+
+
+    // --- Render Main Screen (Only if cart is NOT empty) ---
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
@@ -425,7 +436,12 @@ export default function OrderConfirmationScreen() {
 
             {/* Footer Area with Confirm Button */}
             <View style={styles.footer}>
-                <TouchableOpacity style={[styles.confirmButton, isPlacingOrder && styles.disabledButton]} onPress={handleConfirmAndPlaceOrder} disabled={isPlacingOrder} activeOpacity={0.8} >
+                <TouchableOpacity
+                    style={[ styles.confirmButton, (isPlacingOrder || isCartEmpty) && styles.disabledButton ]}
+                    onPress={handleConfirmAndPlaceOrder}
+                    disabled={isPlacingOrder || isCartEmpty}
+                    activeOpacity={0.8}
+                >
                     {isPlacingOrder ? (<ActivityIndicator size="small" color="#FFFFFF" />) : (<Text style={styles.confirmButtonText}>Confirm & Place Order</Text>)}
                 </TouchableOpacity>
             </View>
@@ -435,13 +451,17 @@ export default function OrderConfirmationScreen() {
 
 // --- Styles ---
 const styles = StyleSheet.create({
-    // ... (Styles remain unchanged) ...
     container: { flex: 1, backgroundColor: ScreenBackgroundColor, },
     scrollView: { flex: 1, },
     scrollContentContainer: { flexGrow: 1, paddingHorizontal: 15, paddingTop: 20, paddingBottom: 90, },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, },
     errorText: { fontSize: 16, color: ERROR_COLOR, textAlign: 'center', marginBottom: 15, },
     errorLink: { fontSize: 16, color: AccentColor, fontWeight: 'bold', },
+    emptyCartContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30, },
+    emptyCartText: { fontSize: 18, fontWeight: '600', color: TextColorPrimary, marginTop: 20, marginBottom: 8, textAlign: 'center', },
+    emptyCartSubText: { fontSize: 14, color: TextColorSecondary, textAlign: 'center', marginBottom: 30, },
+    goBackButton: { backgroundColor: AccentColor, paddingVertical: 12, paddingHorizontal: 30, borderRadius: 8, },
+    goBackButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold', },
     sectionContainer: { marginBottom: 25, },
     sectionTitle: { fontSize: 18, fontWeight: '600', color: TextColorPrimary, marginBottom: 12, },
     addressBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: AppBackgroundColor, padding: 15, borderRadius: 10, borderWidth: 1, borderColor: LightBorderColor, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2, },
@@ -474,6 +494,6 @@ const styles = StyleSheet.create({
     totalValue: { fontSize: 17, fontWeight: 'bold', color: AccentColor, },
     footer: { paddingHorizontal: 15, paddingTop: 15, paddingBottom: Platform.OS === 'ios' ? 30 : 20, backgroundColor: AppBackgroundColor, borderTopWidth: 1, borderTopColor: LightBorderColor, },
     confirmButton: { backgroundColor: AccentColor, paddingVertical: 16, borderRadius: 12, alignItems: 'center', justifyContent: 'center', minHeight: 52, shadowColor: AccentColor, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, elevation: 6, },
-    disabledButton: { backgroundColor: '#BDBDBD', elevation: 0, shadowOpacity: 0, },
+    disabledButton: { backgroundColor: '#BDBDBD', elevation: 0, shadowOpacity: 0, }, // Style for disabled button
     confirmButtonText: { color: '#FFFFFF', fontSize: 17, fontWeight: 'bold', },
 });

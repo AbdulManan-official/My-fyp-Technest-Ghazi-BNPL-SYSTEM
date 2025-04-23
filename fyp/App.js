@@ -24,9 +24,8 @@ import AboutUsScreen from './screens/userscreens/AboutUsScreen';
 import WishlistScreen from './screens/userscreens/WishlistScreen';
 
 // Orders & BNPL
-import UserActiveOrders from './screens/userscreens/UserActiveOrders';
+import MyOrders from './screens/userscreens/MyOrders';
 import UserBNPLSchedules from './screens/userscreens/UserBNPLSchedules';
-import OrderHistoryScreen from './screens/userscreens/OrderHistoryScreen';
 
 // Admin Screens
 import AdminMessageScreen from './screens/AdminScreens/AdminMessageScreen';
@@ -43,6 +42,7 @@ import BNPLPlansScreen from './screens/AdminScreens/BNPLPlansScreen';
 import UserVerificationDetailScreen from './screens/AdminScreens/UserVerificationDetailScreen';
 import AddressEditScreen from './screens/userscreens/AddressEditScreen';
 import OrderConfirmationScreen from './screens/userscreens/OrderConfirmationScreen';
+import UserOrderDetailScreen from './screens/userscreens/UserOrderDetailScreen';
 const Stack = createStackNavigator();
 
 const CustomHeader = ({ navigation, title }) => ({
@@ -139,20 +139,16 @@ export default function App() {
 
         {/* Orders & History */}
         <Stack.Screen
-          name="UserActiveOrders"
-          component={UserActiveOrders}
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Active Orders' })}
+          name="MyOrders"
+          component={MyOrders}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'My Orders' })}
         />
         <Stack.Screen
           name="UserBNPLSchedules"
           component={UserBNPLSchedules}
           options={({ navigation }) => CustomHeader({ navigation, title: 'BNPL Schedule' })}
         />
-        <Stack.Screen
-          name="OrderHistoryScreen"
-          component={OrderHistoryScreen}
-          options={({ navigation }) => CustomHeader({ navigation, title: 'Order History' })}
-        />
+     
 
         {/* Admin Message Screens */}
         <Stack.Screen
@@ -217,6 +213,11 @@ export default function App() {
           name="OrderConfirmationScreen" // Name used to navigate to this screen
           component={OrderConfirmationScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Order Confirmation ' })} // Use CustomHeader
+        />
+         <Stack.Screen
+          name="UserOrderDetailScreen" // Name used to navigate to this screen
+          component={UserOrderDetailScreen}
+          options={({ navigation }) => CustomHeader({ navigation, title: 'Order Detail ' })} // Use CustomHeader
         />
       </Stack.Navigator>
     </NavigationContainer>

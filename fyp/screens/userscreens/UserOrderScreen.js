@@ -8,16 +8,14 @@ import { MaterialIcons } from "@expo/vector-icons";
 const UserOrderScreen = ({ navigation }) => {
   // Define onPress handlers for each menu item
   const handleActiveOrdersPress = () => {
-    navigation.navigate('UserActiveOrders'); 
+    navigation.navigate('MyOrders'); 
   };
 
   const handleBNPLSchedulePress = () => {
     navigation.navigate('UserBNPLSchedules'); // Navigate to BNPL Schedule Screen
   };
 
-  const handleOrderHistoryPress = () => {
-    navigation.navigate('OrderHistoryScreen'); // Navigate to Order History Screen
-  };
+
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F8F8F8" }}>
@@ -51,7 +49,7 @@ const UserOrderScreen = ({ navigation }) => {
           {/* First Row (2 Items) */}
           <View style={styles.gridContainer}>
             <MenuItem
-              title="Active Orders"
+              title="My Orders"
               icon="local-shipping"
               onPress={handleActiveOrdersPress}
             />
@@ -62,11 +60,7 @@ const UserOrderScreen = ({ navigation }) => {
             />
 
             {/* Add Order History */}
-            <MenuItem
-              title="Order History"
-              icon="history"
-              onPress={handleOrderHistoryPress}
-            />
+           
           </View>
 
           {/* Second Row (3 Items) */}
@@ -89,7 +83,7 @@ const MenuItem = ({ title, icon, onPress }) => (
 
 const styles = StyleSheet.create({
   headerContainer: {
-    paddingVertical: 30, 
+    paddingVertical: 20, 
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#FF0000",
@@ -116,7 +110,7 @@ const styles = StyleSheet.create({
     borderRadius: 25,
     paddingVertical: 20, 
     marginBottom: 12, 
-    marginTop: 15,  // Increased spacing above the section
+    marginTop: 35,  // Increased spacing above the section
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 5 },
@@ -134,6 +128,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 7,
     elevation: 8,
+    marginTop: 10, 
   },
   curvedTop: {
     borderTopLeftRadius: 30, 

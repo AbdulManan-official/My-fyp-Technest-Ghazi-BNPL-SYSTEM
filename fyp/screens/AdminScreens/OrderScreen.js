@@ -1,19 +1,18 @@
-// OrderScreen.js (COMPLETE CODE - Admin View - Real-time ALL Orders, Search/Filter, Refresh, Final UI)
+// OrderScreen.js (COMPLETE CODE - Fetches All Details Verified)
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet,
   Dimensions, Platform, ScrollView, ActivityIndicator, Alert,
-  SafeAreaView, StatusBar, RefreshControl, Image // Ensure all imports needed are here
+  SafeAreaView, StatusBar, RefreshControl, Image
 } from 'react-native';
-import Icon from 'react-native-vector-icons/FontAwesome'; // Using FontAwesome
-import { LinearGradient } from 'expo-linear-gradient'; // Ensure installed
+// Using MaterialCommunityIcons for header AND the new BNPL icon
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import { db } from '../../firebaseConfig'; // Verify path
+import { db } from '../../firebaseConfig'; // Verify path is correct
 import {
-    collection, query, orderBy, onSnapshot, Timestamp, // Keep Timestamp
-    where, // Keep where if needed for future query changes
-    documentId // Keep documentId if needed elsewhere
+    collection, query, orderBy, onSnapshot, Timestamp,
+    where, documentId // Keep imports even if not used directly in query (might be used elsewhere)
 } from 'firebase/firestore';
 import { format, isValid } from 'date-fns'; // Ensure date-fns installed
 
@@ -28,22 +27,31 @@ const LightBorderColor = '#E0E0E0';
 const ScreenBackgroundColor = '#F5F5F5';
 const CURRENCY_SYMBOL = 'PKR';
 const PlaceholderBgColor = '#F0F0F0';
-// ** Make sure this path is correct relative to this file **
-const placeholderImagePath = require('../../assets/p3.jpg');
-const FILTER_STATUSES = ['All', 'Pending', 'Processing', 'Shipped', 'Delivered', 'Cancelled', 'Rejected']; // Add all relevant statuses used in your DB
+const placeholderImagePath = require('../../assets/p3.jpg'); // Verify path
+const BnplIndicatorBgColor = 'rgba(0, 86, 179, 0.1)'; // Light blue background
+const BnplIndicatorTextColor = '#0056b3';         // Dark blue text/icon
 
-// --- Main Component ---
+// --- Fixed Filters Configuration ---
+const FIXED_FILTERS = [
+  { displayName: 'All', filterValue: 'All' },
+  { displayName: 'Pending', filterValue: 'Pending' },
+  { displayName: 'Active', filterValue: 'Processing' }, // Maps "Active" to "Processing" status
+  { displayName: 'Shipped', filterValue: 'Shipped' },
+  { displayName: 'Cancelled', filterValue: 'Cancelled' },
+];
+
+// --- Main Component: OrderScreen ---
 export default function OrderScreen() {
   const navigation = useNavigation();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState('All'); // Default filter
+  const [filter, setFilter] = useState('All'); // Stores the actual filterValue ('All', 'Pending', etc.)
   const [allFetchedOrders, setAllFetchedOrders] = useState([]); // Holds raw data from listener
   const [loading, setLoading] = useState(true); // Initial loading state
   const [refreshing, setRefreshing] = useState(false); // Pull-to-refresh state
-  // Ref to store the current listener's unsubscribe function
-  const listenerUnsubscribeRef = useRef(null);
+  const listenerUnsubscribeRef = useRef(null); // Ref to store the current listener's unsubscribe function
 
-  // --- Function to Setup Listener (Fetches ALL orders, real-time) ---
+  // --- Function to Setup Firestore Listener ---
+  // Sets up a real-time listener for ALL orders in the 'orders' collection
   const setupOrderListener = useCallback(() => {
     console.log("[OrderScreen Admin] Setting up listener for ALL orders...");
 
@@ -63,38 +71,40 @@ export default function OrderScreen() {
     // Query all orders, ordered by creation date (newest first)
     const q = query(ordersRef, orderBy("createdAt", "desc"));
 
-    // Attach the snapshot listener and store the unsubscribe function
+    // Attach the snapshot listener
     listenerUnsubscribeRef.current = onSnapshot(q, (snapshot) => {
       console.log(`[OrderScreen Admin] Snapshot received: ${snapshot.docs.length} total orders.`);
       const fetchedOrders = snapshot.docs.map(docSnap => {
-        const data = docSnap.data();
-        // Basic validation
+        const data = docSnap.data(); // <--- GETS ALL FIELDS
+
+        // Basic validation for core fields needed for display/logic
          if (!data || !(data.createdAt instanceof Timestamp)) {
-            console.warn(`[OrderScreen Admin] Skipping order doc ${docSnap.id}: Missing data or invalid createdAt`, data);
-            return null;
+             console.warn(`[OrderScreen Admin] Skipping order doc ${docSnap.id}: Missing data or invalid createdAt`, data);
+             return null; // Skip this invalid document
         }
+
         // Format date safely
         let formattedDate = 'N/A';
         const createdAtDate = data.createdAt.toDate();
         if (isValid(createdAtDate)) { formattedDate = format(createdAtDate, 'MMM d, yyyy'); }
 
-        // Construct the object for the list
+        // Construct the object for the state array
+        // Includes explicitly processed fields AND all other fields via spread operator
         return {
-          id: docSnap.id,
-          orderNumber: docSnap.id.substring(0, 8).toUpperCase(),
-          date: formattedDate,
-          createdAtTimestamp: data.createdAt, // Keep for potential detailed view sorting
-          status: data.status || 'Unknown',
-          grandTotal: data.grandTotal,
-          userName: data.userName || 'Unknown User', // User's name from order data
-          paymentMethod: data.paymentMethod,
-          items: data.items || [], // Include items array (for preview and details)
-          // Include full data for navigation
-          ...data
+          id: docSnap.id, // Document ID
+          orderNumber: docSnap.id.substring(0, 8).toUpperCase(), // Short order number
+          date: formattedDate, // Formatted date
+          createdAtTimestamp: data.createdAt, // Original timestamp
+          status: data.status || 'Unknown', // Order status
+          grandTotal: data.grandTotal, // Order total
+          userName: data.userName || 'Unknown User', // Customer name
+          paymentMethod: data.paymentMethod || 'Unknown', // Payment method
+          items: data.items || [], // Items array
+          ...data // <--- SPREAD OPERATOR TO INCLUDE ALL OTHER FIELDS FROM FIRESTORE
         };
-      }).filter(item => item !== null); // Filter out any invalid items
+      }).filter(item => item !== null); // Filter out any skipped items
 
-      setAllFetchedOrders(fetchedOrders); // Update state with ALL fetched orders
+      setAllFetchedOrders(fetchedOrders); // Update state with the complete list
       setLoading(false);        // Stop initial loading indicator
       setRefreshing(false);     // Stop pull-to-refresh indicator
 
@@ -110,8 +120,7 @@ export default function OrderScreen() {
 
   }, [refreshing, allFetchedOrders.length]); // Dependencies for the setup function
 
-
-  // --- Effect to Manage Listener on Focus/Blur ---
+  // --- Effect to Manage Listener Lifecycle ---
   useFocusEffect(
     useCallback(() => {
       // Setup listener when screen focuses
@@ -129,34 +138,35 @@ export default function OrderScreen() {
 
 
   // --- Client-Side Filtering Logic ---
+  // Filters the fetched orders based on search query and selected status filter
   const filteredOrders = useMemo(() => {
-    console.log(`Filtering ${allFetchedOrders.length} orders. Query: "${searchQuery}", Filter: "${filter}"`);
+    console.log(`Filtering ${allFetchedOrders.length} orders. Query: "${searchQuery}", Filter State: "${filter}"`);
     return allFetchedOrders.filter(order => {
       // Check search query (case-insensitive)
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = (
-           (order.id.toLowerCase().includes(searchLower)) || // Check full ID
-           (order.orderNumber.toLowerCase().includes(searchLower)) || // Check truncated Order Number
-           (order.userName?.toLowerCase().includes(searchLower)) || // Check User Name
-           (order.items?.[0]?.name?.toLowerCase().includes(searchLower)) // Check First Item Name
+           !searchQuery || // Pass if search is empty
+           (order.id.toLowerCase().includes(searchLower)) ||
+           (order.orderNumber.toLowerCase().includes(searchLower)) ||
+           (order.userName?.toLowerCase().includes(searchLower)) ||
+           (order.items?.[0]?.name?.toLowerCase().includes(searchLower)) // Basic check on first item name
        );
 
-      // Check status filter (case-insensitive comparison recommended)
-      const filterLower = filter.toLowerCase();
-      const statusLower = order.status?.toLowerCase();
-      // Handle "All" filter or match status
-      const matchesFilter = (filter === 'All') || (statusLower === filterLower);
+      // Check status filter
+      const filterValueLower = filter.toLowerCase(); // Value like 'processing'
+      const orderStatusLower = order.status?.toLowerCase();
+      const matchesFilter = (filter === 'All') || (orderStatusLower === filterValueLower); // 'All' or exact match
 
-      return matchesSearch && matchesFilter;
+      return matchesSearch && matchesFilter; // Must match both
     });
-  }, [allFetchedOrders, searchQuery, filter]); // Recalculate when data or filters change
+  }, [allFetchedOrders, searchQuery, filter]); // Recalculate when dependencies change
 
 
   // --- Get Status Badge Style ---
+  // Returns style object based on order status
   const getStatusStyle = (status) => {
-      // Ensure case-insensitivity and handle null/undefined
       switch (status?.toLowerCase() ?? 'unknown') {
-          case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': return styles.statusPending;
+          case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': case 'unpaid (bnpl)': return styles.statusPending;
           case 'processing': case 'partially paid': return styles.statusProcessing;
           case 'shipped': return styles.statusShipped;
           case 'delivered': return styles.statusDelivered;
@@ -165,38 +175,44 @@ export default function OrderScreen() {
       }
   };
 
-  // --- Render Order Item ---
+  // --- Render Individual Order Item for FlatList ---
   const renderOrder = ({ item }) => {
-    // Safely get the first item and its image URL
+    // Get first item image safely
     const firstItem = item?.items?.[0] || null;
     const firstItemImage = firstItem?.image || null;
-    // Use placeholder if first item has no valid image URL
     const imageSource = firstItemImage ? { uri: firstItemImage } : placeholderImagePath;
 
+    // Determine if it's a BNPL/Fixed order for indicator badge
+    const orderPaymentMethodLower = item.paymentMethod?.toLowerCase() ?? '';
+    const isBnplOrder = ['bnpl', 'fixed duration', 'mixed'].includes(orderPaymentMethodLower);
+
     return (
+        // Touchable opacity navigates to detail screen, passing the *entire* item object
         <TouchableOpacity
             style={styles.orderItem}
-            onPress={() => navigation.navigate('AdminDetailOrderScreen', { order: item })} // Pass full order object
+            onPress={() => navigation.navigate('AdminDetailOrderScreen', { order: item })}
             activeOpacity={0.7}
         >
           <View style={styles.orderRow}>
               {/* Left Icon/Image */}
               <View style={styles.iconContainer}>
-                 <Image
-                    source={imageSource}
-                    style={styles.previewImage} // Use specific style for image
-                    defaultSource={placeholderImagePath} // Fallback while loading/error
-                    onError={(e) => console.warn("Error loading product image:", firstItemImage, e.nativeEvent?.error)} // Added error logging
-                 />
+                 <Image source={imageSource} style={styles.previewImage} defaultSource={placeholderImagePath} onError={(e) => console.warn("Error loading product image:", firstItemImage, e.nativeEvent?.error)} />
               </View>
 
-              {/* Middle Content */}
+              {/* Middle Content: Texts + BNPL Badge */}
               <View style={styles.orderInfo}>
                 <Text style={styles.orderName} numberOfLines={1}>{item.userName}</Text>
                 <Text style={styles.orderIdText}>#{item.orderNumber}</Text>
                 <Text style={styles.orderPrice}>
                     {CURRENCY_SYMBOL} {item.grandTotal?.toLocaleString(undefined, {maximumFractionDigits: 0}) || 'N/A'}
                 </Text>
+                {/* Conditionally Render BNPL Indicator Badge */}
+                {isBnplOrder && (
+                    <View style={styles.bnplIndicatorContainer}>
+                        <Icon name="credit-card-clock-outline" size={12} color={BnplIndicatorTextColor} style={styles.bnplIcon} />
+                        <Text style={styles.bnplIndicatorText}>BNPL</Text>
+                    </View>
+                )}
               </View>
 
               {/* Right Content: Status and Date */}
@@ -212,83 +228,104 @@ export default function OrderScreen() {
   };
 
 
-  // --- Handle Refresh ---
-   const onRefresh = useCallback(() => {
+  // --- Handle Pull-to-Refresh ---
+  const onRefresh = useCallback(() => {
     console.log("[OrderScreen Admin] Manual refresh triggered.");
     setRefreshing(true); // Show spinner
-    // Re-run the setup function which handles detaching/attaching listener
-    // and setting refreshing to false inside the snapshot callback.
+    // Re-running setupOrderListener handles detaching old listener and attaching new one.
+    // It will also set refreshing back to false inside its success/error callbacks.
     setupOrderListener();
-    // Fallback timeout remains useful
+    // Fallback timeout in case listener hangs
     const refreshTimeout = setTimeout(() => {
         if (refreshing) {
-            console.warn("[OrderScreen Admin] Refresh timeout.");
+            console.warn("[OrderScreen Admin] Refresh timeout reached.");
             setRefreshing(false);
         }
-     }, 8000); // Increased timeout slightly
-    return () => clearTimeout(refreshTimeout);
-  }, [setupOrderListener]); // Depend on setupOrderListener reference
+     }, 8000); // 8 seconds
+    return () => clearTimeout(refreshTimeout); // Cleanup timeout on unmount/re-run
+  }, [setupOrderListener, refreshing]); // Include refreshing in dependency array
 
 
-  // --- Render ---
+  // --- Event Handlers for Header Elements ---
+  const onSearchInputChange = (text) => { setSearchQuery(text); };
+  const clearSearch = () => { setSearchQuery(''); };
+  const onFilterChange = (newFilterValue) => {
+      console.log("Filter changed to:", newFilterValue);
+      setFilter(newFilterValue); // Update the filter state
+  };
+
+
+  // --- Component Render ---
   return (
     <SafeAreaView style={styles.container}>
-      {/* StatusBar Added */}
       <StatusBar barStyle="light-content" backgroundColor={AccentColor} />
 
-      {/* Header with Search and Filters */}
-      <LinearGradient colors={[AccentColor, AccentColor]} style={styles.gradientHeader}>
-        <View style={styles.searchBar}>
-          <Icon name="search" size={18} color={AccentColor} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search User or Order ID..."
-            placeholderTextColor="#999"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-            clearButtonMode="while-editing" // iOS clear button
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          {/* Clear button */}
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Icon name="times-circle" size={18} color="#AAA" />
-            </TouchableOpacity>
-          )}
-        </View>
-        {/* Filter Buttons */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
-          {FILTER_STATUSES.map(item => (
-            <TouchableOpacity
-              key={item}
-              style={[styles.filterButton, filter === item && styles.activeFilter]}
-              onPress={() => setFilter(item)} >
-              <Text style={[styles.filterText, filter === item && styles.activeFilterText]}>{item}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </LinearGradient>
+      {/* Header Section */}
+      <View style={styles.headerContainer}>
+          {/* Search Bar */}
+          <View style={styles.searchBar}>
+              <Icon name="magnify" size={22} color={AccentColor} style={styles.searchIcon} />
+              <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search User or Order ID..."
+                  placeholderTextColor="#888"
+                  value={searchQuery}
+                  onChangeText={onSearchInputChange}
+                  returnKeyType="search"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+              />
+              {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={clearSearch} style={styles.clearSearchButton}>
+                      <Icon name="close-circle" size={20} color={AccentColor} />
+                  </TouchableOpacity>
+              )}
+          </View>
 
-      {/* Order List */}
-      {/* Show loader only on initial load when order array is empty */}
+          {/* Fixed Filter Buttons */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+              {FIXED_FILTERS.map(filterItem => (
+                  <TouchableOpacity
+                      key={filterItem.filterValue}
+                      style={[ styles.filterButton, filter === filterItem.filterValue && styles.activeFilter ]}
+                      onPress={() => onFilterChange(filterItem.filterValue)} >
+                      <Text style={[ styles.filterText, filter === filterItem.filterValue && styles.activeFilterText ]}>
+                          {filterItem.displayName}
+                      </Text>
+                  </TouchableOpacity>
+              ))}
+          </ScrollView>
+      </View>
+
+      {/* Main Content: Order List */}
+      {/* Show loader only on initial load */}
       {loading && allFetchedOrders.length === 0 ? (
            <ActivityIndicator size="large" color={AccentColor} style={styles.loader} />
        ) : (
             <FlatList
                 data={filteredOrders} // Render the filtered data
                 keyExtractor={(item) => item.id} // Use Firestore document ID
-                renderItem={renderOrder}
-                contentContainerStyle={styles.listContent}
+                renderItem={renderOrder} // Function to render each order item
+                contentContainerStyle={styles.listContent} // Styling for the list container
                 showsVerticalScrollIndicator={false}
-                // Use View wrapper for empty component to ensure Text is valid child
-                ListEmptyComponent={!loading ? <View style={styles.emptyView}><Icon name="search" size={40} color="#ccc"/><Text style={styles.emptyText}>No orders match your criteria.</Text></View> : null}
-                // Add RefreshControl
+                // Component shown when list is empty after filtering/loading
+                ListEmptyComponent={!loading ? (
+                    <View style={styles.emptyView}>
+                        <Icon name="magnify-close" size={40} color="#ccc"/>
+                        <Text style={styles.emptyText}>No orders match your criteria.</Text>
+                    </View>
+                 ) : null}
+                // Pull-to-refresh configuration
                 refreshControl={
-                   <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AccentColor} colors={[AccentColor]}/>
+                   <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={AccentColor} // iOS color
+                        colors={[AccentColor]} // Android color(s)
+                    />
                 }
-                ItemSeparatorComponent={() => <View style={styles.separator} />} // Add separator
+                // Add separator lines between items
+                ItemSeparatorComponent={() => <View style={styles.separator} />}
             />
        )}
     </SafeAreaView>
@@ -297,20 +334,23 @@ export default function OrderScreen() {
 
 // --- Styles ---
 const styles = StyleSheet.create({
+  // Core & Header Styles
   container: { flex: 1, backgroundColor: ScreenBackgroundColor },
-  gradientHeader: { paddingTop: Platform.OS === 'ios' ? 50 : 20, paddingBottom: 10, paddingHorizontal: 15, borderBottomLeftRadius: 15, borderBottomRightRadius: 15, },
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 25, paddingHorizontal: 15, paddingVertical: Platform.OS === 'ios' ? 9 : 5, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, marginBottom: 10, },
-  searchInput: { flex: 1, marginLeft: 10, fontSize: 15, color: '#333', },
-  clearButton: { padding: 5, },
-  filterScroll: { marginTop: 5, marginBottom: 5 },
-  filterContent: { paddingHorizontal: 5, paddingVertical: 5 },
-  filterButton: { paddingVertical: 7, paddingHorizontal: 18, borderRadius: 18, backgroundColor: '#FFF', borderWidth: 1, borderColor: AccentColor, marginRight: 8, justifyContent: 'center', height: 38 },
-  filterText: { fontSize: 13, color: AccentColor, fontWeight: '500' },
-  activeFilter: { backgroundColor: 'black', borderColor: 'black' },
-  activeFilterText: { color: '#FFF', fontWeight: 'bold' },
-  listContent: { paddingBottom: 15, paddingTop: 5 },
+  headerContainer: { backgroundColor: '#FF0000', paddingTop: Platform.OS === 'ios' ? 50 : 22, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 15, borderBottomRightRadius: 15, },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 50, paddingHorizontal: 15, height: 45, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2, marginBottom: 8, },
+  searchIcon: { marginRight: 10, },
+  searchInput: { flex: 1, fontSize: 15, color: '#333', },
+  clearSearchButton: { padding: 5, marginLeft: 5, },
+  filterScroll: { marginTop: 3, },
+  filterButton: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#FF0000', borderWidth: 1, borderColor: '#FFFFFF', marginRight: 10, justifyContent: 'center', alignItems: 'center', height: 34, },
+  filterText: { fontSize: 13, color: '#FFFFFF', fontWeight: '500', },
+  activeFilter: { backgroundColor: '#000000', borderColor: '#000000', },
+  activeFilterText: { color: '#FFFFFF', fontWeight: 'bold', },
+
+  // List & Item Styles
+  listContent: { paddingBottom: 15, paddingTop: 0 },
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  emptyView: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50, paddingHorizontal: 20, }, // Added flex: 1
+  emptyView: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50, paddingHorizontal: 20, },
   emptyText: { textAlign: 'center', fontSize: 16, color: TextColorSecondary, marginTop: 15 },
   orderItem: { backgroundColor: '#FFF', paddingHorizontal: 15, paddingVertical: 12, },
   orderRow: { flexDirection: 'row', alignItems: 'center', },
@@ -319,7 +359,10 @@ const styles = StyleSheet.create({
   orderInfo: { flex: 1, marginRight: 10, justifyContent: 'center' },
   orderName: { fontSize: 15, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 2 },
   orderIdText: { fontSize: 12, color: TextColorSecondary, marginBottom: 4 },
-  orderPrice: { fontSize: 14, color: '#444', fontWeight: '500' },
+  orderPrice: { fontSize: 14, color: '#444', fontWeight: '500', },
+  bnplIndicatorContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 5, alignSelf: 'flex-start', backgroundColor: BnplIndicatorBgColor, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 3, },
+  bnplIcon: { marginRight: 4, },
+  bnplIndicatorText: { fontSize: 11, fontWeight: '600', color: BnplIndicatorTextColor, },
   statusContainer: { alignItems: 'flex-end', minWidth: 85 },
   statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 15, marginBottom: 4 },
   statusText: { color: '#FFF', fontWeight: 'bold', fontSize: 11 },

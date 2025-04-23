@@ -141,8 +141,7 @@ export default function App() {
         <Stack.Screen
           name="MyOrders"
           component={MyOrders}
-          options={({ navigation }) => CustomHeader({ navigation, title: 'My Orders' })}
-        />
+          options={{ headerShown: false }}        />
         <Stack.Screen
           name="UserBNPLSchedules"
           component={UserBNPLSchedules}

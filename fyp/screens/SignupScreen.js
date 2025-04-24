@@ -1,3 +1,5 @@
+// SignupScreen.js (Updated with navigation.reset)
+
 import React, { useState } from 'react';
 import {
   View,
@@ -13,7 +15,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   StatusBar,
-  Alert // Make sure Alert is imported
+  Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,8 +23,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { auth, db } from '../firebaseConfig'; // Assuming db is exported from firebaseConfig
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore'; // Import Firestore functions
+// *** NEW: Import CommonActions for navigation reset ***
+import { CommonActions } from '@react-navigation/native';
 
 const USERS_COLLECTION = 'Users'; // Define collection name
+// *** NEW: Define the target screen name after successful login/signup ***
+// Make sure 'BottomTabs' is the correct name of your main authenticated navigator/screen
+const MAIN_APP_SCREEN_NAME = 'BottomTabs';
 
 const SignupScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
@@ -35,10 +42,9 @@ const SignupScreen = ({ navigation }) => {
 
   // Handle signup process
   const handleSignUp = async () => {
-    // Reset error on new attempt
     setError('');
 
-    // Keep existing validation
+    // Validation
     if (!email || !password || !confirmPassword) {
       setError('Please fill in all fields.');
       return;
@@ -47,7 +53,6 @@ const SignupScreen = ({ navigation }) => {
       setError('Passwords do not match.');
       return;
     }
-    // Optional: Add password length check if needed
     if (password.length < 6) {
        setError('Password must be at least 6 characters long.');
        return;
@@ -57,41 +62,49 @@ const SignupScreen = ({ navigation }) => {
 
     try {
       // 1. Create user in Firebase Authentication
-      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password); // Trim email
+      const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const newUser = userCredential.user;
       console.log('User created successfully in Auth:', newUser.uid);
 
-      // --- Start Firestore Logic ---
+      // --- Firestore Logic ---
       if (newUser) {
-        // 2. Create reference to the user's document in Firestore 'Users' collection
-        const userDocRef = doc(db, USERS_COLLECTION, newUser.uid); // Use UID as document ID
+        // 2. Create Firestore document reference
+        const userDocRef = doc(db, USERS_COLLECTION, newUser.uid);
 
-        // 3. Define the data to save
+        // 3. Define user data
         const userData = {
-          uid: newUser.uid,                  // Store UID
-          email: newUser.email,              // Store email
-          verificationStatus: "Not Applied", // *** Add the required field ***
-          createdAt: serverTimestamp(),      // Add creation timestamp
-          // Add any other default fields needed at signup here
+          uid: newUser.uid,
+          email: newUser.email,
+          verificationStatus: "Not Applied", // Add required field
+          createdAt: serverTimestamp(),
+          // Add any other default fields
         };
 
-        // 4. Write the data to Firestore
+        // 4. Write data to Firestore
         await setDoc(userDocRef, userData);
         console.log('Firestore user document created successfully!');
-        // --- End Firestore Logic ---
 
-        // 5. Navigate only AFTER both Auth and Firestore succeed
-        navigation.replace('BottomTabs');
+        // --- MODIFICATION: Reset Navigation Stack ---
+        // 5. Reset stack to the main app screen instead of replacing
+        console.log(`Signup successful, resetting navigation stack to: ${MAIN_APP_SCREEN_NAME}`);
+        navigation.dispatch(
+          CommonActions.reset({
+            index: 0, // Make the first route active
+            routes: [
+              // Define the new stack - only the main authenticated screen
+              { name: MAIN_APP_SCREEN_NAME },
+            ],
+          })
+        );
+        // --- END MODIFICATION ---
+
       } else {
-          // Handle rare case where Auth user is null after creation
           throw new Error("User account created but user data is not available.");
       }
 
     } catch (error) {
       console.error("Signup Error:", error);
-      // Keep original error handling
       let errorMessage = error.message;
-       // Optionally provide more specific messages
       if (error.code === 'auth/email-already-in-use') {
         errorMessage = 'This email address is already registered.';
       } else if (error.code === 'auth/weak-password') {
@@ -100,14 +113,13 @@ const SignupScreen = ({ navigation }) => {
         errorMessage = 'Please enter a valid email address.';
       }
       setError(errorMessage);
-      // Use Alert for critical errors if needed, but setError is usually sufficient
-      // Alert.alert("Signup Failed", errorMessage);
+      // Alert.alert("Signup Failed", errorMessage); // Optional: Use Alert for more prominent errors
     } finally {
       setIsLoading(false);
     }
   };
 
-  // --- Return Statement (Keep exactly as provided) ---
+  // --- Return Statement (JSX remains unchanged) ---
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FAFAFA" />
@@ -214,16 +226,17 @@ const styles = StyleSheet.create({
   },
   gradientContainer: {
     width: '100%',
-    height: '45%',
+    height: '45%', // Adjust as needed
     justifyContent: 'center',
     alignItems: 'center',
-    borderTopLeftRadius: 40,
+    borderTopLeftRadius: 40, // Consider if these radii are desired
     borderTopRightRadius: 40,
     elevation: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
+    marginBottom: 20, // Add margin if needed
   },
   image: {
     width: 120,
@@ -239,13 +252,13 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 14,
-    color: '#FFCCBC',
+    color: '#FFCCBC', // Lighter color for subtitle
     textAlign: 'center',
     marginTop: 5,
   },
   inputContainer: {
     width: '100%',
-    marginTop: 15,
+    marginTop: 15, // Space below gradient
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -256,12 +269,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6, // Adjust padding for consistency
     elevation: 2,
   },
   input: {
     flex: 1,
-    height: 42,
+    // height: 42, // MinHeight might be better than fixed height with multiline possibility
+    minHeight: 42,
     fontSize: 15,
     color: '#333',
     marginLeft: 10,
@@ -276,7 +290,7 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   buttonDisabled: {
-    backgroundColor: '#FF6666',
+    backgroundColor: '#FF6666', // Lighter red when disabled
   },
   buttonText: {
     color: '#FFFFFF',
@@ -284,7 +298,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   signupText: {
-    marginTop: 15, // Adjusted margin slightly
+    marginTop: 20, // Increased margin
     color: '#333',
     fontSize: 13,
     fontWeight: '500',
@@ -296,7 +310,7 @@ const styles = StyleSheet.create({
     textDecorationLine: 'underline',
   },
   errorText: {
-    color: '#F44336',
+    color: '#F44336', // Material Design error color
     fontSize: 14,
     marginBottom: 8,
     textAlign: 'center',

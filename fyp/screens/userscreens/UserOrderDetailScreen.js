@@ -1,4 +1,4 @@
-// UserOrderDetailScreen.js (COMPLETE CODE - Real-time, Items First, All Details & Helpers)
+// UserOrderDetailScreen.js (COMPLETE CODE - Displays Delivery OTP when Shipped)
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -7,7 +7,7 @@ import {
   Alert, StatusBar
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { MaterialIcons as Icon } from '@expo/vector-icons';
+import { MaterialIcons as Icon } from '@expo/vector-icons'; // Using MaterialIcons
 import { getFirestore, doc, onSnapshot, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebaseConfig'; // Verify path
 import { format, isValid } from 'date-fns';
@@ -18,55 +18,45 @@ const ScreenBackgroundColor = '#F8F9FA';
 const TextColorPrimary = '#212121';
 const TextColorSecondary = '#6B7280';
 const AccentColor = '#FF0000';
+const SuccessColor = '#4CAF50'; // For OTP display emphasis
 const LightBorderColor = '#E5E7EB';
 const PlaceholderBgColor = '#F0F0F0';
 const CURRENCY_SYMBOL = 'PKR';
 const placeholderImagePath = require('../../assets/p3.jpg'); // Verify path
 const ORDERS_COLLECTION = 'orders';
+const SHIPPED_STATUS = 'Shipped'; // Use constant for status check
+
+// Colors for the BNPL indicator badge (if used in item display)
+const BnplIndicatorBgColor = 'rgba(0, 86, 179, 0.1)';
+const BnplIndicatorTextColor = '#0056b3';
 
 // --- Helper: Format Date (Full Timestamp) ---
 const formatDate = (timestamp) => {
     let dateToFormat = null;
-    if (timestamp instanceof Timestamp) {
-        dateToFormat = timestamp.toDate();
-    } else if (timestamp instanceof Date) {
-        dateToFormat = timestamp;
-    }
+    if (timestamp instanceof Timestamp) { dateToFormat = timestamp.toDate(); }
+    else if (timestamp instanceof Date) { dateToFormat = timestamp; }
     if (dateToFormat && isValid(dateToFormat)) {
-        try {
-            return format(dateToFormat, 'MMM d, yyyy, h:mm a');
-        } catch (e) {
-            console.error("[formatDate] Error formatting:", e);
-            return 'Invalid Date';
-        }
-    }
-    return 'N/A';
+        try { return format(dateToFormat, 'MMM d, yyyy, h:mm a'); }
+        catch (e) { console.error("[formatDate] Error formatting:", e); return 'Invalid Date'; }
+    } return 'N/A';
 };
 
 // --- Helper: Format Date (Short for Due Dates) ---
 const formatShortDate = (timestamp) => {
      let dateToFormat = null;
-     if (timestamp instanceof Timestamp) {
-        dateToFormat = timestamp.toDate();
-     } else if (timestamp instanceof Date) {
-         dateToFormat = timestamp;
-     }
+     if (timestamp instanceof Timestamp) { dateToFormat = timestamp.toDate(); }
+     else if (timestamp instanceof Date) { dateToFormat = timestamp; }
      if (dateToFormat && isValid(dateToFormat)) {
-         try {
-            return format(dateToFormat, 'MMM d, yyyy');
-        } catch (e) {
-            console.error("[formatShortDate] Error formatting:", e);
-            return 'Invalid Date';
-        }
-     }
-    return 'N/A';
+         try { return format(dateToFormat, 'MMM d, yyyy'); }
+        catch (e) { console.error("[formatShortDate] Error formatting:", e); return 'Invalid Date'; }
+     } return 'N/A';
 };
 
 // --- Helper: Get Status Style ---
 const getStatusStyle = (status) => {
      const lowerStatus = status?.toLowerCase() || 'unknown';
      switch (lowerStatus) {
-          case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': return styles.statusPending;
+          case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': case 'unpaid (bnpl)': return styles.statusPending; // Combined unpaid statuses
           case 'processing': case 'partially paid': return styles.statusProcessing;
           case 'shipped': return styles.statusShipped;
           case 'delivered': return styles.statusDelivered;
@@ -96,8 +86,6 @@ export default function UserOrderDetailScreen() {
       setCurrentOrderData(null);
       return; // Stop effect
     }
-    // Don't necessarily set loading true if we already have initial data
-    // setLoading(true);
     setError(null);
     console.log(`[UserOrderDetailScreen] Setting up listener for order: ${orderId}`);
     const orderRef = doc(db, ORDERS_COLLECTION, orderId);
@@ -202,9 +190,9 @@ export default function UserOrderDetailScreen() {
           {/* Simple Header for Error state */}
          <View style={styles.simpleHeader}>
              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButtonError}>
-                 <Icon name="arrow-left" size={20} color={TextColorPrimary} />
+                 <Icon name="arrow-back" size={24} color={TextColorPrimary} />{/* Updated Icon */}
              </TouchableOpacity>
-             <Text style={styles.headerTitleError}>Error</Text>
+             <Text style={styles.headerTitleError}>Order Details</Text> {/* More generic title */}
          </View>
         <View style={styles.loadingContainer}>
           {/* Ensure error string is in Text */}
@@ -217,12 +205,19 @@ export default function UserOrderDetailScreen() {
     );
   }
 
+  // --- Determine derived values ---
+  const paymentMethod = currentOrderData.paymentMethod || 'Unknown';
+  const relevantPlanDetails = currentOrderData.bnplPlanDetails || currentOrderData.fixedDurationDetails;
+  const isRelevantPlanInstallment = relevantPlanDetails?.planType === 'Installment';
+  const isRelevantPlanFixed = relevantPlanDetails?.planType === 'Fixed Duration' || paymentMethod === 'Fixed Duration';
+  const showCodSection = (paymentMethod === 'COD' || paymentMethod === 'Mixed') && typeof currentOrderData.codAmount === 'number' && currentOrderData.codAmount > 0;
+  const showInstallmentSection = (paymentMethod === 'BNPL' || paymentMethod === 'Mixed') && isRelevantPlanInstallment && typeof currentOrderData.bnplAmount === 'number' && currentOrderData.bnplAmount > 0;
+  const showFixedDurationSection = (paymentMethod === 'Fixed Duration' || paymentMethod === 'BNPL' || paymentMethod === 'Mixed') && isRelevantPlanFixed && typeof currentOrderData.bnplAmount === 'number' && currentOrderData.bnplAmount > 0;
+
   // --- Main Render when data is loaded ---
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
-      {/* Header Removed */}
-
       <ScrollView contentContainerStyle={styles.scrollContainer}>
 
         {/* Items Ordered Section (First) */}
@@ -234,6 +229,7 @@ export default function UserOrderDetailScreen() {
               keyExtractor={(itemData, index) => itemData?.id ? `${itemData.id}-${index}` : `item-${index}`}
               renderItem={renderOrderItem}
               scrollEnabled={false}
+              ListEmptyComponent={<Text>No items found.</Text>}
             />
           </View>
            <View style={styles.orderTotals}>
@@ -241,9 +237,6 @@ export default function UserOrderDetailScreen() {
                     <Text style={styles.summaryLabel}>Subtotal:</Text>
                     <Text style={styles.summaryValue}>{CURRENCY_SYMBOL} {(currentOrderData.subtotal || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}</Text>
                 </View>
-                {/* Add Shipping/Tax from currentOrderData if available */}
-                {/* <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Shipping:</Text><Text style={styles.summaryValue}>{CURRENCY_SYMBOL} {(currentOrderData.shippingFee || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}</Text></View> */}
-                {/* <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Tax:</Text><Text style={styles.summaryValue}>{CURRENCY_SYMBOL} {(currentOrderData.tax || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}</Text></View> */}
                 <View style={styles.totalDivider} />
                  <View style={styles.summaryRow}>
                     <Text style={[styles.summaryLabel, styles.grandTotalLabel]}>Grand Total:</Text>
@@ -262,16 +255,26 @@ export default function UserOrderDetailScreen() {
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Order Date:</Text>
-            {/* Format the date fetched from the listener */}
             <Text style={styles.summaryValue}>{formatDate(currentOrderData.createdAt || currentOrderData.orderDate)}</Text>
           </View>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Status:</Text>
-            {/* Use status from listener data */}
             <View style={[styles.statusBadge, getStatusStyle(currentOrderData.status)]}>
                  <Text style={styles.statusText}>{currentOrderData.status || 'Unknown'}</Text>
              </View>
           </View>
+
+          {/* --- Display OTP (Conditional) --- */}
+          {/* Show only when status is Shipped and OTP exists */}
+          {currentOrderData.status === SHIPPED_STATUS && currentOrderData.deliveryOtp && (
+            <View style={styles.otpDisplayRow}>
+                <Icon name="vpn-key" size={16} color={SuccessColor} style={{ marginRight: 6 }}/>
+                <Text style={styles.otpDisplayLabel}>Delivery OTP:</Text>
+                <Text style={styles.otpDisplayValue}>{currentOrderData.deliveryOtp}</Text>
+            </View>
+          )}
+          {/* --- End Display OTP --- */}
+
         </View>
 
         {/* Delivery Information */}
@@ -289,9 +292,10 @@ export default function UserOrderDetailScreen() {
                 <Text style={styles.summaryLabel}>Method:</Text>
                 <Text style={styles.summaryValue}>{currentOrderData.paymentMethod || 'N/A'}</Text>
             </View>
-            <View style={styles.summaryRow}>
+             <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Payment Status:</Text>
-                <Text style={styles.summaryValue}>{currentOrderData.paymentStatus || 'N/A'}</Text>
+                 {/* Apply status styling to Payment Status as well */}
+                <View style={[styles.statusBadge, getStatusStyle(currentOrderData.paymentStatus)]}><Text style={styles.statusText}>{currentOrderData.paymentStatus || 'N/A'}</Text></View>
             </View>
 
             {/* BNPL Plan Details */}
@@ -326,6 +330,7 @@ export default function UserOrderDetailScreen() {
                     keyExtractor={(inst, index) => inst?.installmentNumber ? `inst-${inst.installmentNumber}-${index}` : `inst-fallback-${index}`}
                     renderItem={renderInstallment}
                     scrollEnabled={false}
+                    ListEmptyComponent={<Text>No installment data found.</Text>}
                 />
             </View>
         )}
@@ -338,20 +343,18 @@ export default function UserOrderDetailScreen() {
 // --- Styles ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: ScreenBackgroundColor, },
-  scrollContainer: { flexGrow: 1, padding: 15, paddingBottom: 40, paddingTop: 20 }, // Added paddingTop
+  scrollContainer: { flexGrow: 1, padding: 15, paddingBottom: 40, paddingTop: 20 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   errorText: { fontSize: 16, color: AccentColor, marginBottom: 15, textAlign: 'center' },
   errorLink: { fontSize: 16, color: '#007AFF', fontWeight: 'bold' },
-  // Simple Header for Loading/Error States
   simpleHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 10, backgroundColor: AppBackgroundColor, borderBottomWidth: 1, borderBottomColor: LightBorderColor, },
-  backButtonError: { padding: 8, }, // Specific style if needed
-  headerTitleError: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '600', color: TextColorPrimary, marginRight: 30 }, // Adjusted margin for centering
+  backButtonError: { padding: 8, marginRight: 10, },
+  headerTitleError: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '600', color: TextColorPrimary, marginRight: 40, }, // Adjusted marginRight
   section: { backgroundColor: AppBackgroundColor, borderRadius: 8, padding: 15, marginBottom: 15, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 1.5, borderWidth: 1, borderColor: LightBorderColor, },
   sectionTitle: { fontSize: 17, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: LightBorderColor, paddingBottom: 8, },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, },
-  summaryLabel: { fontSize: 14, color: TextColorSecondary, flexShrink: 1, marginRight: 5 }, // Allow label shrink
-  summaryValue: { fontSize: 14, fontWeight: '500', color: TextColorPrimary, textAlign: 'right', flexShrink: 1, }, // Align right
-  totalValue: { fontWeight: 'bold', fontSize: 16, color: AccentColor, },
+  summaryLabel: { fontSize: 14, color: TextColorSecondary, marginRight: 5 },
+  summaryValue: { fontSize: 14, fontWeight: '500', color: TextColorPrimary, textAlign: 'right', flexShrink: 1, },
   statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, },
   statusText: { fontSize: 12, fontWeight: 'bold', color: '#fff', },
   statusPending: { backgroundColor: '#FFA726' }, statusProcessing: { backgroundColor: '#42A5F5' }, statusShipped: { backgroundColor: '#66BB6A' }, statusDelivered: { backgroundColor: '#78909C' }, statusCancelled: { backgroundColor: '#EF5350' }, statusUnknown: { backgroundColor: '#BDBDBD' },
@@ -360,7 +363,7 @@ const styles = StyleSheet.create({
   planDetailTitle: { fontSize: 14, fontWeight: '600', color: TextColorPrimary, marginBottom: 6 },
   planDetailText: { fontSize: 13, color: TextColorSecondary, marginBottom: 4, lineHeight: 18 },
   installmentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: LightBorderColor, flexWrap: 'wrap' },
-  installmentText: { fontSize: 13, color: TextColorSecondary, flexShrink: 1, paddingRight: 5, marginBottom: 3, marginTop: 3, textAlign: 'left' }, // Ensure left align
+  installmentText: { fontSize: 13, color: TextColorSecondary, flexShrink: 1, paddingRight: 5, marginBottom: 3, marginTop: 3, textAlign: 'left' },
   statusBadgeSmall: { paddingVertical: 2, paddingHorizontal: 6, borderRadius: 10, marginVertical: 3, },
   statusTextSmall: { fontSize: 10, fontWeight: 'bold', color: '#fff', },
   statusPaid: { backgroundColor: 'green' },
@@ -374,11 +377,36 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 14, fontWeight: '600', color: TextColorPrimary, marginBottom: 3, },
   itemQtyPrice: { fontSize: 13, color: TextColorSecondary, },
   itemPrice: { fontSize: 13, color: TextColorSecondary, marginTop: 2, },
-  itemPaymentMethod: { fontSize: 11, fontStyle: 'italic', color: TextColorSecondary, marginTop: 4, }, // Style for item payment method
+  itemPaymentMethod: { fontSize: 11, fontStyle: 'italic', color: TextColorSecondary, marginTop: 4, },
   itemTotalValue: { fontSize: 14, fontWeight: 'bold', color: TextColorPrimary, textAlign: 'right', marginLeft: 10, },
   orderTotals: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: LightBorderColor, },
   totalDivider: { height: 1, backgroundColor: LightBorderColor, marginVertical: 8, },
   grandTotalLabel: { fontWeight: 'bold', fontSize: 16, color: TextColorPrimary },
   grandTotalValue: { fontWeight: 'bold', fontSize: 16, color: AccentColor },
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  // --- Styles for OTP Display ---
+  otpDisplayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 10, // Add some space above in the summary section
+    paddingVertical: 8,
+    paddingHorizontal: 60,
+    backgroundColor: '#E8F5E9', // Light green background to highlight
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#C8E6C9', // Softer green border
+    alignSelf: 'flex-start', // Don't stretch full width
+    // Remove marginLeft if you want it below status
+  },
+  otpDisplayLabel: {
+      fontSize: 14,
+      color: TextColorSecondary,
+      marginRight: 8,
+  },
+  otpDisplayValue: {
+      fontSize: 15,
+      fontWeight: 'bold',
+      color: SuccessColor, // Use success color (green)
+      letterSpacing: 2, // Space out digits slightly
+  },
 });

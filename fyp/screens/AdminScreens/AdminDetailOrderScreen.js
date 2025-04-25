@@ -1,45 +1,44 @@
-// AdminDetailOrderScreen.js (COMPLETE - CORRECTED: Using PaperInput for OTP)
+// AdminDetailOrderScreen.js (Complete Code - Final Version - Single OTP - Button Hiding Fix)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
     StyleSheet, Text, View, ScrollView, Image, TouchableOpacity,
     SafeAreaView, Platform, ActivityIndicator, FlatList, Alert, StatusBar,
-    KeyboardAvoidingView // Import KeyboardAvoidingView
-    // Removed standard TextInput import
+    KeyboardAvoidingView
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { MaterialIcons as IconMUI } from '@expo/vector-icons';
-// *** Import PaperInput ***
-import { TextInput as PaperInput } from 'react-native-paper'; // Use PaperInput
-// Import Firestore functions
+import { TextInput as PaperInput } from 'react-native-paper';
 import {
-    getFirestore, doc, updateDoc, onSnapshot, Timestamp,
-    serverTimestamp, getDoc, collection
-    // deleteField // Uncomment if you want to delete OTP after delivery
+    getFirestore, doc, updateDoc, onSnapshot, Timestamp, // Ensure Timestamp is imported
+    serverTimestamp, getDoc, collection, writeBatch
+    // deleteField // Optional: Uncomment if you want to delete OTP after delivery/verification
 } from 'firebase/firestore';
 import { db } from '../../firebaseConfig'; // Verify path
-import axios from 'axios'; // For sending push notifications
-import { format, isValid } from 'date-fns'; // For formatting dates
+import axios from 'axios';
+import { format, isValid } from 'date-fns';
 
 // --- Constants ---
 const AppBackgroundColor = '#FFFFFF';
 const ScreenBackgroundColor = '#F8F9FA';
 const TextColorPrimary = '#212121';
 const TextColorSecondary = '#6B7280';
-const AccentColor = '#FF0000'; // Red accent for actions AND focused input border/label
-const SuccessColor = '#4CAF50'; // Green for success/verification button
-const LightBorderColor = '#BDBDBD'; // Default border color for PaperInput outline
-const FocusedBorderColor = AccentColor; // Red border on focus for PaperInput outline
+const AccentColor = '#FF0000'; // Red for primary actions, focus border
+const SuccessColor = '#4CAF50'; // Green for success/verification
+const LightBorderColor = '#BDBDBD'; // Default outline color
+const FocusedBorderColor = AccentColor; // Focus outline color
 const PlaceholderBgColor = '#F0F0F0';
 const CURRENCY_SYMBOL = 'PKR';
 const placeholderImagePath = require('../../assets/p3.jpg'); // Verify path
 const ORDERS_COLLECTION = 'orders';
-const USERS_COLLECTION = 'Users'; // Needed for token fetching
+const USERS_COLLECTION = 'Users';
 const EXPO_PUSH_ENDPOINT = "https://exp.host/--/api/v2/push/send";
 const SHIPPED_STATUS = 'Shipped';
-const DELIVERED_STATUS = 'Delivered'; // Status after OTP verification
-const PAID_STATUS = 'Paid'; // Define the 'Paid' status constant
-const OTP_LENGTH = 6; // Length of the delivery OTP
+const DELIVERED_STATUS = 'Delivered';
+const PAID_STATUS = 'Paid'; // Used for overall paymentStatus AND installment status
+const ACTIVE_STATUS = 'Active'; // Used for overall order status after 1st installment paid OR Fixed Duration delivered
+const PENDING_STATUS = 'Pending'; // Used for installment status (default)
+const OTP_LENGTH = 6;
 
 // --- Helper Function: Generate OTP ---
 const generateOtpValue = () => {
@@ -71,18 +70,24 @@ const formatShortDate = (timestamp) => {
     } return 'N/A';
 };
 
+
 // --- Helper Function: Get Status Badge Style ---
 const getStatusStyle = (status) => {
     const lowerStatus = status?.toLowerCase() || 'unknown';
     switch (lowerStatus) {
         case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': case 'unpaid (bnpl)': return styles.statusPending;
         case 'processing': case 'partially paid': return styles.statusProcessing;
-        case 'shipped': return styles.statusShipped; // Distinct style for Shipped
+        case 'shipped': return styles.statusShipped;
         case 'delivered': return styles.statusDelivered;
+        case 'active': return styles.statusActive;
         case 'cancelled': case 'rejected': return styles.statusCancelled;
         default: return styles.statusUnknown;
     }
 };
+const getInstallmentStatusStyle = (status) => {
+    return (status?.toLowerCase() === PAID_STATUS.toLowerCase()) ? styles.statusPaid : styles.statusInstallmentPending;
+};
+
 
 // --- Helper Function: Fetch User's Expo Push Token ---
 async function getUserExpoToken(userId) {
@@ -92,9 +97,13 @@ async function getUserExpoToken(userId) {
         const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
             const token = userDocSnap.data()?.expoPushToken;
-            if (token && typeof token === 'string' && token.startsWith('ExponentPushToken[')) { return token; }
-            return null; // Invalid format or missing
-        } return null; // User doc not found
+            if (token && typeof token === 'string' && (token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken['))) {
+                 return token;
+            } else {
+                 console.log(`[getUserExpoToken] Invalid token format found for user ${userId}:`, token);
+                 return null;
+            }
+        } return null;
     } catch (error) { console.error(`[getUserExpoToken] Error fetching token for user ${userId}:`, error); return null; }
 }
 
@@ -109,11 +118,11 @@ export default function AdminDetailOrderScreen() {
     const [currentOrderData, setCurrentOrderData] = useState(initialOrder);
     const [loading, setLoading] = useState(!initialOrder);
     const [error, setError] = useState(null);
+    // Delivery OTP State
     const [isProcessingShip, setIsProcessingShip] = useState(false);
     const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
     const [enteredOtp, setEnteredOtp] = useState('');
     const [otpError, setOtpError] = useState('');
-    // isOtpInputFocused state is not needed with PaperInput
 
     // --- Effect: Setup Real-time Listener ---
     useEffect(() => {
@@ -125,9 +134,9 @@ export default function AdminDetailOrderScreen() {
                 if (docSnap.exists()) {
                     const newData = { id: docSnap.id, ...docSnap.data() };
                     setCurrentOrderData(newData);
-                    if ([DELIVERED_STATUS, PAID_STATUS].includes(newData.status) || [DELIVERED_STATUS, PAID_STATUS].includes(newData.paymentStatus)) {
-                        setEnteredOtp('');
-                        setOtpError('');
+                    // Clear entered OTP if status is no longer 'Shipped'
+                    if (newData.status !== SHIPPED_STATUS) {
+                        setEnteredOtp(''); setOtpError('');
                     }
                     setError(null);
                 } else { setError("Order data not found."); setCurrentOrderData(null); }
@@ -147,8 +156,7 @@ export default function AdminDetailOrderScreen() {
             const message = {
                 to: userToken, sound: 'default', title: '🚚 Order Shipped!',
                 body: `Your order #${orderIdentifier} is shipped! Delivery OTP: ${generatedOtp}. Give this to the rider.`,
-                data: { orderId: orderId, type: 'shipping_update' },
-                priority: 'high', channelId: 'order-updates'
+                data: { orderId: orderId, type: 'shipping_update' }, priority: 'high', channelId: 'order-updates'
             };
             try {
                 await axios.post(EXPO_PUSH_ENDPOINT, [message], { headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Accept-encoding': 'gzip, deflate' }, timeout: 10000 });
@@ -157,74 +165,155 @@ export default function AdminDetailOrderScreen() {
         } else { console.log(`No valid token for user ${userId}. Skipping notification.`); }
     };
 
+    // --- Function to Send First Installment Paid Notification ---
+    const sendFirstInstallmentPaidNotification = async (userId, orderIdentifier) => {
+        console.log(`Attempting 1st installment paid notification for user ${userId}, order ${orderIdentifier}`);
+        const userToken = await getUserExpoToken(userId);
+        if (userToken) {
+            const message = {
+                to: userToken, sound: 'default', title: '✅ First Installment Paid!',
+                body: `Payment for the first installment of your order #${orderIdentifier} has been confirmed. Your order is now active.`,
+                data: { orderId: orderId, type: 'installment_update' }, priority: 'high', channelId: 'order-updates'
+            };
+            try {
+                await axios.post(EXPO_PUSH_ENDPOINT, [message], { headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Accept-encoding': 'gzip, deflate' }, timeout: 10000 });
+                console.log(`First installment notification sent for user ${userId}.`);
+            } catch (error) { console.error(`Failed 1st installment notification to user ${userId}:`, error.response?.data || error.message || error); }
+        } else { console.log(`No valid token for user ${userId}. Skipping 1st installment notification.`); }
+    };
+
 
     // --- Handler Function: Ship Order & Generate OTP ---
     const handleShipAndGenerateOtp = async () => {
-        if (!currentOrderData?.id || !currentOrderData?.userId || isProcessingShip) return;
+         if (!currentOrderData?.id || !currentOrderData?.userId || isProcessingShip) return;
         const currentStatus = currentOrderData.status?.toLowerCase() || '';
-        if (!['pending', 'processing', 'unpaid (cod)', 'unpaid (fixed duration)', 'unpaid (bnpl)'].includes(currentStatus)) {
-            Alert.alert("Action Not Allowed", `Cannot ship order with status '${currentOrderData.status}'.`);
-            return;
+        // Check status and if OTP already exists (re-check from state just before action)
+        const shouldAllowShipping =
+            ['pending', 'processing', 'unpaid (cod)', 'unpaid (fixed duration)', 'unpaid (bnpl)', 'active'].includes(currentStatus) &&
+            !currentOrderData?.deliveryOtp;
+
+        if (!shouldAllowShipping) {
+             Alert.alert("Action Not Allowed", `Order cannot be shipped in status '${currentOrderData.status}' or OTP already exists.`);
+             return;
         }
-        setIsProcessingShip(true);
+
+        setIsProcessingShip(true); // Show loading indicator in button
         const orderRef = doc(db, ORDERS_COLLECTION, currentOrderData.id);
         const newOtp = generateOtpValue();
-        console.log(`Generated OTP for order ${currentOrderData.id}: ${newOtp}`);
+        console.log(`Generated Delivery OTP for order ${currentOrderData.id}: ${newOtp}`);
         try {
+            // Update status to Shipped and add OTP/timestamp
             await updateDoc(orderRef, { status: SHIPPED_STATUS, shippedAt: serverTimestamp(), deliveryOtp: newOtp });
-            console.log(`Order ${currentOrderData.id} status updated to ${SHIPPED_STATUS} and OTP saved.`);
+            console.log(`Order ${currentOrderData.id} status updated to ${SHIPPED_STATUS} and Delivery OTP saved.`);
+            // Notification happens after successful update
             await sendShippingNotification(currentOrderData.userId, currentOrderData.orderNumber || currentOrderData.id, newOtp);
             Alert.alert("Success", `Order marked as ${SHIPPED_STATUS}. Delivery OTP: ${newOtp}`);
         } catch (error) {
             console.error("Error marking order as shipped or saving OTP:", error);
             Alert.alert("Error", "Could not update the order status or save OTP.");
         } finally {
-            setIsProcessingShip(false);
+            setIsProcessingShip(false); // Hide loading indicator in button
         }
     };
 
 
-    // --- Handler Function: Verify OTP & Complete Order ---
+    // --- Handler Function: Verify Delivery OTP & Complete Order ---
     const handleVerifyOtp = async () => {
         const storedOtp = currentOrderData?.deliveryOtp;
         const trimmedEnteredOtp = enteredOtp.trim();
+
         setOtpError('');
         if (!trimmedEnteredOtp) { setOtpError("Please enter the OTP."); return; }
         if (trimmedEnteredOtp.length !== OTP_LENGTH) { setOtpError(`OTP must be ${OTP_LENGTH} digits.`); return; }
-        if (!storedOtp) { Alert.alert("Error", "No Delivery OTP found stored for this order."); return; }
+        if (!storedOtp) { Alert.alert("Error", "No Delivery OTP found for this order."); return; }
         if (isVerifyingOtp) return;
 
         setIsVerifyingOtp(true);
+
         if (trimmedEnteredOtp === storedOtp) {
-            console.log(`OTP Verified for order ${orderId}. Marking as Delivered and Paid.`);
+            console.log(`Delivery OTP Verified for order ${orderId}.`);
             const orderRef = doc(db, ORDERS_COLLECTION, currentOrderData.id);
+
+            const isFixedDurationOrder = currentOrderData?.paymentMethod === 'Fixed Duration';
+            const isBnplOrder = currentOrderData?.paymentMethod === 'BNPL';
+            const firstInstallment = currentOrderData?.installments?.[0];
+            const isFirstInstallmentUnpaid = firstInstallment && firstInstallment.status?.toLowerCase() !== PAID_STATUS.toLowerCase();
+
+            let updateData = {};
+            let successMessage = "";
+            let notificationToSend = null;
+
             try {
-                await updateDoc(orderRef, {
-                    status: DELIVERED_STATUS,
-                    deliveredAt: serverTimestamp(),
-                    paymentStatus: PAID_STATUS,
-                    paymentReceivedAt: serverTimestamp(),
-                    // deliveryOtp: deleteField()
-                });
-                console.log(`Order ${orderId} status updated to ${DELIVERED_STATUS} and payment marked as ${PAID_STATUS}.`);
-                Alert.alert("Success", "OTP Verified! Order marked as Delivered and Paid.");
-                setEnteredOtp('');
+                // Case 1: Fixed Duration Order
+                if (isFixedDurationOrder) {
+                    console.log("Handling Fixed Duration order completion (Set to Active).");
+                    updateData = {
+                        status: ACTIVE_STATUS,
+                        deliveredAt: serverTimestamp(), // OK here
+                        // Optionally remove OTP: deliveryOtp: deleteField()
+                    };
+                    successMessage = `OTP Verified! Order status set to ${ACTIVE_STATUS}. Payment remains pending.`;
+                }
+                // Case 2: BNPL Order with Unpaid First Installment
+                else if (isBnplOrder && isFirstInstallmentUnpaid) {
+                    console.log("Handling BNPL order - First installment unpaid. Marking paid and setting Active.");
+                    const clientPaidAtTimestamp = Timestamp.now(); // Use client time for array field
+                    const updatedInstallments = (currentOrderData.installments || []).map((inst, index) => {
+                        if (index === 0) {
+                            return { ...inst, status: PAID_STATUS, paidAt: clientPaidAtTimestamp };
+                        }
+                        return inst;
+                    });
+                    updateData = {
+                        installments: updatedInstallments, // Update the array
+                        status: ACTIVE_STATUS,             // Set overall status to Active
+                        deliveredAt: serverTimestamp(),      // Mark as delivered too (server time ok)
+                        // Optionally remove OTP: deliveryOtp: deleteField()
+                        // DO NOT update overall paymentStatus or paymentReceivedAt yet
+                    };
+                    successMessage = "OTP Verified! First installment marked as paid. Order is now Active.";
+                    notificationToSend = () => sendFirstInstallmentPaidNotification(currentOrderData.userId, currentOrderData.orderNumber || currentOrderData.id);
+                }
+                // Case 3: All other orders (COD, Standard, BNPL where 1st was already paid)
+                else {
+                    console.log("Handling standard order completion (Set to Delivered/Paid).");
+                    updateData = {
+                        status: DELIVERED_STATUS,
+                        deliveredAt: serverTimestamp(), // OK here
+                        paymentStatus: PAID_STATUS, // Mark fully paid on delivery
+                        paymentReceivedAt: serverTimestamp(), // OK here
+                         // Optionally remove OTP: deliveryOtp: deleteField()
+                    };
+                     successMessage = "OTP Verified! Order marked as Delivered and Paid.";
+                }
+
+                // Perform the Firestore update
+                await updateDoc(orderRef, updateData);
+                console.log(`Order ${orderId} updated successfully based on OTP verification logic.`);
+                Alert.alert("Success", successMessage);
+                setEnteredOtp(''); // Clear entered OTP
+
+                // Send the relevant notification *after* successful update
+                if (notificationToSend) {
+                    await notificationToSend();
+                }
+
             } catch (error) {
-                console.error("Error updating order status/payment to Delivered/Paid:", error);
-                Alert.alert("Error", "Could not update order status/payment after OTP verification.");
-                setOtpError("Verification succeeded but failed to update status/payment.");
+                console.error("Error updating order status after OTP verification:", error);
+                Alert.alert("Error", "Could not update order status after verification.");
+                setOtpError("Verification succeeded but failed to update status.");
             }
         } else {
-            console.warn(`Incorrect OTP entered for order ${orderId}. Entered: ${trimmedEnteredOtp}, Expected: ${storedOtp}`);
+            console.warn(`Incorrect Delivery OTP entered for order ${orderId}. Entered: ${trimmedEnteredOtp}, Expected: ${storedOtp}`);
             setOtpError("Incorrect OTP entered. Please try again.");
         }
         setIsVerifyingOtp(false);
     };
 
 
-    // --- Render Functions (Unchanged) ---
+    // --- Render Functions ---
     const renderOrderItem = ({ item, index }) => {
-         if (!item || typeof item.price !== 'number' || typeof item.quantity !== 'number') { return null; }
+          if (!item || typeof item.price !== 'number' || typeof item.quantity !== 'number') { return null; }
         const itemsArray = currentOrderData?.items || [];
         const itemTotal = (item.price || 0) * (item.quantity || 1);
         const paymentMethod = item.paymentMethod || 'COD';
@@ -248,14 +337,18 @@ export default function AdminDetailOrderScreen() {
     };
     const renderInstallment = ({ item }) => {
          if (!item || typeof item.amount !== 'number') return null;
+         const installmentStatus = item.status || PENDING_STATUS;
         return (
             <View style={styles.installmentRow}>
                 <Text style={styles.installmentText}>Inst. #{item.installmentNumber || 'N/A'}</Text>
                 <Text style={styles.installmentText}>{CURRENCY_SYMBOL} {item.amount?.toLocaleString(undefined, {maximumFractionDigits:0}) || 'N/A'}</Text>
                 <Text style={styles.installmentText}>Due: {formatShortDate(item.dueDate)}</Text>
-                <View style={[styles.statusBadgeSmall, item.paid ? styles.statusPaid : styles.statusInstallmentPending]}>
-                   <Text style={styles.statusTextSmall}>{item.paid ? 'Paid' : 'Pending'}</Text>
+                <View style={[styles.statusBadgeSmall, getInstallmentStatusStyle(installmentStatus)]}>
+                   <Text style={styles.statusTextSmall}>{installmentStatus}</Text>
                 </View>
+                {item.paidAt && isValid(item.paidAt.toDate ? item.paidAt.toDate() : item.paidAt) && (
+                     <Text style={styles.paidAtText}>Paid: {formatShortDate(item.paidAt)}</Text>
+                )}
                 {typeof item.penalty === 'number' && item.penalty > 0 && (<Text style={styles.penaltyText}>Penalty: {CURRENCY_SYMBOL}{item.penalty.toFixed(2)}</Text>)}
             </View>
         );
@@ -263,7 +356,7 @@ export default function AdminDetailOrderScreen() {
     // --- (End Render Functions) ---
 
 
-    // --- Conditional Rendering Logic ---
+    // --- Conditional Rendering Logic for Loading/Error ---
     if (loading) {
         return (<SafeAreaView style={styles.container}><ActivityIndicator size="large" color={AccentColor} style={styles.loader} /></SafeAreaView>);
     }
@@ -280,70 +373,192 @@ export default function AdminDetailOrderScreen() {
         );
     }
 
-    // --- Determine derived values ---
-    const canMarkAsShipped = ['pending', 'processing', 'unpaid (cod)', 'unpaid (fixed duration)', 'unpaid (bnpl)'].includes(currentOrderData.status?.toLowerCase() || '');
-    const showOtpVerificationSection = currentOrderData.status === SHIPPED_STATUS && !!currentOrderData.deliveryOtp;
+    // --- Determine derived values for UI rendering ---
+    const currentStatusLower = currentOrderData.status?.toLowerCase() || '';
+    // *** Updated Condition: Check status AND absence of existing delivery OTP ***
+    const canMarkAsShipped =
+        ['pending', 'processing', 'unpaid (cod)', 'unpaid (fixed duration)', 'unpaid (bnpl)', 'active'].includes(currentStatusLower) &&
+        !currentOrderData?.deliveryOtp; // Do not show if OTP already exists in state
+
+    const showDeliveryOtpVerification = currentStatusLower === SHIPPED_STATUS.toLowerCase() && !!currentOrderData.deliveryOtp;
     const paymentMethod = currentOrderData.paymentMethod || 'Unknown';
     const relevantPlanDetails = currentOrderData.bnplPlanDetails || currentOrderData.fixedDurationDetails;
-    const isRelevantPlanInstallment = relevantPlanDetails?.planType === 'Installment';
-    const isRelevantPlanFixed = relevantPlanDetails?.planType === 'Fixed Duration' || paymentMethod === 'Fixed Duration';
+    const isInstallmentOrder = paymentMethod === 'BNPL' || (paymentMethod === 'Mixed' && Array.isArray(currentOrderData.installments) && currentOrderData.installments.length > 0);
+    const isFixedDurationOrder = paymentMethod === 'Fixed Duration';
     const showCodSection = (paymentMethod === 'COD' || paymentMethod === 'Mixed') && typeof currentOrderData.codAmount === 'number' && currentOrderData.codAmount > 0;
-    const showInstallmentSection = (paymentMethod === 'BNPL' || paymentMethod === 'Mixed') && isRelevantPlanInstallment && typeof currentOrderData.bnplAmount === 'number' && currentOrderData.bnplAmount > 0;
-    const showFixedDurationSection = (paymentMethod === 'Fixed Duration' || paymentMethod === 'BNPL' || paymentMethod === 'Mixed') && isRelevantPlanFixed && typeof currentOrderData.bnplAmount === 'number' && currentOrderData.bnplAmount > 0;
+    const showInstallmentSection = isInstallmentOrder;
+    const showFixedDurationSection = isFixedDurationOrder;
+
 
     // --- Main Screen Render ---
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-            >
+            <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
                 <ScrollView contentContainerStyle={styles.scrollContainer}>
 
-                    {/* Sections 1-4 (Items, Summary, Customer, Payment) */}
-                     <View style={styles.section}>
+                    {/* Section 1: Items */}
+                    <View style={styles.section}>
                         <Text style={styles.sectionTitle}>Items Ordered ({currentOrderData.items?.length || 0})</Text>
-                        <View style={styles.itemsListContainer}><FlatList data={currentOrderData.items || []} keyExtractor={(itemData, index) => itemData?.id ? `${itemData.id}-${index}` : `item-${index}`} renderItem={renderOrderItem} scrollEnabled={false} ListEmptyComponent={<Text>No items found.</Text>} /></View>
+                        <View style={styles.itemsListContainer}>
+                            <FlatList
+                                data={currentOrderData.items || []}
+                                keyExtractor={(itemData, index) => itemData?.id ? `${itemData.id}-${index}` : `item-${index}`}
+                                renderItem={renderOrderItem}
+                                scrollEnabled={false}
+                                ListEmptyComponent={<Text>No items found.</Text>}
+                            />
+                        </View>
                         <View style={styles.orderTotals}>
-                            <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Subtotal:</Text><Text style={styles.summaryValue}>{CURRENCY_SYMBOL} {(currentOrderData.subtotal || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text></View>
+                            <View style={styles.summaryRow}>
+                                <Text style={styles.summaryLabel}>Subtotal:</Text>
+                                <Text style={styles.summaryValue}>{CURRENCY_SYMBOL} {(currentOrderData.subtotal || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
+                            </View>
+                            {typeof currentOrderData.deliveryFee === 'number' && currentOrderData.deliveryFee > 0 && (
+                                <View style={styles.summaryRow}>
+                                    <Text style={styles.summaryLabel}>Delivery Fee:</Text>
+                                    <Text style={styles.summaryValue}>{CURRENCY_SYMBOL} {currentOrderData.deliveryFee.toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
+                                </View>
+                            )}
                             <View style={styles.totalDivider} />
-                            <View style={styles.summaryRow}><Text style={[styles.summaryLabel, styles.grandTotalLabel]}>Grand Total:</Text><Text style={[styles.summaryValue, styles.grandTotalValue]}>{CURRENCY_SYMBOL} {(currentOrderData.grandTotal || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text></View>
+                            <View style={styles.summaryRow}>
+                                <Text style={[styles.summaryLabel, styles.grandTotalLabel]}>Grand Total:</Text>
+                                <Text style={[styles.summaryValue, styles.grandTotalValue]}>{CURRENCY_SYMBOL} {(currentOrderData.grandTotal || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
+                            </View>
                         </View>
-                    </View>
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Order Summary</Text>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Order ID:</Text><Text style={styles.summaryValue}>#{currentOrderData.id?.substring(0, 8).toUpperCase() || 'N/A'}</Text></View>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Order Date:</Text><Text style={styles.summaryValue}>{formatDate(currentOrderData.createdAt || currentOrderData.orderDate)}</Text></View>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Status:</Text><View style={[styles.statusBadge, getStatusStyle(currentOrderData.status)]}><Text style={styles.statusText}>{currentOrderData.status || 'Unknown'}</Text></View></View>
-                    </View>
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Customer Information</Text>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Name:</Text><Text style={styles.summaryValue}>{currentOrderData.userName || 'N/A'}</Text></View>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Phone:</Text><Text style={styles.summaryValue}>{currentOrderData.userPhone || 'N/A'}</Text></View>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Address:</Text><Text style={[styles.summaryValue, styles.addressValue]}>{currentOrderData.userAddress || 'N/A'}</Text></View>
-                    </View>
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Payment Details</Text>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Method:</Text><Text style={styles.summaryValue}>{paymentMethod}</Text></View>
-                        <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Payment Status:</Text>
-                             {/* Apply status styling to Payment Status */}
-                            <View style={[styles.statusBadge, getStatusStyle(currentOrderData.paymentStatus)]}><Text style={styles.statusText}>{currentOrderData.paymentStatus || 'N/A'}</Text></View>
-                        </View>
-                        {showCodSection && (<View style={styles.paymentSubSection}><Text style={styles.paymentSubHeader}>Cash on Delivery</Text><View style={styles.summaryRow}><Text style={styles.summaryLabel}>Amount Due (COD):</Text><Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.codAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text></View></View>)}
-                        {showInstallmentSection && (<View style={styles.paymentSubSection}><Text style={styles.paymentSubHeader}>Installment Plan</Text><View style={styles.summaryRow}><Text style={styles.summaryLabel}>Plan Amount (BNPL):</Text><Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.bnplAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text></View>{relevantPlanDetails && (<View style={styles.planDetailsBox}><Text style={styles.planDetailText}>Plan Name: {relevantPlanDetails.name || 'N/A'}</Text><Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration || 'N/A'} Months</Text><Text style={styles.planDetailText}>Interest: {typeof relevantPlanDetails.interestRate === 'number' ? `${(relevantPlanDetails.interestRate * 100).toFixed(1)}%` : 'N/A'}</Text></View>)}{currentOrderData.firstInstallmentPaymentPreference && (<View style={styles.summaryRow}><Text style={styles.summaryLabel}>1st Inst. Pref:</Text><Text style={styles.summaryValue}>{currentOrderData.firstInstallmentPaymentPreference}</Text></View>)}<Text style={styles.linkText}>(See Full Schedule Below)</Text></View>)}
-                        {showFixedDurationSection && (<View style={styles.paymentSubSection}><Text style={styles.paymentSubHeader}>Fixed Duration Plan</Text><View style={styles.summaryRow}><Text style={styles.summaryLabel}>Plan Amount:</Text><Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.bnplAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text></View>{relevantPlanDetails && (<View style={styles.planDetailsBox}><Text style={styles.planDetailText}>Plan Name: {relevantPlanDetails.name || 'N/A'}</Text><Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration || 'N/A'} Months</Text><Text style={styles.planDetailText}>Interest: {typeof relevantPlanDetails.interestRate === 'number' ? `${(relevantPlanDetails.interestRate * 100).toFixed(1)}%` : 'N/A'}</Text></View>)}<View style={styles.summaryRow}><Text style={styles.summaryLabel}>Payment Due Date:</Text><Text style={styles.summaryValue}>{formatShortDate(currentOrderData.paymentDueDate)}</Text></View>{typeof currentOrderData.fixedDurationAmountDue === 'number' && currentOrderData.fixedDurationAmountDue !== currentOrderData.bnplAmount && (<View style={styles.summaryRow}><Text style={styles.summaryLabel}>Specific Amt Due:</Text><Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {currentOrderData.fixedDurationAmountDue.toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text></View>)}{typeof currentOrderData.penalty === 'number' && currentOrderData.penalty > 0 && (<View style={styles.summaryRow}><Text style={[styles.summaryLabel, styles.penaltyLabel]}>Penalty Applied:</Text><Text style={[styles.summaryValue, styles.penaltyValue]}>{CURRENCY_SYMBOL}{currentOrderData.penalty.toFixed(2)}</Text></View>)}</View>)}
                     </View>
 
-                    {/* Section 5: BNPL Installment Schedule (Conditional) */}
+                    {/* Section 2: Order Summary */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Order Summary</Text>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Order ID:</Text>
+                            <Text style={styles.summaryValue}>#{currentOrderData.id?.substring(0, 8).toUpperCase() || 'N/A'}</Text>
+                        </View>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Order Date:</Text>
+                            <Text style={styles.summaryValue}>{formatDate(currentOrderData.createdAt || currentOrderData.orderDate)}</Text>
+                        </View>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Order Status:</Text>
+                            <View style={[styles.statusBadge, getStatusStyle(currentOrderData.status)]}>
+                                <Text style={styles.statusText}>{currentOrderData.status || 'Unknown'}</Text>
+                            </View>
+                        </View>
+                    </View>
+
+                    {/* Section 3: Customer Information */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Customer Information</Text>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Name:</Text>
+                            <Text style={styles.summaryValue}>{currentOrderData.userName || 'N/A'}</Text>
+                        </View>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Phone:</Text>
+                            <Text style={styles.summaryValue}>{currentOrderData.userPhone || 'N/A'}</Text>
+                        </View>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Address:</Text>
+                            <Text style={[styles.summaryValue, styles.addressValue]}>{currentOrderData.userAddress || 'N/A'}</Text>
+                        </View>
+                    </View>
+
+                    {/* Section 4: Payment Details */}
+                    <View style={styles.section}>
+                        <Text style={styles.sectionTitle}>Payment Details</Text>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Method:</Text>
+                            <Text style={styles.summaryValue}>{paymentMethod}</Text>
+                        </View>
+                        <View style={styles.summaryRow}>
+                            <Text style={styles.summaryLabel}>Payment Status:</Text>
+                            <View style={[styles.statusBadge, getStatusStyle(currentOrderData.paymentStatus)]}>
+                                <Text style={styles.statusText}>{currentOrderData.paymentStatus || 'N/A'}</Text>
+                            </View>
+                        </View>
+
+                        {/* Conditional: COD Section */}
+                        {showCodSection && (
+                            <View style={styles.paymentSubSection}>
+                                <Text style={styles.paymentSubHeader}>Cash on Delivery</Text>
+                                <View style={styles.summaryRow}>
+                                    <Text style={styles.summaryLabel}>Amount Due (COD):</Text>
+                                    <Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.codAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
+                                </View>
+                            </View>
+                        )}
+
+                        {/* Conditional: Installment Section */}
+                        {showInstallmentSection && (
+                            <View style={styles.paymentSubSection}>
+                                <Text style={styles.paymentSubHeader}>Installment Plan</Text>
+                                <View style={styles.summaryRow}>
+                                    <Text style={styles.summaryLabel}>Plan Amount (BNPL):</Text>
+                                    <Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.bnplAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
+                                </View>
+                                {relevantPlanDetails && (
+                                    <View style={styles.planDetailsBox}>
+                                        <Text style={styles.planDetailText}>Plan Name: {relevantPlanDetails.name || 'N/A'}</Text>
+                                        <Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration || 'N/A'} Months</Text>
+                                        <Text style={styles.planDetailText}>Interest: {typeof relevantPlanDetails.interestRate === 'number' ? `${(relevantPlanDetails.interestRate * 100).toFixed(1)}%` : 'N/A'}</Text>
+                                    </View>
+                                )}
+                                {currentOrderData.firstInstallmentPaymentPreference && (
+                                    <View style={styles.summaryRow}>
+                                        <Text style={styles.summaryLabel}>1st Inst. Pref:</Text>
+                                        <Text style={styles.summaryValue}>{currentOrderData.firstInstallmentPaymentPreference}</Text>
+                                    </View>
+                                )}
+                                {(currentOrderData.installments?.length > 0) && <Text style={styles.linkText}>(See Full Schedule Below)</Text>}
+                            </View>
+                        )}
+
+                        {/* Conditional: Fixed Duration Section */}
+                        {showFixedDurationSection && (
+                            <View style={styles.paymentSubSection}>
+                                <Text style={styles.paymentSubHeader}>Fixed Duration Plan</Text>
+                                <View style={styles.summaryRow}>
+                                    <Text style={styles.summaryLabel}>Plan Amount:</Text>
+                                    <Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.fixedDurationAmountDue ?? currentOrderData.bnplAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
+                                </View>
+                                {relevantPlanDetails && (
+                                    <View style={styles.planDetailsBox}>
+                                        <Text style={styles.planDetailText}>Plan Name: {relevantPlanDetails.name || 'N/A'}</Text>
+                                        <Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration || 'N/A'} Months</Text>
+                                        <Text style={styles.planDetailText}>Interest: {typeof relevantPlanDetails.interestRate === 'number' ? `${(relevantPlanDetails.interestRate * 100).toFixed(1)}%` : 'N/A'}</Text>
+                                    </View>
+                                )}
+                                <View style={styles.summaryRow}>
+                                    <Text style={styles.summaryLabel}>Payment Due Date:</Text>
+                                    <Text style={styles.summaryValue}>{formatShortDate(currentOrderData.paymentDueDate)}</Text>
+                                </View>
+                                {typeof currentOrderData.penalty === 'number' && currentOrderData.penalty > 0 && (
+                                    <View style={styles.summaryRow}>
+                                        <Text style={[styles.summaryLabel, styles.penaltyLabel]}>Penalty Applied:</Text>
+                                        <Text style={[styles.summaryValue, styles.penaltyValue]}>{CURRENCY_SYMBOL}{currentOrderData.penalty.toFixed(2)}</Text>
+                                    </View>
+                                )}
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Section 5: BNPL Installment Schedule */}
                     {showInstallmentSection && currentOrderData.installments?.length > 0 && (
                         <View style={styles.section}>
-                            <Text style={styles.sectionTitle}>Installment Schedule</Text>
-                            <FlatList data={currentOrderData.installments} keyExtractor={(inst, index) => inst?.installmentNumber ? `inst-${inst.installmentNumber}-${index}` : `inst-fallback-${index}`} renderItem={renderInstallment} scrollEnabled={false} ListEmptyComponent={<Text>No installment data found.</Text>} />
+                             <Text style={styles.sectionTitle}>Installment Schedule</Text>
+                             <FlatList
+                                data={currentOrderData.installments}
+                                keyExtractor={(inst, index) => inst?.installmentNumber ? `inst-${inst.installmentNumber}-${index}` : `inst-fallback-${index}`}
+                                renderItem={renderInstallment}
+                                scrollEnabled={false} // Prevent nested scrolling
+                                ListEmptyComponent={<Text>No installment data found.</Text>}
+                             />
                         </View>
                     )}
 
-                    {/* Action Button: Mark as Shipped & Generate OTP (Conditional) */}
+                    {/* Button: Mark as Shipped & Generate OTP */}
+                    {/* Render based on the updated canMarkAsShipped condition */}
                     {canMarkAsShipped && (
                         <TouchableOpacity
                             style={[styles.actionButton, isProcessingShip && styles.disabledButton]}
@@ -351,23 +566,23 @@ export default function AdminDetailOrderScreen() {
                             disabled={isProcessingShip}
                             activeOpacity={0.7}
                         >
-                            {isProcessingShip ? ( <ActivityIndicator color="#FFF" size="small" /> ) : (
+                           {isProcessingShip ? ( <ActivityIndicator color="#FFF" size="small" /> ) : (
                                 <View style={styles.buttonContent}>
                                     <IconMUI name="local-shipping" size={18} color="#FFF" style={styles.buttonIcon} />
-                                    <Text style={styles.actionButtonText}>Ship & Generate OTP</Text>
+                                    <Text style={styles.actionButtonText}>Ship & Generate Delivery OTP</Text>
                                 </View>
                             )}
                         </TouchableOpacity>
                     )}
 
-                    {/* --- OTP Verification Section using PaperInput --- */}
-                    {showOtpVerificationSection && (
-                        <View style={styles.otpVerificationContainer}>
-                             <Text style={styles.otpInputLabel}>Enter OTP Received by User</Text>
-                             <PaperInput
-                                label={`Enter ${OTP_LENGTH}-Digit OTP`}
+                    {/* Section: Delivery OTP Verification */}
+                    {showDeliveryOtpVerification && (
+                         <View style={styles.otpVerificationContainer}>
+                            <Text style={styles.otpInputLabel}>Enter Delivery OTP Received by User</Text>
+                            <PaperInput
+                                label={`Enter ${OTP_LENGTH}-Digit Delivery OTP`}
                                 mode="outlined"
-                                style={styles.otpInputPaper} // Specific style for PaperInput
+                                style={styles.otpInputPaper}
                                 value={enteredOtp}
                                 onChangeText={setEnteredOtp}
                                 keyboardType="number-pad"
@@ -378,15 +593,13 @@ export default function AdminDetailOrderScreen() {
                                 theme={{ colors: { primary: FocusedBorderColor, text: TextColorPrimary, placeholder: TextColorSecondary } }}
                                 onSubmitEditing={handleVerifyOtp}
                                 error={!!otpError}
-                                // Use contentStyle for internal text styling if needed (may vary by Paper version)
                                 contentStyle={styles.otpInputContentStyle}
                             />
                             {otpError ? <Text style={styles.otpErrorText}>{otpError}</Text> : null}
-                            {/* Display expected OTP for Admin Reference */}
                             <Text style={styles.otpReferenceText}>Expected: {currentOrderData.deliveryOtp}</Text>
                             <TouchableOpacity
                                 style={[
-                                    styles.verifyOtpButton, // Green button
+                                    styles.verifyOtpButton,
                                     isVerifyingOtp && styles.disabledButton,
                                     (!enteredOtp || enteredOtp.length !== OTP_LENGTH) && styles.disabledButton
                                 ]}
@@ -397,7 +610,7 @@ export default function AdminDetailOrderScreen() {
                                 {isVerifyingOtp ? ( <ActivityIndicator color="#FFF" size="small" /> ) : (
                                     <View style={styles.buttonContent}>
                                         <IconMUI name="check-circle-outline" size={18} color="#FFF" style={styles.buttonIcon} />
-                                        <Text style={styles.actionButtonText}>Verify OTP</Text>
+                                        <Text style={styles.actionButtonText}>Verify Delivery OTP</Text>
                                     </View>
                                 )}
                             </TouchableOpacity>
@@ -405,7 +618,7 @@ export default function AdminDetailOrderScreen() {
                     )}
 
                     {/* Display Final Status */}
-                    {!canMarkAsShipped && !showOtpVerificationSection && currentOrderData.status && (
+                    {!canMarkAsShipped && !showDeliveryOtpVerification && currentOrderData.status && (
                         <View style={styles.finalStatusContainer}>
                             <Text style={styles.finalStatusLabel}>Order Status:</Text>
                             <View style={[styles.statusBadge, getStatusStyle(currentOrderData.status)]}>
@@ -427,82 +640,80 @@ const styles = StyleSheet.create({
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
     errorText: { fontSize: 16, color: AccentColor, marginBottom: 15, textAlign: 'center' },
     errorLink: { fontSize: 16, color: '#007AFF', fontWeight: 'bold' },
-    simpleHeader: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 10, backgroundColor: AppBackgroundColor, borderBottomWidth: 1, borderBottomColor: LightBorderColor, },
-    backButtonError: { padding: 8, marginRight: 10, },
-    headerTitleError: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: '600', color: TextColorPrimary, marginRight: 40, },
-    section: { backgroundColor: AppBackgroundColor, borderRadius: 8, padding: 15, marginBottom: 15, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 1.5, borderWidth: 1, borderColor: LightBorderColor, },
-    sectionTitle: { fontSize: 17, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: LightBorderColor, paddingBottom: 8, },
-    summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, },
+    section: { backgroundColor: AppBackgroundColor, borderRadius: 8, padding: 15, marginBottom: 15, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 1.5, borderWidth: Platform.OS === 'android' ? 0 : 1, borderColor: '#E0E0E0', },
+    sectionTitle: { fontSize: 17, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 8, },
+    summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', },
     summaryLabel: { fontSize: 14, color: TextColorSecondary, marginRight: 5 },
     summaryValue: { fontSize: 14, fontWeight: '500', color: TextColorPrimary, textAlign: 'right', flexShrink: 1, },
-    statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, },
+    addressValue: { textAlign: 'left', marginLeft: 'auto', flexBasis: '70%', },
+    statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, alignSelf: 'flex-start', },
     statusText: { fontSize: 12, fontWeight: 'bold', color: '#fff', },
     statusPending: { backgroundColor: '#FFA726' }, statusProcessing: { backgroundColor: '#42A5F5' }, statusShipped: { backgroundColor: '#66BB6A' }, statusDelivered: { backgroundColor: '#78909C' }, statusCancelled: { backgroundColor: '#EF5350' }, statusUnknown: { backgroundColor: '#BDBDBD' },
-    detailText: { fontSize: 14, color: TextColorPrimary, lineHeight: 20, marginBottom: 4, },
-    planDetailsBox: { marginTop: 10, padding: 12, backgroundColor: '#f9f9f9', borderRadius: 6, borderWidth: 1, borderColor: '#eee' },
-    planDetailTitle: { fontSize: 14, fontWeight: '600', color: TextColorPrimary, marginBottom: 6 },
+    statusActive: { backgroundColor: '#29B6F6' },
+    paymentSubSection: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0', },
+    paymentSubHeader: { fontSize: 15, fontWeight: '600', color: TextColorPrimary, marginBottom: 10, },
+    paymentValueHighlight: { fontSize: 14, fontWeight: 'bold', color: AccentColor, },
+    planDetailsBox: { marginTop: 10, marginBottom: 5, padding: 12, backgroundColor: '#f9f9f9', borderRadius: 6, borderWidth: 1, borderColor: '#eee' },
     planDetailText: { fontSize: 13, color: TextColorSecondary, marginBottom: 4, lineHeight: 18 },
-    installmentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: LightBorderColor, flexWrap: 'wrap' },
-    installmentText: { fontSize: 13, color: TextColorSecondary, flexShrink: 1, paddingRight: 5, marginBottom: 3, marginTop: 3, textAlign: 'left' },
+    linkText: { fontSize: 13, color: '#007AFF', marginTop: 5, fontStyle: 'italic', }, // Fixed color
+    penaltyLabel: { color: AccentColor },
+    penaltyValue: { color: AccentColor, fontWeight: 'bold' },
+    installmentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee', flexWrap: 'wrap' },
+    installmentText: { fontSize: 13, color: TextColorSecondary, paddingRight: 5, marginBottom: 3, marginTop: 3, },
+    paidAtText: { fontSize: 11, color: TextColorSecondary, fontStyle: 'italic', width: '100%', textAlign: 'right', marginTop: 2, },
     statusBadgeSmall: { paddingVertical: 2, paddingHorizontal: 6, borderRadius: 10, marginVertical: 3, },
     statusTextSmall: { fontSize: 10, fontWeight: 'bold', color: '#fff', },
-    statusPaid: { backgroundColor: 'green' }, statusInstallmentPending: { backgroundColor: 'orange'},
-    penaltyText: { fontSize: 11, color: AccentColor, fontStyle: 'italic', marginLeft: 5, textAlign: 'right', },
+    statusPaid: { backgroundColor: SuccessColor },
+    statusInstallmentPending: { backgroundColor: '#FFA726'},
     itemsListContainer: { marginTop: 5, },
-    itemContainer: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: LightBorderColor, alignItems: 'center', },
+    itemContainer: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center', },
     lastItemContainer: { borderBottomWidth: 0, },
     itemImage: { width: 50, height: 50, borderRadius: 6, marginRight: 12, backgroundColor: PlaceholderBgColor, },
-    itemDetails: { flex: 1, justifyContent: 'center', },
+    itemDetails: { flex: 1, justifyContent: 'center', marginRight: 8, },
     itemName: { fontSize: 14, fontWeight: '600', color: TextColorPrimary, marginBottom: 3, },
     itemQtyPrice: { fontSize: 13, color: TextColorSecondary, },
     itemPrice: { fontSize: 13, color: TextColorSecondary, marginTop: 2, },
     itemPaymentMethod: { fontSize: 11, fontStyle: 'italic', color: TextColorSecondary, marginTop: 4, },
     itemTotalValue: { fontSize: 14, fontWeight: 'bold', color: TextColorPrimary, textAlign: 'right', marginLeft: 10, },
-    orderTotals: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: LightBorderColor, },
-    totalDivider: { height: 1, backgroundColor: LightBorderColor, marginVertical: 8, },
+    orderTotals: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#eee', },
+    totalDivider: { height: 1, backgroundColor: '#eee', marginVertical: 8, },
     grandTotalLabel: { fontWeight: 'bold', fontSize: 16, color: TextColorPrimary },
     grandTotalValue: { fontWeight: 'bold', fontSize: 16, color: AccentColor },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    // --- Action Button Styles ---
     actionButton: {
-        backgroundColor: AccentColor, // Ship button is Red
         paddingVertical: 12,
         borderRadius: 8, alignItems: 'center', justifyContent: 'center',
         marginTop: 20, marginHorizontal: 10, marginBottom: 10, elevation: 3, minHeight: 48,
         shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 2.5,
+        backgroundColor: AccentColor, // Default Red (Ship button)
     },
-    disabledButton: { backgroundColor: '#BDBDBD', elevation: 0, shadowOpacity: 0, },
+    disabledButton: { backgroundColor: '#BDBDBD', elevation: 0, shadowOpacity: 0, }, // Used when isProcessingShip is true OR button is disabled
     actionButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold', },
     buttonContent: { flexDirection: 'row', alignItems: 'center', },
     buttonIcon: { marginRight: 8, },
-    // --- OTP Verification Styles (Using PaperInput) ---
     otpVerificationContainer: {
         marginTop: 25, marginBottom: 15, marginHorizontal: 5,
         paddingVertical: 20, paddingHorizontal: 15,
         backgroundColor: AppBackgroundColor,
-        borderRadius: 10, borderWidth: 1, borderColor: LightBorderColor,
+        borderRadius: 10, borderWidth: Platform.OS === 'android' ? 0 : 1, borderColor: LightBorderColor,
         elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2,
     },
-    otpInputLabel: { // Label Text above the input
+    otpInputLabel: {
         fontSize: 16, fontWeight: 'bold', color: TextColorPrimary, textAlign: 'center', marginBottom: 15,
     },
-    otpInputPaper: { // Style specifically for PaperInput
-        backgroundColor: '#fff', // White background for input area
-        marginBottom: 10, // Space below input
-        // Height/Padding managed by PaperInput's "outlined" mode
+    otpInputPaper: {
+        backgroundColor: '#fff',
+        marginBottom: 10,
     },
-    otpInputContentStyle: { // Style passed to PaperInput's contentStyle prop
-        fontSize: 20, // Larger font size for OTP digits
-        textAlign: 'center', // Center text horizontally
-        letterSpacing: 8, // Space out digits
-        paddingHorizontal: 0, // Remove internal padding if needed
+    otpInputContentStyle: {
+        fontSize: 20, textAlign: 'center', letterSpacing: 8, paddingHorizontal: 0,
     },
     otpErrorText: { color: AccentColor, fontSize: 13, textAlign: 'center', marginBottom: 8, },
-    otpReferenceText: { // Style for showing the expected OTP
+    otpReferenceText: {
         fontSize: 12, color: TextColorSecondary, textAlign: 'center', fontStyle: 'italic', marginBottom: 15,
     },
-    verifyOtpButton: { // Button below input
-        backgroundColor: SuccessColor, // Green verification button
+    verifyOtpButton: {
+        backgroundColor: SuccessColor, // Green button
         paddingVertical: 12, paddingHorizontal: 30,
         borderRadius: 8, elevation: 2,
         minHeight: 48,
@@ -511,7 +722,7 @@ const styles = StyleSheet.create({
         alignSelf: 'center',
         width: '80%',
         maxWidth: 300,
-        marginTop: 5, // Space above button
+        marginTop: 5,
     },
     finalStatusContainer: { marginTop: 20, marginBottom: 10, marginHorizontal: 10, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', },
     finalStatusLabel: { fontSize: 16, fontWeight: '600', color: TextColorPrimary, marginRight: 10, },

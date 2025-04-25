@@ -1,4 +1,4 @@
-// OrderScreen.js (COMPLETE CODE - Added "Completed" Filter)
+// OrderScreen.js (COMPLETE CODE - Check for stray text errors)
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
@@ -29,17 +29,17 @@ const PlaceholderBgColor = '#F0F0F0';
 const placeholderImagePath = require('../../assets/p3.jpg'); // Verify path
 const BnplIndicatorBgColor = 'rgba(0, 86, 179, 0.1)';
 const BnplIndicatorTextColor = '#0056b3';
+const ACTIVE_FILTER_STATUSES = ['processing', 'active']; // Lowercase statuses
 
-// --- MODIFIED: Added "Completed" Filter ---
+// --- Fixed Filters Configuration ---
 const FIXED_FILTERS = [
   { displayName: 'All', filterValue: 'All' },
   { displayName: 'Pending', filterValue: 'Pending' },
-  { displayName: 'Active', filterValue: 'Processing' }, // Maps "Active" to "Processing" status
+  { displayName: 'Active', filterValue: 'Processing' }, // Button value remains 'Processing' for state
   { displayName: 'Shipped', filterValue: 'Shipped' },
-  { displayName: 'Completed', filterValue: 'Delivered' }, // Added: Maps "Completed" display to "Delivered" status
+  { displayName: 'Completed', filterValue: 'Delivered' },
   { displayName: 'Cancelled', filterValue: 'Cancelled' },
 ];
-// --- END MODIFICATION ---
 
 // --- Main Component: OrderScreen ---
 export default function OrderScreen() {
@@ -86,7 +86,7 @@ export default function OrderScreen() {
           userName: data.userName || 'Unknown User',
           paymentMethod: data.paymentMethod || 'Unknown',
           items: data.items || [],
-          ...data
+          ...data // Include all other fields
         };
       }).filter(item => item !== null);
 
@@ -122,8 +122,9 @@ export default function OrderScreen() {
 
   // --- Client-Side Filtering Logic ---
   const filteredOrders = useMemo(() => {
-    console.log(`Filtering ${allFetchedOrders.length} orders. Query: "${searchQuery}", Filter State: "${filter}"`);
+    console.log(`Filtering ${allFetchedOrders.length} orders. Query: "${searchQuery}", Filter Button State: "${filter}"`);
     return allFetchedOrders.filter(order => {
+      // 1. Check Search Query
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = (
            !searchQuery ||
@@ -133,10 +134,20 @@ export default function OrderScreen() {
            (order.items?.[0]?.name?.toLowerCase().includes(searchLower))
        );
 
+      // 2. Check Status Filter
       const filterValueLower = filter.toLowerCase();
       const orderStatusLower = order.status?.toLowerCase();
-      // Filter logic works for 'Delivered' just like other statuses
-      const matchesFilter = (filter === 'All') || (orderStatusLower === filterValueLower);
+      let matchesFilter = false;
+
+      if (filter === 'All') {
+          matchesFilter = true;
+      } else if (filter === 'Processing') {
+          // 'Active' button filters for Processing OR Active status
+          matchesFilter = ACTIVE_FILTER_STATUSES.includes(orderStatusLower);
+      } else {
+          // For other filters, match exactly
+          matchesFilter = (orderStatusLower === filterValueLower);
+      }
 
       return matchesSearch && matchesFilter;
     });
@@ -147,9 +158,10 @@ export default function OrderScreen() {
   const getStatusStyle = (status) => {
       switch (status?.toLowerCase() ?? 'unknown') {
           case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': case 'unpaid (bnpl)': return styles.statusPending;
-          case 'processing': case 'partially paid': return styles.statusProcessing;
+          case 'processing': return styles.statusProcessing;
+          case 'active': return styles.statusActive; // *** Style for Active Status ***
           case 'shipped': return styles.statusShipped;
-          case 'delivered': return styles.statusDelivered; // Ensure style exists for 'Delivered'
+          case 'delivered': return styles.statusDelivered;
           case 'cancelled': case 'rejected': return styles.statusCancelled;
           default: return styles.statusUnknown;
       }
@@ -163,6 +175,7 @@ export default function OrderScreen() {
     const orderPaymentMethodLower = item.paymentMethod?.toLowerCase() ?? '';
     const isBnplOrder = ['bnpl', 'fixed duration', 'mixed'].includes(orderPaymentMethodLower);
 
+    // Ensure all text elements are wrapped
     return (
         <TouchableOpacity
             style={styles.orderItem}
@@ -175,14 +188,14 @@ export default function OrderScreen() {
               </View>
               <View style={styles.orderInfo}>
                 <Text style={styles.orderName} numberOfLines={1}>{item.userName}</Text>
-                <Text style={styles.orderIdText}>#{item.orderNumber}</Text>
+                <Text style={styles.orderIdText}>{'#'}{item.orderNumber}</Text>
                 <Text style={styles.orderPrice}>
-                    {CURRENCY_SYMBOL} {item.grandTotal?.toLocaleString(undefined, {maximumFractionDigits: 0}) || 'N/A'}
+                    {CURRENCY_SYMBOL}{' '}{item.grandTotal?.toLocaleString(undefined, {maximumFractionDigits: 0}) || 'N/A'}
                 </Text>
                 {isBnplOrder && (
                     <View style={styles.bnplIndicatorContainer}>
                         <Icon name="credit-card-clock-outline" size={12} color={BnplIndicatorTextColor} style={styles.bnplIcon} />
-                        <Text style={styles.bnplIndicatorText}>BNPL</Text>
+                        <Text style={styles.bnplIndicatorText}>BNPL/Fixed</Text>
                     </View>
                 )}
               </View>
@@ -248,7 +261,7 @@ export default function OrderScreen() {
               )}
           </View>
 
-          {/* Fixed Filter Buttons - Automatically includes "Completed" */}
+          {/* Fixed Filter Buttons */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
               {FIXED_FILTERS.map(filterItem => (
                   <TouchableOpacity
@@ -275,7 +288,7 @@ export default function OrderScreen() {
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={!loading ? (
                     <View style={styles.emptyView}>
-                        <Icon name="magnify-close" size={40} color="#ccc"/>
+                        <Icon name="clipboard-text-outline" size={50} color="#ccc"/>
                         <Text style={styles.emptyText}>No orders match your criteria.</Text>
                     </View>
                  ) : null}
@@ -307,7 +320,7 @@ const styles = StyleSheet.create({
   filterText: { fontSize: 13, color: '#FFFFFF', fontWeight: '500', },
   activeFilter: { backgroundColor: '#000000', borderColor: '#000000', },
   activeFilterText: { color: '#FFFFFF', fontWeight: 'bold', },
-  listContent: { paddingBottom: 10, paddingTop: 0 },
+  listContent: { paddingBottom: 15, paddingTop: 0 },
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emptyView: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50, paddingHorizontal: 20, },
   emptyText: { textAlign: 'center', fontSize: 16, color: TextColorSecondary, marginTop: 15 },
@@ -326,6 +339,7 @@ const styles = StyleSheet.create({
   statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 15, marginBottom: 4 },
   statusText: { color: '#FFF', fontWeight: 'bold', fontSize: 11 },
   statusPending: { backgroundColor: '#FFA726' }, statusProcessing: { backgroundColor: '#42A5F5' }, statusShipped: { backgroundColor: '#66BB6A' }, statusDelivered: { backgroundColor: '#78909C' }, statusCancelled: { backgroundColor: '#EF5350' }, statusUnknown: { backgroundColor: '#BDBDBD' },
+  statusActive: { backgroundColor: '#29B6F6' }, // Style for Active status
   orderDateText: { fontSize: 11, color: TextColorSecondary, marginTop: 2 },
   separator: { height: 1, backgroundColor: LightBorderColor, },
 });

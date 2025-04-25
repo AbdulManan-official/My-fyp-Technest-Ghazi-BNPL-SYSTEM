@@ -1,16 +1,15 @@
-// MyOrders.js (COMPLETE CODE - Final Version with Header, Filters, Back Button, No Warnings)
+// MyOrders.js (COMPLETE CODE - Final Version with Header, Filters, Back Button, Fixed Active Filter/Style, No Image Error Warning)
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   StyleSheet, Text, View, FlatList, Dimensions, ActivityIndicator, Image,
   TouchableOpacity, TextInput,
-  RefreshControl, // Standard pull-to-refresh component
+  RefreshControl,
   SafeAreaView, StatusBar,
-  Platform, // Correct casing for Platform API
+  Platform,
   Alert,
-  ScrollView // For filter buttons
+  ScrollView
 } from 'react-native';
-// Using MaterialCommunityIcons for header icons
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { MaterialIcons } from '@expo/vector-icons'; // Keep for BNPL icon in list item
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -33,12 +32,13 @@ const CURRENCY_SYMBOL = 'PKR';         // Currency symbol
 const placeholderImagePath = require('../../assets/p3.jpg'); // Verify path to placeholder image
 const BnplIndicatorBgColor = 'rgba(0, 86, 179, 0.1)'; // Background for BNPL badge
 const BnplIndicatorTextColor = '#0056b3'; // Text/icon color for BNPL badge
+const ACTIVE_FILTER_STATUSES = ['processing', 'active']; // Statuses for 'Active' button filter
 
 // --- Fixed Filters Configuration ---
 const FIXED_FILTERS = [
   { displayName: 'All', filterValue: 'All' },
   { displayName: 'Pending', filterValue: 'Pending' },
-  { displayName: 'Active', filterValue: 'Processing' },
+  { displayName: 'Active', filterValue: 'Processing' }, // Button value remains 'Processing' for state
   { displayName: 'Shipped', filterValue: 'Shipped' },
   { displayName: 'Completed', filterValue: 'Delivered' }, // 'Completed' maps to 'Delivered' status
   { displayName: 'Cancelled', filterValue: 'Cancelled' },
@@ -56,20 +56,16 @@ export default function MyOrders() {
   const [filter, setFilter] = useState('All'); // State for the selected filter value ('All', 'Pending', etc.)
 
   // --- Effect 1: Monitor Authentication State ---
-  // Listens for changes in user login status (login/logout)
   useEffect(() => {
     console.log("[MyOrders] Attaching Auth listener.");
     const unsubscribeAuth = auth.onAuthStateChanged(user => {
       const currentUid = user ? user.uid : null;
       console.log("[MyOrders] Auth State Changed. User ID:", currentUid);
-      // Only update state and perform actions if the UID actually changes
       if (currentUid !== userId) {
-        setUserId(currentUid); // Update the userId state
-        // Reset search and filter when user changes
+        setUserId(currentUid);
         setSearchQuery('');
         setFilter('All');
         if (!currentUid) {
-          // User logged out: Clear data, stop loading/refreshing, cleanup listener
           setUserOrders([]); setLoading(false); setRefreshing(false);
           if (listenerUnsubscribeRef.current) {
              console.log("[MyOrders] Cleaning up Firestore listener due to logout.");
@@ -77,61 +73,48 @@ export default function MyOrders() {
              listenerUnsubscribeRef.current = null;
           }
         } else {
-          // User logged in: Set loading only if orders weren't already loaded
           if (userOrders.length === 0) { setLoading(true); }
         }
       }
     });
-    // Cleanup function: Unsubscribe auth listener on component unmount
     return () => {
       console.log("[MyOrders] Cleaning up Auth Listener.");
       unsubscribeAuth();
     };
-  }, [userId, userOrders.length]); // Dependencies for the effect
+  }, [userId, userOrders.length]);
 
 
   // --- Effect 2 / Function: Setup Firestore Listener ---
-  // Sets up or tears down the real-time listener for user's orders
   const setupOrderListener = useCallback(() => {
-    // Don't proceed if no user is logged in
     if (!userId) {
       console.log("[MyOrders] Firestore Listener Setup: No userId. Clearing orders.");
       setUserOrders([]); setLoading(false); setRefreshing(false);
-      // Ensure any lingering listener is detached if userId becomes null somehow
       if (listenerUnsubscribeRef.current) { listenerUnsubscribeRef.current(); listenerUnsubscribeRef.current = null; }
       return null;
     }
 
     console.log(`[MyOrders] Firestore Listener Setup: Setting up for user ${userId}.`);
-    // Detach any existing listener before creating a new one
     if (listenerUnsubscribeRef.current) {
         console.log("[MyOrders] Firestore Listener Setup: Detaching previous listener.");
         listenerUnsubscribeRef.current();
         listenerUnsubscribeRef.current = null;
     }
 
-    // Define the Firestore query for the user's orders
     const ordersRef = collection(db, ORDERS_COLLECTION);
-    const q = query(ordersRef, where("userId", "==", userId)); // Filter by logged-in user
+    const q = query(ordersRef, where("userId", "==", userId));
 
-    // Attach the listener
     const unsubscribe = onSnapshot(q, (snapshot) => {
       console.log(`[MyOrders] Firestore Snapshot: Received ${snapshot.docs.length} orders for user ${userId}.`);
-      // Process the snapshot documents
       let fetchedOrders = snapshot.docs.map(docSnap => {
-        const data = docSnap.data(); // Get all fields
-        // Validate essential data
+        const data = docSnap.data();
         if (!data || !(data.createdAt instanceof Timestamp)) {
-            // Skip invalid docs silently (no warning)
             return null;
         }
-        // Determine BNPL status
-        const isBNPL = ['BNPL', 'Fixed Duration', 'Mixed'].includes(data.paymentMethod);
-        // Format date
+        const paymentMethodLower = data.paymentMethod?.toLowerCase() ?? '';
+        const isBNPL = ['bnpl', 'fixed duration', 'mixed'].includes(paymentMethodLower);
         let formattedDate = 'N/A';
         const createdAtDate = data.createdAt.toDate();
         if (isValid(createdAtDate)) { formattedDate = format(createdAtDate, 'MMM d, yyyy'); }
-        // Construct the object, including ALL data via spread operator
         return {
             id: docSnap.id,
             orderNumber: docSnap.id.substring(0, 8).toUpperCase(),
@@ -141,52 +124,46 @@ export default function MyOrders() {
             isBNPL: isBNPL,
             grandTotal: data.grandTotal,
             items: data.items || [],
-            ...data // Include all other fields
+            ...data
         };
-      }).filter(item => item !== null); // Filter out any skipped invalid items
+      }).filter(item => item !== null);
 
-      // Sort orders client-side (newest first)
       fetchedOrders.sort((a, b) => (b.createdAtTimestamp?.seconds ?? 0) - (a.createdAtTimestamp?.seconds ?? 0));
 
-      // Update state
       setUserOrders(fetchedOrders);
-      setLoading(false); // Stop loading indicator
-      setRefreshing(false); // Stop refresh indicator
+      setLoading(false);
+      setRefreshing(false);
 
-    }, (error) => { // Error handling for the listener
+    }, (error) => {
       console.error("[MyOrders] Firestore listener error:", error);
       Alert.alert("Error", "Could not fetch your orders. Please check connection and pull to refresh.");
-      setLoading(false); setRefreshing(false); setUserOrders([]); // Clear orders on error
+      setLoading(false); setRefreshing(false); setUserOrders([]);
     });
 
-    // Store the cleanup function and return it
     listenerUnsubscribeRef.current = unsubscribe;
     return unsubscribe;
-  }, [userId]); // Re-run ONLY when userId changes
+  }, [userId]);
 
   // --- Effect 3: Manage Listener Lifecycle with Focus ---
-  // Uses useFocusEffect to ensure the listener is active when the screen is visible
-  // and cleaned up when it's not, saving resources.
   useFocusEffect(
     useCallback(() => {
       console.log("[MyOrders] Screen focused, running setupOrderListener.");
-      setupOrderListener(); // Sets up listener (or does nothing if no userId)
-      // Return cleanup function
+      setupOrderListener();
       return () => {
         if (listenerUnsubscribeRef.current) {
           console.log("[MyOrders] Screen blurred/unmounted, cleaning up listener.");
-          listenerUnsubscribeRef.current(); // Detach listener
-          listenerUnsubscribeRef.current = null; // Clear ref
+          listenerUnsubscribeRef.current();
+          listenerUnsubscribeRef.current = null;
         }
       };
-    }, [setupOrderListener]) // Dependency on the setup function itself
+    }, [setupOrderListener])
   );
 
   // --- Filtering Logic ---
-  // Memoized function to filter orders based on search query and status filter
   const filteredOrders = useMemo(() => {
+    console.log(`Filtering ${userOrders.length} orders. Query: "${searchQuery}", Filter Button State: "${filter}"`);
     return userOrders.filter(order => {
-      // Check search query against order number or first item name
+      // 1. Check Search Query
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = (
            !searchQuery ||
@@ -194,18 +171,25 @@ export default function MyOrders() {
            (order.items?.[0]?.name?.toLowerCase().includes(searchLower))
        );
 
-      // Check status filter ('All' or exact match)
+      // 2. Check Status Filter
       const filterValueLower = filter.toLowerCase();
       const orderStatusLower = order.status?.toLowerCase();
-      const matchesFilter = (filter === 'All') || (orderStatusLower === filterValueLower);
+      let matchesFilter = false;
 
-      return matchesSearch && matchesFilter; // Must match both
+      if (filter === 'All') {
+          matchesFilter = true;
+      } else if (filter === 'Processing') { // When 'Active' button is pressed
+          matchesFilter = ACTIVE_FILTER_STATUSES.includes(orderStatusLower);
+      } else {
+          matchesFilter = (orderStatusLower === filterValueLower);
+      }
+
+      return matchesSearch && matchesFilter;
     });
-  }, [userOrders, searchQuery, filter]); // Recalculate when these change
+  }, [userOrders, searchQuery, filter]);
 
 
   // --- Handle Pull-to-Refresh ---
-  // Callback function for the RefreshControl component
   const onRefresh = useCallback(() => {
     if (!userId) {
         console.log("[MyOrders] Cannot refresh, no user logged in.");
@@ -213,23 +197,16 @@ export default function MyOrders() {
         return;
     }
     console.log("[MyOrders] Manual refresh triggered. Re-running setupOrderListener.");
-    setRefreshing(true); // Show spinner
-
-    // Explicitly call setupOrderListener to force detach/re-attach and data fetch
+    setRefreshing(true);
     setupOrderListener();
-
-    // Fallback timeout to prevent spinner getting stuck
     const refreshTimeout = setTimeout(() => {
         if (refreshing) {
-            // Removed warning, just log and stop spinner
             console.log("[MyOrders] Refresh timeout reached. Forcing indicator off.");
             setRefreshing(false);
         }
-     }, 8000); // 8 seconds
-
-    return () => clearTimeout(refreshTimeout); // Cleanup timeout
-
-  }, [userId, refreshing, setupOrderListener]); // Include all dependencies
+     }, 8000);
+    return () => clearTimeout(refreshTimeout);
+  }, [userId, refreshing, setupOrderListener]);
 
 
   // --- Helper Function for Status Styles ---
@@ -238,51 +215,47 @@ export default function MyOrders() {
     switch (lowerStatus) {
         case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': case 'unpaid (bnpl)': case 'mixed (cod/bnpl pending)': case 'mixed (cod/fixed pending)': return styles.statusPending;
         case 'processing': case 'partially paid': return styles.statusProcessing;
+        case 'active': return styles.statusActive;
         case 'shipped': return styles.statusShipped;
-        case 'delivered': return styles.statusDelivered; // Style for 'Completed' filter
+        case 'delivered': return styles.statusDelivered;
         case 'cancelled': case 'rejected': return styles.statusCancelled;
         default: return styles.statusUnknown;
     }
   };
 
   // --- Render Function for Each Order Item in the FlatList ---
+  // *** MODIFIED: Removed onError from Image component ***
   const renderOrderItem = ({ item }) => {
       const firstItem = item?.items?.[0] || null;
       const previewImageUri = firstItem?.image || null;
       const previewName = firstItem?.name || 'Order Item(s)';
       const additionalItemsText = item?.items?.length > 1 ? ` (+${item.items.length - 1})` : '';
-      // Simple check to prevent rendering corrupt data
       if (!item || !item.id) return null;
 
       return (
         <TouchableOpacity
             style={styles.orderContainer}
-            // Navigate to detail screen, passing the complete order object
             onPress={() => navigation.navigate('UserOrderDetailScreen', { order: item })}
             activeOpacity={0.7}
         >
             <View style={styles.orderRow}>
-                {/* Item Image */}
                 <Image
                     source={previewImageUri ? { uri: previewImageUri } : placeholderImagePath}
                     style={styles.previewImage}
                     defaultSource={placeholderImagePath}
-                    onError={(e) => console.error(`Image load error for ${previewImageUri || 'placeholder'}:`, e.nativeEvent?.error)} // Log errors
+                    // onError prop is removed here
                 />
-                {/* Middle Content */}
                 <View style={styles.middleContent}>
                     <Text style={styles.orderDateTextSmall}>{item.date || 'N/A'}</Text>
                     <Text style={styles.itemNameText} numberOfLines={1}> {previewName}{additionalItemsText} </Text>
                     <Text style={styles.orderTotalText}> Total: {CURRENCY_SYMBOL} {item.grandTotal?.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0}) || 'N/A'} </Text>
-                    {/* BNPL Indicator */}
                     {item.isBNPL && (
                         <View style={styles.bnplIndicatorContainer}>
                             <MaterialIcons name="credit-card" size={12} color={BnplIndicatorTextColor} style={styles.bnplIcon}/>
-                            <Text style={styles.bnplIndicatorText}>BNPL</Text>
+                            <Text style={styles.bnplIndicatorText}>BNPL/Fixed</Text>
                         </View>
                     )}
                 </View>
-                {/* Right Content */}
                 <View style={styles.rightContent}>
                     <View style={[styles.statusBadge, getStatusStyle(item.status)]}>
                         <Text style={styles.statusText}>{item.status || 'N/A'}</Text>
@@ -296,8 +269,11 @@ export default function MyOrders() {
   // --- Header Event Handlers ---
   const onSearchInputChange = (text) => { setSearchQuery(text); };
   const clearSearch = () => { setSearchQuery(''); };
-  const onFilterChange = (newFilterValue) => { setFilter(newFilterValue); };
-  const handleGoBack = () => { navigation.goBack(); }; // Back button action
+  const onFilterChange = (newFilterValue) => {
+      console.log("Filter changed to:", newFilterValue);
+      setFilter(newFilterValue);
+  };
+  const handleGoBack = () => { navigation.goBack(); };
 
   // --- Component Render ---
   return (
@@ -306,7 +282,6 @@ export default function MyOrders() {
 
       {/* Header Section */}
       <View style={styles.headerContainer}>
-          {/* Row for Back Button and Search Bar */}
           <View style={styles.headerTopRow}>
              <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
                  <Icon name="arrow-left" size={24} color={HeaderIconColor} />
@@ -330,7 +305,6 @@ export default function MyOrders() {
                  )}
              </View>
          </View>
-         {/* Filter Buttons Row */}
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
               {FIXED_FILTERS.map(filterItem => (
                   <TouchableOpacity
@@ -346,33 +320,29 @@ export default function MyOrders() {
       </View>
 
       {/* Main Content Area */}
-      {/* Show loading indicator only on initial load when logged in */}
       {loading && userId && userOrders.length === 0 ? (
         <ActivityIndicator size="large" color={AccentColor} style={styles.loader}/>
       ) : (
-        // Display the list of orders
         <FlatList
-          data={filteredOrders} // Data source is the filtered list
+          data={filteredOrders}
           renderItem={renderOrderItem}
           keyExtractor={(item, index) => item?.id || `order-${index}`}
           contentContainerStyle={[styles.flatListContainer, filteredOrders.length === 0 && styles.emptyListContainer]}
-          // Show appropriate empty state message
           ListEmptyComponent={
-             !loading && userId ? ( // Logged in, no matching/existing orders
+             !loading && userId ? (
                 <View style={styles.emptyView}>
                     <Icon name={searchQuery || filter !== 'All' ? "search-web" : "dropbox"} size={50} color="#ccc"/>
                     <Text style={styles.emptyText}>
                         {searchQuery || filter !== 'All' ? "No orders match your criteria." : "You haven't placed any orders yet."}
                     </Text>
                 </View>
-             ) : !loading && !userId ? ( // Logged out
+             ) : !loading && !userId ? (
                 <View style={styles.emptyView}>
-                    <Icon name="sign-in" size={50} color="#ccc"/>
+                    <Icon name="login" size={50} color="#ccc"/>
                     <Text style={styles.emptyText}>Please log in to view your orders.</Text>
                 </View>
-             ): null // Don't show while loading
+             ): null
           }
-          // Pull-to-refresh setup
           refreshControl={
              <RefreshControl
                 refreshing={refreshing}
@@ -381,7 +351,7 @@ export default function MyOrders() {
                 colors={[AccentColor]}
             />
            }
-          // ItemSeparatorComponent can be added here if desired
+           ItemSeparatorComponent={() => <View style={styles.separator} />}
         />
       )}
     </SafeAreaView>
@@ -409,10 +379,10 @@ const styles = StyleSheet.create({
   },
   backButton: {
       padding: 6,
-      marginRight: 6, // Space between back and search
+      marginRight: 6,
   },
   searchBar: {
-      flex: 1, // Allows search bar to grow
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: '#FFF',
@@ -444,7 +414,7 @@ const styles = StyleSheet.create({
   activeFilterText: { color: '#FFFFFF', fontWeight: 'bold', },
   // List & Item Styles
   loader: { flex: 1, justifyContent: 'center', alignItems: 'center', },
-  orderContainer: { backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: LightBorderColor, },
+  orderContainer: { backgroundColor: '#fff', paddingVertical: 12, paddingHorizontal: 15, },
   orderRow: { flexDirection: 'row', alignItems: 'center', },
   previewImage: { width: 60, height: 60, borderRadius: 8, marginRight: 12, backgroundColor: PlaceholderBgColor, },
   middleContent: { flex: 1, justifyContent: 'center', marginRight: 8, },
@@ -452,14 +422,21 @@ const styles = StyleSheet.create({
   itemNameText: { fontSize: 14, fontWeight: '600', color: TextColorPrimary, marginBottom: 4, },
   orderTotalText: { fontSize: 14, color: TextColorPrimary, fontWeight: 'bold', },
   rightContent: { alignItems: 'flex-end', justifyContent: 'center', minWidth: 80, },
-  statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, },
+  statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, marginBottom: 4, },
   statusText: { fontSize: 11, fontWeight: 'bold', color: '#fff', textAlign: 'center', },
-  statusPending: { backgroundColor: '#FFA726' }, statusProcessing: { backgroundColor: '#42A5F5' }, statusShipped: { backgroundColor: '#66BB6A' }, statusDelivered: { backgroundColor: '#78909C' }, statusCancelled: { backgroundColor: '#EF5350' }, statusUnknown: { backgroundColor: '#BDBDBD' },
+  statusPending: { backgroundColor: '#FFA726' },
+  statusProcessing: { backgroundColor: '#42A5F5' },
+  statusActive: { backgroundColor: '#29B6F6' },
+  statusShipped: { backgroundColor: '#66BB6A' },
+  statusDelivered: { backgroundColor: '#78909C' },
+  statusCancelled: { backgroundColor: '#EF5350' },
+  statusUnknown: { backgroundColor: '#BDBDBD' },
   bnplIndicatorContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 4, alignSelf: 'flex-start', backgroundColor: BnplIndicatorBgColor, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 3, },
   bnplIcon: { marginRight: 4, },
   bnplIndicatorText: { fontSize: 10, fontWeight: '600', color: BnplIndicatorTextColor, },
   flatListContainer: { paddingBottom: 10, },
-  emptyListContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
+  emptyListContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20 },
   emptyView: { alignItems: 'center', paddingBottom: 50, },
   emptyText: { fontSize: 16, color: '#888', textAlign: 'center', marginTop: 15 },
+  separator: { height: 1, backgroundColor: LightBorderColor, marginHorizontal: 15 },
 });

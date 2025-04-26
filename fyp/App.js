@@ -37,6 +37,7 @@ import UserDetailScreen from './screens/AdminScreens/UserDetailScreen';
 import AdminCategoryScreen from './screens/AdminScreens/AdminCategoryScreen';
 import ReportsScreen from './screens/AdminScreens/ReportsScreen';
 import BNPLPlansScreen from './screens/AdminScreens/BNPLPlansScreen';
+import UserSchedulesProgressDetails from './screens/AdminScreens/UserSchedulesProgressDetails'; // Adjust path if needed
 
 // New User Detail Screen Import
 import UserVerificationDetailScreen from './screens/AdminScreens/UserVerificationDetailScreen';
@@ -218,6 +219,12 @@ export default function App() {
           component={UserOrderDetailScreen}
           options={({ navigation }) => CustomHeader({ navigation, title: 'Order Detail ' })} // Use CustomHeader
         />
+        <Stack.Screen
+  name="UserSchedulesProgressDetails" // Route name used in AdminSideUserSchedulesProgress.js
+  component={UserSchedulesProgressDetails}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Schedule  Details ' })} // Use CustomHeader
+
+/>
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -183,7 +183,7 @@ export default function AdminDetailOrderScreen() {
         } else { console.log(`No valid token for user ${userId}. Skipping 1st installment notification.`); }
     };
 
-    // --- Function to Send Mixed Order COD Paid Notification ---
+    // --- Function to Send Mixed Order COD Paid Notification (for COD + Fixed) ---
     const sendMixedCodPaidNotification = async (userId, orderIdentifier, fixedAmount, dueDate) => {
         console.log(`Attempting Mixed COD Paid notification for user ${userId}, order ${orderIdentifier}`);
         const userToken = await getUserExpoToken(userId);
@@ -201,6 +201,45 @@ export default function AdminDetailOrderScreen() {
                 console.log(`Mixed COD Paid notification sent for user ${userId}.`);
             } catch (error) { console.error(`Failed Mixed COD Paid notification to user ${userId}:`, error.response?.data || error.message || error); }
         } else { console.log(`No valid token for user ${userId}. Skipping Mixed COD Paid notification.`); }
+    };
+
+    // --- Function to Send Mixed Order (COD + BNPL) Notification ---
+    const sendMixedCodBnplNotification = async (userId, orderIdentifier, firstInstJustPaid, nextInstallment) => {
+        console.log(`Attempting Mixed COD+BNPL notification for user ${userId}, order ${orderIdentifier}`);
+        const userToken = await getUserExpoToken(userId);
+        if (userToken) {
+            let bodyMessage = `Cash payment for order #${orderIdentifier} confirmed! `;
+            if (firstInstJustPaid) {
+                bodyMessage += "Your first installment is also marked as paid. ";
+            }
+
+            // Add reminder for the next installment if it exists
+            if (nextInstallment && nextInstallment.dueDate && typeof nextInstallment.amount === 'number') {
+                 const formattedDueDate = formatShortDate(nextInstallment.dueDate);
+                 const formattedAmount = nextInstallment.amount.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                 bodyMessage += `Next installment of ${CURRENCY_SYMBOL} ${formattedAmount} is due on ${formattedDueDate}.`;
+            } else if (firstInstJustPaid && !nextInstallment) {
+                 bodyMessage += "All installments are now scheduled."; // If first was last
+            } else if (!firstInstJustPaid && !nextInstallment) {
+                 bodyMessage += "All installments appear to be paid."; // If first was already paid and it was the last one
+            } else if (!firstInstJustPaid && nextInstallment) {
+                 // If first was already paid, still remind about next one
+                 const formattedDueDate = formatShortDate(nextInstallment.dueDate);
+                 const formattedAmount = nextInstallment.amount.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                 bodyMessage += `Reminder: Next installment of ${CURRENCY_SYMBOL} ${formattedAmount} is due on ${formattedDueDate}.`;
+            }
+
+
+            const message = {
+                to: userToken, sound: 'default', title: '✅ COD Payment Received!',
+                body: bodyMessage, data: { orderId: orderId, type: 'payment_update' },
+                priority: 'high', channelId: 'order-updates'
+            };
+            try {
+                await axios.post(EXPO_PUSH_ENDPOINT, [message], { headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Accept-encoding': 'gzip, deflate' }, timeout: 10000 });
+                console.log(`Mixed COD+BNPL notification sent for user ${userId}.`);
+            } catch (error) { console.error(`Failed Mixed COD+BNPL notification to user ${userId}:`, error.response?.data || error.message || error); }
+        } else { console.log(`No valid token for user ${userId}. Skipping Mixed COD+BNPL notification.`); }
     };
 
 
@@ -262,74 +301,95 @@ export default function AdminDetailOrderScreen() {
             const isMixedOrder = paymentMethod === 'Mixed';
             const hasFixedDurationComponent = !!currentOrderData?.paymentDueDate || !!currentOrderData?.fixedDurationDetails;
             const hasCodComponent = typeof currentOrderData?.codAmount === 'number' && currentOrderData.codAmount > 0;
+            const hasInstallmentComponent = Array.isArray(currentOrderData?.installments) && currentOrderData.installments.length > 0;
             const firstInstallment = currentOrderData?.installments?.[0];
-            const isFirstInstallmentUnpaid = firstInstallment && firstInstallment.status?.toLowerCase() !== PAID_STATUS.toLowerCase();
+            const isFirstInstallmentUnpaid = hasInstallmentComponent && firstInstallment && firstInstallment.status?.toLowerCase() !== PAID_STATUS.toLowerCase();
 
             let updateData = {};
             let successMessage = "";
             let notificationToSend = null;
 
             try {
-                // Case 1: Mixed Order (COD + Fixed Duration)
-                if (isMixedOrder && hasCodComponent && hasFixedDurationComponent) {
+                // Case 1: Mixed Order (COD + BNPL Installments)
+                if (isMixedOrder && hasCodComponent && hasInstallmentComponent) {
+                    console.log("Handling Mixed (COD + BNPL) order completion.");
+                    let firstInstallmentPaidInThisUpdate = false;
+                    let updatedInstallmentsArray = [...(currentOrderData.installments || [])];
+
+                    if (isFirstInstallmentUnpaid) {
+                        console.log("...Marking first BNPL installment as paid.");
+                        const clientPaidAtTimestamp = Timestamp.now();
+                        updatedInstallmentsArray = updatedInstallmentsArray.map((inst, index) => {
+                            if (index === 0) {
+                                firstInstallmentPaidInThisUpdate = true;
+                                return { ...inst, status: PAID_STATUS, paidAt: clientPaidAtTimestamp };
+                            }
+                            return inst;
+                        });
+                        updateData.installments = updatedInstallmentsArray;
+                    } else {
+                        console.log("...First BNPL installment was already paid.");
+                    }
+
+                    updateData.status = ACTIVE_STATUS;
+                    updateData.deliveredAt = serverTimestamp();
+                    updateData.paymentStatus = PARTIALLY_PAID_STATUS;
+                    updateData.codPaymentReceivedAt = serverTimestamp();
+                    // updateData.deliveryOtp = deleteField(); // Optional
+
+                    successMessage = "OTP Verified! Delivery confirmed. COD portion paid.";
+                    if (firstInstallmentPaidInThisUpdate) {
+                        successMessage += " First installment marked as paid.";
+                    }
+
+                    const nextUnpaidInstallment = updatedInstallmentsArray.find((inst, index) => index > 0 && inst.status?.toLowerCase() !== PAID_STATUS.toLowerCase());
+                    notificationToSend = () => sendMixedCodBnplNotification(
+                        currentOrderData.userId,
+                        currentOrderData.orderNumber || currentOrderData.id,
+                        firstInstallmentPaidInThisUpdate,
+                        nextUnpaidInstallment
+                    );
+                }
+                // Case 2: Mixed Order (COD + Fixed Duration)
+                else if (isMixedOrder && hasCodComponent && hasFixedDurationComponent) {
                     console.log("Handling Mixed (COD + Fixed Duration) order completion.");
                     updateData = {
                         status: ACTIVE_STATUS,
                         deliveredAt: serverTimestamp(),
-                        paymentStatus: PARTIALLY_PAID_STATUS, // Set specific status
-                        codPaymentReceivedAt: serverTimestamp(), // Track COD payment time
-                        // deliveryOtp: deleteField() // Optional
+                        paymentStatus: PARTIALLY_PAID_STATUS,
+                        codPaymentReceivedAt: serverTimestamp(),
+                        // deliveryOtp: deleteField()
                     };
                     successMessage = "OTP Verified! Delivery confirmed. COD portion paid. Fixed Duration payment remains pending.";
-                     // Set the specific notification for this case
                     const fixedAmount = currentOrderData.fixedDurationAmountDue ?? currentOrderData.bnplAmount ?? 0;
                     const dueDate = currentOrderData.paymentDueDate;
                     if (dueDate && fixedAmount > 0) {
                          notificationToSend = () => sendMixedCodPaidNotification(currentOrderData.userId, currentOrderData.orderNumber || currentOrderData.id, fixedAmount, dueDate);
-                    } else {
-                        console.warn("Missing due date or amount for Fixed Duration reminder in Mixed order.");
-                    }
+                    } else { console.warn("Missing due date or amount for Fixed Duration reminder in Mixed order."); }
                 }
-                // Case 2: Pure Fixed Duration Order
+                // Case 3: Pure Fixed Duration Order
                 else if (isFixedDurationOrder) {
                     console.log("Handling Fixed Duration order completion (Set to Active).");
-                    updateData = {
-                        status: ACTIVE_STATUS,
-                        deliveredAt: serverTimestamp(), // OK here
-                        // deliveryOtp: deleteField()
-                    };
+                    updateData = { status: ACTIVE_STATUS, deliveredAt: serverTimestamp() };
                     successMessage = `OTP Verified! Order status set to ${ACTIVE_STATUS}. Payment remains pending.`;
                 }
-                // Case 3: BNPL Order with Unpaid First Installment
+                // Case 4: Pure BNPL Order with Unpaid First Installment
                 else if (isBnplOrder && isFirstInstallmentUnpaid) {
-                    console.log("Handling BNPL order - First installment unpaid. Marking paid and setting Active.");
-                    const clientPaidAtTimestamp = Timestamp.now(); // Use client time for array field
-                    const updatedInstallments = (currentOrderData.installments || []).map((inst, index) => {
-                        if (index === 0) {
-                            return { ...inst, status: PAID_STATUS, paidAt: clientPaidAtTimestamp };
-                        }
-                        return inst;
-                    });
-                    updateData = {
-                        installments: updatedInstallments, // Update the array
-                        status: ACTIVE_STATUS,             // Set overall status to Active
-                        deliveredAt: serverTimestamp(),      // Mark as delivered too (server time ok)
-                        // deliveryOtp: deleteField()
-                    };
-                    successMessage = "OTP Verified! First installment marked as paid. Order is now Active.";
-                    notificationToSend = () => sendFirstInstallmentPaidNotification(currentOrderData.userId, currentOrderData.orderNumber || currentOrderData.id);
+                   console.log("Handling BNPL order - First installment unpaid. Marking paid and setting Active.");
+                   const clientPaidAtTimestamp = Timestamp.now();
+                   const updatedInstallments = (currentOrderData.installments || []).map((inst, index) => {
+                       if (index === 0) { return { ...inst, status: PAID_STATUS, paidAt: clientPaidAtTimestamp }; }
+                       return inst;
+                   });
+                   updateData = { installments: updatedInstallments, status: ACTIVE_STATUS, deliveredAt: serverTimestamp() };
+                   successMessage = "OTP Verified! First installment marked as paid. Order is now Active.";
+                   notificationToSend = () => sendFirstInstallmentPaidNotification(currentOrderData.userId, currentOrderData.orderNumber || currentOrderData.id);
                 }
-                // Case 4: All other orders (COD, Standard, BNPL where 1st was paid, potentially Mixed COD+BNPL - adjust if needed)
+                // Case 5: All other orders (COD, Standard, BNPL where 1st was paid)
                 else {
                     console.log("Handling standard order completion (Set to Delivered/Paid).");
-                    updateData = {
-                        status: DELIVERED_STATUS,
-                        deliveredAt: serverTimestamp(), // OK here
-                        paymentStatus: PAID_STATUS, // Mark fully paid on delivery
-                        paymentReceivedAt: serverTimestamp(), // OK here
-                         // deliveryOtp: deleteField()
-                    };
-                     successMessage = "OTP Verified! Order marked as Delivered and Paid.";
+                    updateData = { status: DELIVERED_STATUS, deliveredAt: serverTimestamp(), paymentStatus: PAID_STATUS, paymentReceivedAt: serverTimestamp() };
+                    successMessage = "OTP Verified! Order marked as Delivered and Paid.";
                 }
 
                 // Perform the Firestore update

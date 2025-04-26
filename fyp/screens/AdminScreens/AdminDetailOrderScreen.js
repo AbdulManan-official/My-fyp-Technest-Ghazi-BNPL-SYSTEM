@@ -1,4 +1,4 @@
-// AdminDetailOrderScreen.js (Complete Code - Final Version - Single OTP - Button Hiding Fix)
+// AdminDetailOrderScreen.js (Complete Code - Final Version - Includes All Functionality - Verified Full)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -38,6 +38,7 @@ const DELIVERED_STATUS = 'Delivered';
 const PAID_STATUS = 'Paid'; // Used for overall paymentStatus AND installment status
 const ACTIVE_STATUS = 'Active'; // Used for overall order status after 1st installment paid OR Fixed Duration delivered
 const PENDING_STATUS = 'Pending'; // Used for installment status (default)
+const PARTIALLY_PAID_STATUS = 'Partially Paid'; // For Mixed orders after COD paid
 const OTP_LENGTH = 6;
 
 // --- Helper Function: Generate OTP ---
@@ -76,7 +77,7 @@ const getStatusStyle = (status) => {
     const lowerStatus = status?.toLowerCase() || 'unknown';
     switch (lowerStatus) {
         case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': case 'unpaid (bnpl)': return styles.statusPending;
-        case 'processing': case 'partially paid': return styles.statusProcessing;
+        case 'processing': case PARTIALLY_PAID_STATUS.toLowerCase(): return styles.statusProcessing; // Partially Paid uses Processing style
         case 'shipped': return styles.statusShipped;
         case 'delivered': return styles.statusDelivered;
         case 'active': return styles.statusActive;
@@ -182,6 +183,26 @@ export default function AdminDetailOrderScreen() {
         } else { console.log(`No valid token for user ${userId}. Skipping 1st installment notification.`); }
     };
 
+    // --- Function to Send Mixed Order COD Paid Notification ---
+    const sendMixedCodPaidNotification = async (userId, orderIdentifier, fixedAmount, dueDate) => {
+        console.log(`Attempting Mixed COD Paid notification for user ${userId}, order ${orderIdentifier}`);
+        const userToken = await getUserExpoToken(userId);
+        if (userToken) {
+            const formattedDueDate = formatShortDate(dueDate);
+            const formattedAmount = fixedAmount?.toLocaleString(undefined, { maximumFractionDigits: 0 }) || 'N/A';
+
+            const message = {
+                to: userToken, sound: 'default', title: '✅ COD Payment Received!',
+                body: `Cash payment for order #${orderIdentifier} confirmed. Reminder: Fixed payment of ${CURRENCY_SYMBOL} ${formattedAmount} is due on ${formattedDueDate}.`,
+                data: { orderId: orderId, type: 'payment_update' }, priority: 'high', channelId: 'order-updates'
+            };
+            try {
+                await axios.post(EXPO_PUSH_ENDPOINT, [message], { headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Accept-encoding': 'gzip, deflate' }, timeout: 10000 });
+                console.log(`Mixed COD Paid notification sent for user ${userId}.`);
+            } catch (error) { console.error(`Failed Mixed COD Paid notification to user ${userId}:`, error.response?.data || error.message || error); }
+        } else { console.log(`No valid token for user ${userId}. Skipping Mixed COD Paid notification.`); }
+    };
+
 
     // --- Handler Function: Ship Order & Generate OTP ---
     const handleShipAndGenerateOtp = async () => {
@@ -234,8 +255,13 @@ export default function AdminDetailOrderScreen() {
             console.log(`Delivery OTP Verified for order ${orderId}.`);
             const orderRef = doc(db, ORDERS_COLLECTION, currentOrderData.id);
 
-            const isFixedDurationOrder = currentOrderData?.paymentMethod === 'Fixed Duration';
-            const isBnplOrder = currentOrderData?.paymentMethod === 'BNPL';
+            // Determine payment method and relevant conditions BEFORE update attempt
+            const paymentMethod = currentOrderData?.paymentMethod;
+            const isFixedDurationOrder = paymentMethod === 'Fixed Duration';
+            const isBnplOrder = paymentMethod === 'BNPL';
+            const isMixedOrder = paymentMethod === 'Mixed';
+            const hasFixedDurationComponent = !!currentOrderData?.paymentDueDate || !!currentOrderData?.fixedDurationDetails;
+            const hasCodComponent = typeof currentOrderData?.codAmount === 'number' && currentOrderData.codAmount > 0;
             const firstInstallment = currentOrderData?.installments?.[0];
             const isFirstInstallmentUnpaid = firstInstallment && firstInstallment.status?.toLowerCase() !== PAID_STATUS.toLowerCase();
 
@@ -244,17 +270,37 @@ export default function AdminDetailOrderScreen() {
             let notificationToSend = null;
 
             try {
-                // Case 1: Fixed Duration Order
-                if (isFixedDurationOrder) {
+                // Case 1: Mixed Order (COD + Fixed Duration)
+                if (isMixedOrder && hasCodComponent && hasFixedDurationComponent) {
+                    console.log("Handling Mixed (COD + Fixed Duration) order completion.");
+                    updateData = {
+                        status: ACTIVE_STATUS,
+                        deliveredAt: serverTimestamp(),
+                        paymentStatus: PARTIALLY_PAID_STATUS, // Set specific status
+                        codPaymentReceivedAt: serverTimestamp(), // Track COD payment time
+                        // deliveryOtp: deleteField() // Optional
+                    };
+                    successMessage = "OTP Verified! Delivery confirmed. COD portion paid. Fixed Duration payment remains pending.";
+                     // Set the specific notification for this case
+                    const fixedAmount = currentOrderData.fixedDurationAmountDue ?? currentOrderData.bnplAmount ?? 0;
+                    const dueDate = currentOrderData.paymentDueDate;
+                    if (dueDate && fixedAmount > 0) {
+                         notificationToSend = () => sendMixedCodPaidNotification(currentOrderData.userId, currentOrderData.orderNumber || currentOrderData.id, fixedAmount, dueDate);
+                    } else {
+                        console.warn("Missing due date or amount for Fixed Duration reminder in Mixed order.");
+                    }
+                }
+                // Case 2: Pure Fixed Duration Order
+                else if (isFixedDurationOrder) {
                     console.log("Handling Fixed Duration order completion (Set to Active).");
                     updateData = {
                         status: ACTIVE_STATUS,
                         deliveredAt: serverTimestamp(), // OK here
-                        // Optionally remove OTP: deliveryOtp: deleteField()
+                        // deliveryOtp: deleteField()
                     };
                     successMessage = `OTP Verified! Order status set to ${ACTIVE_STATUS}. Payment remains pending.`;
                 }
-                // Case 2: BNPL Order with Unpaid First Installment
+                // Case 3: BNPL Order with Unpaid First Installment
                 else if (isBnplOrder && isFirstInstallmentUnpaid) {
                     console.log("Handling BNPL order - First installment unpaid. Marking paid and setting Active.");
                     const clientPaidAtTimestamp = Timestamp.now(); // Use client time for array field
@@ -268,13 +314,12 @@ export default function AdminDetailOrderScreen() {
                         installments: updatedInstallments, // Update the array
                         status: ACTIVE_STATUS,             // Set overall status to Active
                         deliveredAt: serverTimestamp(),      // Mark as delivered too (server time ok)
-                        // Optionally remove OTP: deliveryOtp: deleteField()
-                        // DO NOT update overall paymentStatus or paymentReceivedAt yet
+                        // deliveryOtp: deleteField()
                     };
                     successMessage = "OTP Verified! First installment marked as paid. Order is now Active.";
                     notificationToSend = () => sendFirstInstallmentPaidNotification(currentOrderData.userId, currentOrderData.orderNumber || currentOrderData.id);
                 }
-                // Case 3: All other orders (COD, Standard, BNPL where 1st was already paid)
+                // Case 4: All other orders (COD, Standard, BNPL where 1st was paid, potentially Mixed COD+BNPL - adjust if needed)
                 else {
                     console.log("Handling standard order completion (Set to Delivered/Paid).");
                     updateData = {
@@ -282,7 +327,7 @@ export default function AdminDetailOrderScreen() {
                         deliveredAt: serverTimestamp(), // OK here
                         paymentStatus: PAID_STATUS, // Mark fully paid on delivery
                         paymentReceivedAt: serverTimestamp(), // OK here
-                         // Optionally remove OTP: deliveryOtp: deleteField()
+                         // deliveryOtp: deleteField()
                     };
                      successMessage = "OTP Verified! Order marked as Delivered and Paid.";
                 }
@@ -375,11 +420,9 @@ export default function AdminDetailOrderScreen() {
 
     // --- Determine derived values for UI rendering ---
     const currentStatusLower = currentOrderData.status?.toLowerCase() || '';
-    // *** Updated Condition: Check status AND absence of existing delivery OTP ***
     const canMarkAsShipped =
         ['pending', 'processing', 'unpaid (cod)', 'unpaid (fixed duration)', 'unpaid (bnpl)', 'active'].includes(currentStatusLower) &&
-        !currentOrderData?.deliveryOtp; // Do not show if OTP already exists in state
-
+        !currentOrderData?.deliveryOtp;
     const showDeliveryOtpVerification = currentStatusLower === SHIPPED_STATUS.toLowerCase() && !!currentOrderData.deliveryOtp;
     const paymentMethod = currentOrderData.paymentMethod || 'Unknown';
     const relevantPlanDetails = currentOrderData.bnplPlanDetails || currentOrderData.fixedDurationDetails;
@@ -387,7 +430,7 @@ export default function AdminDetailOrderScreen() {
     const isFixedDurationOrder = paymentMethod === 'Fixed Duration';
     const showCodSection = (paymentMethod === 'COD' || paymentMethod === 'Mixed') && typeof currentOrderData.codAmount === 'number' && currentOrderData.codAmount > 0;
     const showInstallmentSection = isInstallmentOrder;
-    const showFixedDurationSection = isFixedDurationOrder;
+    const showFixedDurationSection = isFixedDurationOrder || (paymentMethod === 'Mixed' && (!!currentOrderData?.paymentDueDate || !!currentOrderData?.fixedDurationDetails));
 
 
     // --- Main Screen Render ---
@@ -486,6 +529,13 @@ export default function AdminDetailOrderScreen() {
                                     <Text style={styles.summaryLabel}>Amount Due (COD):</Text>
                                     <Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.codAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
                                 </View>
+                                {/* Display COD payment time if available */}
+                                {currentOrderData.codPaymentReceivedAt && (
+                                    <View style={styles.summaryRow}>
+                                        <Text style={styles.summaryLabel}>COD Paid At:</Text>
+                                        <Text style={styles.summaryValue}>{formatDate(currentOrderData.codPaymentReceivedAt)}</Text>
+                                    </View>
+                                )}
                             </View>
                         )}
 
@@ -524,7 +574,7 @@ export default function AdminDetailOrderScreen() {
                                 </View>
                                 {relevantPlanDetails && (
                                     <View style={styles.planDetailsBox}>
-                                        <Text style={styles.planDetailText}>Plan Name: {relevantPlanDetails.name || 'N/A'}</Text>
+                                        <Text style={styles.planDetailText}>Plan Name: {relevantPlanDetails.name || 'Fixed Plan'}</Text>
                                         <Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration || 'N/A'} Months</Text>
                                         <Text style={styles.planDetailText}>Interest: {typeof relevantPlanDetails.interestRate === 'number' ? `${(relevantPlanDetails.interestRate * 100).toFixed(1)}%` : 'N/A'}</Text>
                                     </View>
@@ -558,7 +608,6 @@ export default function AdminDetailOrderScreen() {
                     )}
 
                     {/* Button: Mark as Shipped & Generate OTP */}
-                    {/* Render based on the updated canMarkAsShipped condition */}
                     {canMarkAsShipped && (
                         <TouchableOpacity
                             style={[styles.actionButton, isProcessingShip && styles.disabledButton]}
@@ -648,14 +697,19 @@ const styles = StyleSheet.create({
     addressValue: { textAlign: 'left', marginLeft: 'auto', flexBasis: '70%', },
     statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, alignSelf: 'flex-start', },
     statusText: { fontSize: 12, fontWeight: 'bold', color: '#fff', },
-    statusPending: { backgroundColor: '#FFA726' }, statusProcessing: { backgroundColor: '#42A5F5' }, statusShipped: { backgroundColor: '#66BB6A' }, statusDelivered: { backgroundColor: '#78909C' }, statusCancelled: { backgroundColor: '#EF5350' }, statusUnknown: { backgroundColor: '#BDBDBD' },
+    statusPending: { backgroundColor: '#FFA726' },
+    statusProcessing: { backgroundColor: '#42A5F5' }, // Used for Processing & Partially Paid
+    statusShipped: { backgroundColor: '#66BB6A' },
+    statusDelivered: { backgroundColor: '#78909C' },
+    statusCancelled: { backgroundColor: '#EF5350' },
+    statusUnknown: { backgroundColor: '#BDBDBD' },
     statusActive: { backgroundColor: '#29B6F6' },
     paymentSubSection: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0', },
     paymentSubHeader: { fontSize: 15, fontWeight: '600', color: TextColorPrimary, marginBottom: 10, },
     paymentValueHighlight: { fontSize: 14, fontWeight: 'bold', color: AccentColor, },
     planDetailsBox: { marginTop: 10, marginBottom: 5, padding: 12, backgroundColor: '#f9f9f9', borderRadius: 6, borderWidth: 1, borderColor: '#eee' },
     planDetailText: { fontSize: 13, color: TextColorSecondary, marginBottom: 4, lineHeight: 18 },
-    linkText: { fontSize: 13, color: '#007AFF', marginTop: 5, fontStyle: 'italic', }, // Fixed color
+    linkText: { fontSize: 13, color: '#007AFF', marginTop: 5, fontStyle: 'italic', },
     penaltyLabel: { color: AccentColor },
     penaltyValue: { color: AccentColor, fontWeight: 'bold' },
     installmentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee', flexWrap: 'wrap' },
@@ -680,50 +734,18 @@ const styles = StyleSheet.create({
     grandTotalLabel: { fontWeight: 'bold', fontSize: 16, color: TextColorPrimary },
     grandTotalValue: { fontWeight: 'bold', fontSize: 16, color: AccentColor },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    actionButton: {
-        paddingVertical: 12,
-        borderRadius: 8, alignItems: 'center', justifyContent: 'center',
-        marginTop: 20, marginHorizontal: 10, marginBottom: 10, elevation: 3, minHeight: 48,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 2.5,
-        backgroundColor: AccentColor, // Default Red (Ship button)
-    },
-    disabledButton: { backgroundColor: '#BDBDBD', elevation: 0, shadowOpacity: 0, }, // Used when isProcessingShip is true OR button is disabled
+    actionButton: { paddingVertical: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginTop: 20, marginHorizontal: 10, marginBottom: 10, elevation: 3, minHeight: 48, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 2.5, backgroundColor: AccentColor, },
+    disabledButton: { backgroundColor: '#BDBDBD', elevation: 0, shadowOpacity: 0, },
     actionButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold', },
     buttonContent: { flexDirection: 'row', alignItems: 'center', },
     buttonIcon: { marginRight: 8, },
-    otpVerificationContainer: {
-        marginTop: 25, marginBottom: 15, marginHorizontal: 5,
-        paddingVertical: 20, paddingHorizontal: 15,
-        backgroundColor: AppBackgroundColor,
-        borderRadius: 10, borderWidth: Platform.OS === 'android' ? 0 : 1, borderColor: LightBorderColor,
-        elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2,
-    },
-    otpInputLabel: {
-        fontSize: 16, fontWeight: 'bold', color: TextColorPrimary, textAlign: 'center', marginBottom: 15,
-    },
-    otpInputPaper: {
-        backgroundColor: '#fff',
-        marginBottom: 10,
-    },
-    otpInputContentStyle: {
-        fontSize: 20, textAlign: 'center', letterSpacing: 8, paddingHorizontal: 0,
-    },
+    otpVerificationContainer: { marginTop: 25, marginBottom: 15, marginHorizontal: 5, paddingVertical: 20, paddingHorizontal: 15, backgroundColor: AppBackgroundColor, borderRadius: 10, borderWidth: Platform.OS === 'android' ? 0 : 1, borderColor: LightBorderColor, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, },
+    otpInputLabel: { fontSize: 16, fontWeight: 'bold', color: TextColorPrimary, textAlign: 'center', marginBottom: 15, },
+    otpInputPaper: { backgroundColor: '#fff', marginBottom: 10, },
+    otpInputContentStyle: { fontSize: 20, textAlign: 'center', letterSpacing: 8, paddingHorizontal: 0, },
     otpErrorText: { color: AccentColor, fontSize: 13, textAlign: 'center', marginBottom: 8, },
-    otpReferenceText: {
-        fontSize: 12, color: TextColorSecondary, textAlign: 'center', fontStyle: 'italic', marginBottom: 15,
-    },
-    verifyOtpButton: {
-        backgroundColor: SuccessColor, // Green button
-        paddingVertical: 12, paddingHorizontal: 30,
-        borderRadius: 8, elevation: 2,
-        minHeight: 48,
-        justifyContent: 'center', alignItems: 'center',
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 2,
-        alignSelf: 'center',
-        width: '80%',
-        maxWidth: 300,
-        marginTop: 5,
-    },
+    otpReferenceText: { fontSize: 12, color: TextColorSecondary, textAlign: 'center', fontStyle: 'italic', marginBottom: 15, },
+    verifyOtpButton: { backgroundColor: SuccessColor, paddingVertical: 12, paddingHorizontal: 30, borderRadius: 8, elevation: 2, minHeight: 48, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 2, alignSelf: 'center', width: '80%', maxWidth: 300, marginTop: 5, },
     finalStatusContainer: { marginTop: 20, marginBottom: 10, marginHorizontal: 10, paddingVertical: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', },
     finalStatusLabel: { fontSize: 16, fontWeight: '600', color: TextColorPrimary, marginRight: 10, },
 });

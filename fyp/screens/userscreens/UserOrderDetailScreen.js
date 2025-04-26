@@ -1,4 +1,4 @@
-// UserOrderDetailScreen.js (COMPLETE CODE - Custom Header Removed for Stack Navigation)
+// UserOrderDetailScreen.js (COMPLETE CODE - Added Fixed Duration Amount Display)
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -30,6 +30,7 @@ const SHIPPED_STATUS = 'Shipped';
 const ACTIVE_STATUS = 'Active';
 const PAID_STATUS = 'Paid';
 const PENDING_STATUS = 'Pending';
+const PARTIALLY_PAID_STATUS = 'Partially Paid'; // Added for Mixed Orders display
 
 // --- Helper: Format Date (Full Timestamp) ---
 const formatDate = (timestamp) => {
@@ -53,12 +54,12 @@ const formatShortDate = (timestamp) => {
      } return 'N/A';
 };
 
-// --- Helper: Get Overall Order Status Style ---
+// --- Helper: Get Overall Order/Payment Status Style ---
 const getStatusStyle = (status) => {
      const lowerStatus = status?.toLowerCase() || 'unknown';
      switch (lowerStatus) {
           case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': case 'unpaid (bnpl)': return styles.statusPending;
-          case 'processing': case 'partially paid': return styles.statusProcessing;
+          case 'processing': case PARTIALLY_PAID_STATUS.toLowerCase(): return styles.statusProcessing; // Include Partially Paid
           case 'shipped': return styles.statusShipped;
           case 'active': return styles.statusActive;
           case 'delivered': return styles.statusDelivered;
@@ -182,10 +183,9 @@ export default function UserOrderDetailScreen() {
      return (
       <SafeAreaView style={styles.container}>
          <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
-         {/* Removed Custom Error Header */}
+         {/* Stack Navigator provides header */}
         <View style={styles.loadingContainer}>
           <Text style={styles.errorText}>{error || "Order details could not be loaded."}</Text>
-          {/* Use Stack Navigator's back functionality or provide alternative */}
           {navigation.canGoBack() && (
              <TouchableOpacity onPress={() => navigation.goBack()}>
                 <Text style={styles.errorLink}>Go Back</Text>
@@ -203,13 +203,14 @@ export default function UserOrderDetailScreen() {
   const isRelevantPlanFixed = relevantPlanDetails?.planType === 'Fixed Duration' || paymentMethod === 'Fixed Duration';
   const showCodSection = (paymentMethod === 'COD' || paymentMethod === 'Mixed') && typeof currentOrderData.codAmount === 'number' && currentOrderData.codAmount > 0;
   const showInstallmentSection = (paymentMethod === 'BNPL' || paymentMethod === 'Mixed') && isRelevantPlanInstallment;
-  const showFixedDurationSection = (paymentMethod === 'Fixed Duration') && isRelevantPlanFixed;
+  const showFixedDurationSection = (paymentMethod === 'Fixed Duration') || (paymentMethod === 'Mixed' && (!!currentOrderData?.paymentDueDate || !!currentOrderData?.fixedDurationDetails));
+
 
   // --- Main Render when data is loaded ---
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
-      {/* Removed Custom Header View */}
+      {/* Stack Navigator provides header */}
       <ScrollView contentContainerStyle={styles.scrollContainer}>
 
         {/* Items Ordered Section */}
@@ -300,30 +301,50 @@ export default function UserOrderDetailScreen() {
                          <Text style={styles.summaryLabel}>Amount Due (COD):</Text>
                          <Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.codAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
                      </View>
+                     {currentOrderData.codPaymentReceivedAt && (
+                          <View style={styles.summaryRow}>
+                              <Text style={styles.summaryLabel}>COD Paid At:</Text>
+                              <Text style={styles.summaryValue}>{formatDate(currentOrderData.codPaymentReceivedAt)}</Text>
+                          </View>
+                      )}
                  </View>
              )}
 
             {/* Conditional: BNPL/Installment Plan Details */}
-            {showInstallmentSection && relevantPlanDetails && (
+            {showInstallmentSection && ( // Show this section if it's BNPL or Mixed w/ Installments
                  <View style={styles.paymentSubSection}>
                      <Text style={styles.paymentSubHeader}>Installment Plan Details</Text>
-                     <View style={styles.planDetailsBox}>
-                        <Text style={styles.planDetailTitle}>Plan: {relevantPlanDetails.name || 'N/A'}</Text>
-                        <Text style={styles.planDetailText}>Type: {relevantPlanDetails.planType || 'Installment'}</Text>
-                        <Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration || 'N/A'} Months</Text>
-                        <Text style={styles.planDetailText}>Interest: {typeof relevantPlanDetails.interestRate === 'number' ? `${(relevantPlanDetails.interestRate ).toFixed(1)}%` : 'N/A'}</Text>
+                     {/* Always show the amount if the section is shown */}
+                     <View style={styles.summaryRow}>
+                         <Text style={styles.summaryLabel}>Plan Amount (BNPL):</Text>
+                         <Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.bnplAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
                      </View>
+                     {/* Conditionally show plan details if they exist */}
+                     {relevantPlanDetails && relevantPlanDetails.planType === 'Installment' && ( // Check type here too
+                         <View style={styles.planDetailsBox}>
+                            <Text style={styles.planDetailTitle}>Plan: {relevantPlanDetails.name || 'N/A'}</Text>
+                            <Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration || 'N/A'} Months</Text>
+                            <Text style={styles.planDetailText}>Interest: {typeof relevantPlanDetails.interestRate === 'number' ? `${(relevantPlanDetails.interestRate * 100).toFixed(1)}%` : 'N/A'}</Text>
+                         </View>
+                      )}
+                      {/* Show link only if installments exist */}
+                      {(currentOrderData.installments?.length > 0) && <Text style={styles.linkText}>(See Full Schedule Below)</Text>}
                  </View>
             )}
 
             {/* Conditional: Fixed Duration Details */}
-             {showFixedDurationSection && (
+             {showFixedDurationSection && ( // Show this section if it's Fixed Duration or Mixed w/ Fixed
                  <View style={styles.paymentSubSection}>
                     <Text style={styles.paymentSubHeader}>Fixed Duration Plan Details</Text>
+                    {/* *** ADDED Amount display here *** */}
+                    <View style={styles.summaryRow}>
+                        <Text style={styles.summaryLabel}>Plan Amount:</Text>
+                        <Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.fixedDurationAmountDue ?? currentOrderData.bnplAmount ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}</Text>
+                    </View>
                      <View style={styles.planDetailsBox}>
                          {relevantPlanDetails && <Text style={styles.planDetailTitle}>Plan: {relevantPlanDetails.name || 'Fixed Plan'}</Text>}
                          {relevantPlanDetails && <Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration || 'N/A'} Months</Text>}
-                         {relevantPlanDetails && <Text style={styles.planDetailText}>Interest: {typeof relevantPlanDetails.interestRate === 'number' ? `${(relevantPlanDetails.interestRate * 100).toFixed(1)}%` : 'N/A'}</Text>}
+                         {relevantPlanDetails && <Text style={styles.planDetailText}>Interest: {typeof relevantPlanDetails.interestRate === 'number' ? `${(relevantPlanDetails.interestRate ).toFixed(1)}%` : 'N/A'}</Text>}
                          <Text style={styles.planDetailText}>Payment Due: {formatShortDate(currentOrderData.paymentDueDate)}</Text>
                          {typeof currentOrderData.penalty === 'number' && currentOrderData.penalty > 0 && (
                              <Text style={[styles.planDetailText, styles.penaltyText]}>Penalty Applied: {CURRENCY_SYMBOL}{currentOrderData.penalty.toFixed(2)}</Text>
@@ -355,20 +376,24 @@ export default function UserOrderDetailScreen() {
 // --- Styles ---
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: ScreenBackgroundColor, },
-  // Adjusted padding Top for scroll view now that header is removed
   scrollContainer: { flexGrow: 1, padding: 15, paddingBottom: 40, paddingTop: 15 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   errorText: { fontSize: 16, color: AccentColor, marginBottom: 15, textAlign: 'center' },
   errorLink: { fontSize: 16, color: '#007AFF', fontWeight: 'bold' },
-  // Removed Header Styles: simpleHeader, backButtonHeader, headerTitle, backButtonError, headerTitleError
   section: { backgroundColor: AppBackgroundColor, borderRadius: 8, padding: 15, marginBottom: 15, elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 1.5, borderWidth: Platform.OS === 'android' ? 0 : 1, borderColor: '#E0E0E0', },
   sectionTitle: { fontSize: 17, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 12, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 8, },
   summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, flexWrap: 'wrap', },
   summaryLabel: { fontSize: 14, color: TextColorSecondary, marginRight: 5 },
   summaryValue: { fontSize: 14, fontWeight: '500', color: TextColorPrimary, textAlign: 'right', flexShrink: 1, },
+  addressValue: { textAlign: 'left', marginLeft: 'auto', flexBasis: '70%', },
   statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, alignSelf: 'flex-start', },
   statusText: { fontSize: 12, fontWeight: 'bold', color: '#fff', },
-  statusPending: { backgroundColor: PendingStatusColor }, statusProcessing: { backgroundColor: '#42A5F5' }, statusShipped: { backgroundColor: '#66BB6A' }, statusDelivered: { backgroundColor: '#78909C' }, statusCancelled: { backgroundColor: AccentColor }, statusUnknown: { backgroundColor: '#BDBDBD' },
+  statusPending: { backgroundColor: PendingStatusColor },
+  statusProcessing: { backgroundColor: '#42A5F5' }, // Used for Processing & Partially Paid
+  statusShipped: { backgroundColor: '#66BB6A' },
+  statusDelivered: { backgroundColor: '#78909C' },
+  statusCancelled: { backgroundColor: AccentColor },
+  statusUnknown: { backgroundColor: '#BDBDBD' },
   statusActive: { backgroundColor: ActiveStatusColor },
   detailText: { fontSize: 14, color: TextColorPrimary, lineHeight: 20, marginBottom: 4, },
   paymentSubSection: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0', },
@@ -377,6 +402,7 @@ const styles = StyleSheet.create({
   planDetailsBox: { marginTop: 10, padding: 12, backgroundColor: '#f9f9f9', borderRadius: 6, borderWidth: 1, borderColor: '#eee' },
   planDetailTitle: { fontSize: 14, fontWeight: '600', color: TextColorPrimary, marginBottom: 6 },
   planDetailText: { fontSize: 13, color: TextColorSecondary, marginBottom: 4, lineHeight: 18 },
+  linkText: { fontSize: 13, color: '#007AFF', marginTop: 5, fontStyle: 'italic', },
   penaltyText: { fontSize: 11, color: AccentColor, fontStyle: 'italic', marginLeft: 5, textAlign: 'right', width: '100%' },
   installmentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#eee', flexWrap: 'wrap' },
   installmentText: { fontSize: 13, color: TextColorSecondary, paddingRight: 5, marginBottom: 3, marginTop: 3, },

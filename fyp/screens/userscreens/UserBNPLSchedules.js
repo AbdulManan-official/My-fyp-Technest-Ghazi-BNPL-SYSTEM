@@ -1,6 +1,6 @@
-// UserBNPLSchedules.js - FINAL COMPLETE CODE V4 (Verified - Text Rendering Checked)
+// UserBNPLSchedules.js - FINAL COMPLETE CODE V13 (Corrected Admin Token Fetching)
 // Shows All BNPL/Fixed/Mixed Orders, Full Details Inline, Separated Progress Bar for Installments,
-// Animated Timer for Fixed Duration, Pay Buttons, No Header, Specific Empty State
+// Animated Timer for Fixed Duration, Pay Buttons, No Header, Specific Empty State, Stripe Integration
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
@@ -14,10 +14,12 @@ import { MaterialIcons } from '@expo/vector-icons';
 import * as Progress from 'react-native-progress'; // Needed for Installment Progress Bar
 import {
     getFirestore, collection, query, where, Timestamp,
-    onSnapshot // Use onSnapshot for real-time updates
+    onSnapshot, doc, updateDoc, getDocs // Import getDocs for admin token query
 } from 'firebase/firestore';
 import { db, auth } from '../../firebaseConfig'; // Ensure path is correct
 import { format, isValid, isPast, differenceInDays, isToday, isTomorrow, startOfDay } from 'date-fns';
+import { useStripe } from '@stripe/stripe-react-native'; // Stripe Hook
+import axios from 'axios'; // For API calls
 
 // --- Constants ---
 const AppBackgroundColor = '#FFFFFF';
@@ -25,18 +27,19 @@ const ScreenBackgroundColor = '#F8F9FA';
 const TextColorPrimary = '#212121';
 const TextColorSecondary = '#6B7280';
 const AccentColor = '#FF4500'; // User theme color
-const ProgressBarColor = AccentColor; // Color for the progress bar
-const SuccessColor = '#4CAF50'; // For Paid status
-const PendingColor = '#FFA726'; // For Pending status
+const ProgressBarColor = AccentColor;
+const SuccessColor = '#4CAF50';
+const PendingColor = '#FFA726';
 const OverdueColor = '#D32F2F';
-const ProcessingColor = '#42A5F5'; // For Processing/Partially Paid
-const ActiveColor = '#29B6F6';    // For Active order status
-const ShippedColor = '#66BB6A'; // For Shipped status
-const DeliveredColor = '#78909C'; // For Delivered status
-const UnknownColor = '#BDBDBD'; // For Unknown status
-const PlanAmountColor = '#0056b3'; // Blue for plan amounts
+const ProcessingColor = '#42A5F5';
+const ActiveColor = '#29B6F6';
+const ShippedColor = '#66BB6A';
+const DeliveredColor = '#78909C';
+const UnknownColor = '#BDBDBD';
+const PlanAmountColor = '#0056b3';
 const PlaceholderBgColor = '#F0F0F0';
 const ORDERS_COLLECTION = 'orders';
+const ADMIN_COLLECTION = 'Admin'; // *** CORRECTED Collection Name for Admins ***
 const CURRENCY_SYMBOL = 'PKR';
 const BNPL_TYPE = 'BNPL';
 const FIXED_TYPE = 'Fixed Duration';
@@ -44,8 +47,11 @@ const MIXED_TYPE = 'Mixed';
 const PAID_STATUS = 'Paid';
 const PENDING_STATUS = 'Pending';
 const PARTIALLY_PAID_STATUS = 'Partially Paid';
-const ACTIVE_ORDER_STATUS = 'Active'; // For checking in empty state
+const ACTIVE_ORDER_STATUS = 'Active';
+const COMPLETED_ORDER_STATUS = 'Delivered'; // Final status after full payment
 const placeholderImagePath = require('../../assets/p3.jpg'); // *** ADJUST PATH IF NEEDED ***
+const PAYMENT_API_ENDPOINT = "https://back.txyber.com/create-payment-intent"; // *** Your Backend API ***
+const EXPO_PUSH_ENDPOINT = "https://exp.host/--/api/v2/push/send"; // Expo endpoint
 
 // --- Helper Functions ---
 const formatShortDate = (timestamp) => {
@@ -55,16 +61,13 @@ const formatShortDate = (timestamp) => {
     if (dateToFormat && isValid(dateToFormat)) { try { return format(dateToFormat, 'MMM d, yyyy'); } catch (e) { return 'Invalid Date'; }}
     return 'N/A';
 };
-
 const getOverallStatusColor = (status) => {
     const lowerStatus = status?.toLowerCase() || 'unknown';
     switch (lowerStatus) { case 'pending': return PendingColor; case 'processing': case PARTIALLY_PAID_STATUS.toLowerCase(): return ProcessingColor; case 'active': return ActiveColor; case 'shipped': return ShippedColor; case 'delivered': return DeliveredColor; case 'cancelled': case 'rejected': return OverdueColor; case 'paid': return SuccessColor; default: return UnknownColor; }
 };
-
 const getInstallmentStatusStyle = (status) => {
     return (status?.toLowerCase() === PAID_STATUS.toLowerCase()) ? styles.statusPaidInstallment : styles.statusPendingInstallment;
 };
-
 const calculateInstallmentProgress = (installments = []) => {
     if (!installments || !Array.isArray(installments) || installments.length === 0) return { paidCount: 0, totalCount: 0, progress: 0, nextDueDate: null, nextAmount: null };
     const totalCount = installments.length; let paidCount = 0; let nextDueDate = null; let nextAmount = null; let foundNext = false;
@@ -72,16 +75,14 @@ const calculateInstallmentProgress = (installments = []) => {
     const progress = totalCount > 0 ? paidCount / totalCount : 0;
     return { paidCount, totalCount, progress, nextDueDate, nextAmount };
 };
-
 const calculateRemainingAmount = (schedule) => {
      if (!schedule) return 0; const paymentMethod = schedule.paymentMethod; const paymentStatus = schedule.paymentStatus?.toLowerCase();
      if (paymentStatus === PAID_STATUS.toLowerCase()) return 0;
      if (paymentMethod === BNPL_TYPE) { const totalBnplAmount = schedule.bnplAmount || 0; let paidAmount = 0; schedule.installments?.forEach(inst => { if (inst.status?.toLowerCase() === PAID_STATUS.toLowerCase() && typeof inst.amount === 'number') { paidAmount += inst.amount; } }); const remaining = totalBnplAmount - paidAmount; return remaining >= 0 ? remaining : 0; }
      else if (paymentMethod === FIXED_TYPE) { return schedule.fixedDurationAmountDue ?? schedule.bnplAmount ?? schedule.grandTotal ?? 0; }
-     else if (paymentMethod === MIXED_TYPE) { let remainingBnpl = 0; let remainingFixed = 0; if (Array.isArray(schedule.installments) && schedule.installments.length > 0) { const totalBnplAmount = schedule.bnplAmount || 0; let paidBnplAmount = 0; schedule.installments.forEach(inst => { if (inst.status?.toLowerCase() === PAID_STATUS.toLowerCase() && typeof inst.amount === 'number') { paidBnplAmount += inst.amount; } }); remainingBnpl = totalBnplAmount - paidBnplAmount; remainingBnpl = remainingBnpl >= 0 ? remainingBnpl : 0; } const fixedAmountDue = schedule.fixedDurationAmountDue ?? schedule.bnplAmount ?? 0; if (fixedAmountDue > 0 && paymentStatus !== PAID_STATUS.toLowerCase()) { remainingFixed = fixedAmountDue; } return remainingBnpl + remainingFixed; }
+     else if (paymentMethod === MIXED_TYPE) { let remainingBnpl = 0; let remainingFixed = 0; if (Array.isArray(schedule.installments) && schedule.installments.length > 0) { const totalBnplAmount = schedule.bnplAmount || 0; let paidBnplAmount = 0; schedule.installments.forEach(inst => { if (inst.status?.toLowerCase() === PAID_STATUS.toLowerCase() && typeof inst.amount === 'number') { paidBnplAmount += inst.amount; } }); remainingBnpl = totalBnplAmount - paidBnplAmount; remainingBnpl = remainingBnpl >= 0 ? remainingBnpl : 0; } const fixedAmountDue = schedule.fixedDurationAmountDue ?? schedule.bnplAmount ?? 0; if (fixedAmountDue > 0 && paymentStatus !== PAID_STATUS.toLowerCase() && paymentStatus !== PARTIALLY_PAID_STATUS.toLowerCase()) { remainingFixed = fixedAmountDue; } else if (fixedAmountDue > 0 && paymentStatus === PARTIALLY_PAID_STATUS.toLowerCase() && (Array.isArray(schedule.installments) && schedule.installments.every(i => i.status?.toLowerCase() === PAID_STATUS.toLowerCase()))) { remainingFixed = fixedAmountDue; } return remainingBnpl + remainingFixed; }
      return schedule.grandTotal || 0;
 };
-
 const formatTimeRemaining = (dueDateTimestamp) => {
     let dueDate = null; if (dueDateTimestamp && typeof dueDateTimestamp.toDate === 'function') { try { dueDate = dueDateTimestamp.toDate(); } catch (e) { return "Invalid Date"; } } else if (dueDateTimestamp instanceof Date) { dueDate = dueDateTimestamp; } if (!dueDate || !isValid(dueDate)) return "Due date N/A"; const now = new Date(); const dueDateStart = startOfDay(dueDate); const nowStart = startOfDay(now); if (isPast(dueDateStart) && !isToday(dueDateStart)) { const daysOverdue = differenceInDays(nowStart, dueDateStart); return `Overdue by ${daysOverdue} day${daysOverdue > 1 ? 's' : ''}`; } if (isToday(dueDateStart)) return "Due today"; if (isTomorrow(dueDateStart)) return "Due tomorrow"; const daysRemaining = differenceInDays(dueDateStart, nowStart); if (daysRemaining >= 0) { return `${daysRemaining} day${daysRemaining !== 1 ? 's' : ''} left`; } return formatShortDate(dueDateTimestamp);
 };
@@ -91,24 +92,61 @@ const AnimatedTimeRemaining = ({ timeString, isOverdue }) => {
     const pulseAnim = useRef(new Animated.Value(1)).current;
     useEffect(() => { Animated.loop( Animated.sequence([ Animated.timing(pulseAnim, { toValue: 1.06, duration: 800, useNativeDriver: true }), Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }), ]), { iterations: -1 } ).start(); }, [pulseAnim]);
     const textColor = isOverdue ? OverdueColor : TextColorPrimary;
-    // Ensure all rendered output is within valid components
-    return (
-        <Animated.View style={[styles.timeRemainingAnimatedContainer, { transform: [{ scale: pulseAnim }] }]}>
-            <MaterialIcons name="timer" size={15} color={textColor} style={styles.iconStyle} />
-            <Text style={[styles.detailValueDate, { color: textColor }]}>{timeString}</Text>
-        </Animated.View>
-    );
+    return (<Animated.View style={[styles.timeRemainingAnimatedContainer, { transform: [{ scale: pulseAnim }] }]}><MaterialIcons name="timer" size={15} color={textColor} style={styles.iconStyle} /><Text style={[styles.detailValueDate, { color: textColor }]}>{timeString}</Text></Animated.View>);
 };
+
+// --- *** UPDATED Admin Notification Helper Functions *** ---
+async function getAdminExpoTokens() {
+    const tokens = [];
+    console.log('[getAdminExpoTokens] Fetching admin push tokens...');
+    try {
+        // *** Query the CORRECT 'Admin' collection ***
+        const adminRef = collection(db, ADMIN_COLLECTION);
+        const q = query(adminRef, where("role", "==", "admin")); // Assuming role field exists
+        const querySnapshot = await getDocs(q);
+
+        if (querySnapshot.empty) {
+            console.log(`[getAdminExpoTokens] No documents found in "${ADMIN_COLLECTION}" collection with role "admin".`);
+            return [];
+        }
+
+        querySnapshot.forEach((doc) => {
+            const token = doc.data()?.expoPushToken;
+            if (token && typeof token === 'string' && (token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken['))) {
+                tokens.push(token);
+                 console.log(`[getAdminExpoTokens] Added token for admin ${doc.id}`);
+            } else {
+                 console.log(`[getAdminExpoTokens] Found admin ${doc.id} but token is invalid or missing.`);
+            }
+        });
+        console.log(`[getAdminExpoTokens] Found ${tokens.length} valid admin tokens.`);
+    } catch (error) {
+        console.error("[getAdminExpoTokens] Error fetching admin tokens:", error);
+    }
+    return tokens;
+}
+
+async function sendAdminPaymentNotification(orderId, userName, amountPaid, paymentMethod) {
+    const adminTokens = await getAdminExpoTokens(); // Uses the corrected function above
+    if (!adminTokens || adminTokens.length === 0) { console.log("[AdminPaymentNotify] No valid admin tokens found."); return; }
+    const messages = adminTokens.map(token => ({ to: token, sound: 'default', title: '💰 Payment Completed', body: `Final payment of ${CURRENCY_SYMBOL}${amountPaid?.toLocaleString()} received from ${userName || 'user'} for ${paymentMethod} Order #${orderId.substring(0, 6).toUpperCase()}. Order marked as ${COMPLETED_ORDER_STATUS}.`, data: { orderId: orderId, type: 'order_completed' }, priority: 'high', channelId: 'admin-notifications' }));
+    try { console.log(`[AdminPaymentNotify] Sending ${messages.length} completion notifications...`); await axios.post(EXPO_PUSH_ENDPOINT, messages, { headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'Accept-encoding': 'gzip, deflate', }, timeout: 10000 }); console.log(`[AdminPaymentNotify] Notifications sent for order ${orderId}.`); }
+    catch (error) { console.error(`[AdminPaymentNotify] Failed for order ${orderId}:`, error.response?.data || error.message); }
+}
+// --- End Admin Notification Helpers ---
+
 
 // --- Main Component ---
 export default function UserBNPLSchedules() {
     const navigation = useNavigation();
+    const { initPaymentSheet, presentPaymentSheet, loading: stripeLoadingHook } = useStripe();
     const [schedules, setSchedules] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+    const [dbError, setDbError] = useState(null);
     const [refreshing, setRefreshing] = useState(false);
     const [userId, setUserId] = useState(null);
     const listenerUnsubscribeRef = useRef(null);
+    const [payingItemId, setPayingItemId] = useState(null);
 
     // --- Effect 1: Monitor Authentication State ---
     useEffect(() => {
@@ -119,7 +157,7 @@ export default function UserBNPLSchedules() {
             if (currentUid !== userId) {
                 setUserId(currentUid);
                 if (!currentUid) { setError("Please log in to view your schedules."); setLoading(false); setSchedules([]); setRefreshing(false); if (listenerUnsubscribeRef.current) { listenerUnsubscribeRef.current(); listenerUnsubscribeRef.current = null; } }
-                else { setError(null); if(schedules.length === 0) setLoading(true); }
+                else { setDbError(null); if(schedules.length === 0) setLoading(true); }
             }
         });
         return () => { console.log("[UserSchedules] Cleaning up Auth Listener."); unsubscribeAuth(); };
@@ -129,43 +167,26 @@ export default function UserBNPLSchedules() {
     const setupScheduleListener = useCallback(() => {
         if (!userId) { console.log("[UserSchedules] No userId."); setSchedules([]); setLoading(false); setRefreshing(false); if (listenerUnsubscribeRef.current) { listenerUnsubscribeRef.current(); listenerUnsubscribeRef.current = null; } return null; }
         if (!refreshing && schedules.length === 0) setLoading(true);
-        setError(null);
+        setDbError(null);
         console.log(`[UserSchedules] Setting up listener for user ${userId}.`);
         if (listenerUnsubscribeRef.current) { listenerUnsubscribeRef.current(); listenerUnsubscribeRef.current = null; }
-
         const ordersRef = collection(db, ORDERS_COLLECTION);
         const q = query(ordersRef, where("userId", "==", userId));
-
         console.log("[UserSchedules] Attaching Firestore listener...");
         const unsubscribe = onSnapshot(q, (snapshot) => {
-            console.log(`[UserSchedules] Snapshot: ${snapshot.docs.length} total orders.`);
+            console.log(`[UserSchedules] Snapshot: Received ${snapshot.docs.length} total orders.`);
             let allUserOrders = snapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() })).filter(order => order.createdAt);
-
-            // Filter for BNPL/Fixed/Mixed orders (any status)
-            let paymentPlanOrders = allUserOrders.filter(order =>
-                order.paymentMethod === BNPL_TYPE || order.paymentMethod === FIXED_TYPE || order.paymentMethod === MIXED_TYPE
-            );
-
-            // Sort client-side
+            let paymentPlanOrders = allUserOrders.filter(order => order.paymentMethod === BNPL_TYPE || order.paymentMethod === FIXED_TYPE || order.paymentMethod === MIXED_TYPE );
             paymentPlanOrders.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
-
             console.log(`[UserSchedules] Filtered to ${paymentPlanOrders.length} BNPL/Fixed/Mixed.`);
-            setSchedules(paymentPlanOrders);
-            setLoading(false); setRefreshing(false);
-
-        }, (err) => {
-            console.error("[UserSchedules] Listener error:", err);
-            setError("Could not update schedules. Check connection.");
-            setLoading(false); setRefreshing(false);
-        });
-
+            setSchedules(paymentPlanOrders); setLoading(false); setRefreshing(false);
+        }, (err) => { console.error("[UserSchedules] Listener error:", err); setDbError("Could not update schedules. Check connection."); setLoading(false); setRefreshing(false); });
         listenerUnsubscribeRef.current = unsubscribe;
         return unsubscribe;
-
     }, [userId, refreshing, schedules.length]);
 
     // --- Effect 3: Manage Listener Lifecycle ---
-    useFocusEffect(useCallback(() => { console.log("[UserSchedules] Screen focused."); setupScheduleListener(); return () => { if (listenerUnsubscribeRef.current) { console.log("[UserSchedules] Screen blurred."); listenerUnsubscribeRef.current(); listenerUnsubscribeRef.current = null; } }; }, [setupScheduleListener]));
+    useFocusEffect(useCallback(() => { console.log("[UserSchedules] Screen focused."); const unsub = setupScheduleListener(); return () => { if (unsub) { console.log("[UserSchedules] Screen blurred."); unsub(); listenerUnsubscribeRef.current = null; } }; }, [setupScheduleListener]));
 
     // --- Handle Pull-to-Refresh ---
     const onRefresh = useCallback(() => { if (!userId) { setRefreshing(false); return; } console.log("[UserSchedules] Manual refresh."); setRefreshing(true); setupScheduleListener(); const timeout = setTimeout(() => { if (refreshing) setRefreshing(false); }, 8000); return () => clearTimeout(timeout); }, [userId, refreshing, setupScheduleListener]);
@@ -173,9 +194,69 @@ export default function UserBNPLSchedules() {
     // --- Handle Navigation ---
     const handleSchedulePress = (scheduleItem) => { navigation.navigate('UserOrderDetailScreen', { orderId: scheduleItem.id }); };
 
-    // --- Placeholder Payment Handlers ---
-    const handlePayInstallment = (orderId, installment) => { Alert.alert("Payment Action", `Pay Installment #${installment.installmentNumber} (${CURRENCY_SYMBOL}${installment.amount?.toLocaleString()})`); };
-    const handlePayFixedDuration = (orderId, amount) => { Alert.alert("Payment Action", `Pay Fixed Amount (${CURRENCY_SYMBOL}${amount?.toLocaleString()})`); };
+    // --- Stripe Payment Logic ---
+    const initializeAndPay = async (order, amountToPay, paymentType, installment = null) => {
+        const orderId = order.id;
+        const paymentAttemptId = `${orderId}-${paymentType}-${installment?.installmentNumber ?? 'fixed'}`;
+        if (!amountToPay || amountToPay <= 0) { Alert.alert("Error", "Invalid payment amount specified."); return; }
+        if (payingItemId) { Alert.alert("Payment In Progress", "Please wait..."); return; }
+        if (stripeLoadingHook) { Alert.alert("Initializing", "Payment system loading..."); return;}
+
+        setPayingItemId(paymentAttemptId);
+        try {
+            const response = await axios.post(PAYMENT_API_ENDPOINT, { amount: amountToPay });
+            const { clientSecret } = response.data;
+            if (!clientSecret) throw new Error("Payment setup failed: Missing client secret.");
+            const { error: initError } = await initPaymentSheet({ merchantDisplayName: "Txyber", paymentIntentClientSecret: clientSecret, allowsDelayedPaymentMethods: true });
+            if (initError) throw new Error(`Payment sheet setup failed: ${initError.localizedMessage || initError.message}`);
+            const { error: paymentError } = await presentPaymentSheet();
+            if (paymentError) { if (paymentError.code === 'Canceled') { Alert.alert("Payment Canceled"); } else { throw new Error(`Payment failed: ${paymentError.localizedMessage || paymentError.message}`); } }
+            else { Alert.alert("Payment Successful"); await updateFirestoreAfterPayment(order, amountToPay, paymentType, installment); }
+        } catch (error) { console.error(`Payment error for ${paymentAttemptId}:`, error); Alert.alert("Payment Error", error.message || "Unexpected error."); }
+        finally { setPayingItemId(null); }
+    };
+
+    // --- Firestore Update Function ---
+    const updateFirestoreAfterPayment = async (order, paidAmount, paymentType, paidInstallment = null) => {
+        console.log(`Updating Firestore for Order ${order.id}, Type: ${paymentType}`);
+        const orderRef = doc(db, ORDERS_COLLECTION, order.id);
+        try {
+            const now = Timestamp.now(); let updates = {}; let shouldNotifyAdmin = false;
+            const latestOrderData = schedules.find(s => s.id === order.id) || order;
+            let currentInstallments = latestOrderData.installments || []; let newInstallments = JSON.parse(JSON.stringify(currentInstallments));
+
+            if (paymentType === 'Installment' && paidInstallment) {
+                const index = newInstallments.findIndex(inst => inst.installmentNumber === paidInstallment.installmentNumber);
+                if (index !== -1) {
+                    if (newInstallments[index].status?.toLowerCase() === PAID_STATUS.toLowerCase()) { console.warn(`Inst ${paidInstallment.installmentNumber} already paid.`); return; }
+                    newInstallments[index].status = PAID_STATUS; newInstallments[index].paidAt = now; updates.installments = newInstallments;
+                    const allInstallmentsPaid = newInstallments.every(inst => inst.status?.toLowerCase() === PAID_STATUS.toLowerCase());
+                    if (allInstallmentsPaid) {
+                        const hasFixedComp = !!latestOrderData.fixedDurationAmountDue || !!latestOrderData.paymentDueDate;
+                        const isFixedCompPaid = latestOrderData.paymentStatus === PAID_STATUS || (latestOrderData.paymentStatus === PARTIALLY_PAID_STATUS && !hasFixedComp);
+                        if (latestOrderData.paymentMethod === BNPL_TYPE || (latestOrderData.paymentMethod === MIXED_TYPE && !hasFixedComp) || (latestOrderData.paymentMethod === MIXED_TYPE && hasFixedComp && isFixedCompPaid)) {
+                            updates.paymentStatus = PAID_STATUS; updates.paymentReceivedAt = now;
+                            if (latestOrderData.status !== COMPLETED_ORDER_STATUS) { updates.status = COMPLETED_ORDER_STATUS; updates.deliveredAt = latestOrderData.deliveredAt || now; }
+                            shouldNotifyAdmin = true;
+                        } else if (latestOrderData.paymentMethod === MIXED_TYPE && hasFixedComp && !isFixedCompPaid) { updates.paymentStatus = PARTIALLY_PAID_STATUS; }
+                    } else { if(latestOrderData.paymentMethod === MIXED_TYPE || latestOrderData.paymentMethod === BNPL_TYPE) { if(latestOrderData.paymentStatus !== PAID_STATUS){ updates.paymentStatus = PARTIALLY_PAID_STATUS; } } }
+                } else { console.error("Paid installment not found!"); return; }
+            } else if (paymentType === 'Fixed Duration') {
+                 const hasInst = Array.isArray(newInstallments) && newInstallments.length > 0; let allInstPaid = !hasInst || newInstallments.every(inst => inst.status?.toLowerCase() === PAID_STATUS.toLowerCase());
+                 if (allInstPaid) { updates.paymentStatus = PAID_STATUS; updates.paymentReceivedAt = now; if (latestOrderData.status !== COMPLETED_ORDER_STATUS) { updates.status = COMPLETED_ORDER_STATUS; updates.deliveredAt = latestOrderData.deliveredAt || now; } shouldNotifyAdmin = true; }
+                 else { updates.paymentStatus = PARTIALLY_PAID_STATUS; }
+            } else { console.warn("Unknown payment type"); return; }
+
+            if (Object.keys(updates).length > 0) {
+                 await updateDoc(orderRef, updates); console.log(`Firestore updated: Order ${order.id}`);
+                 if (shouldNotifyAdmin) { console.log(`Order ${order.id} completed, notifying admin...`); await sendAdminPaymentNotification(order.id, latestOrderData.userName || order.userName, paidAmount, latestOrderData.paymentMethod); }
+            } else { console.log("No Firestore updates needed."); }
+        } catch (error) { console.error(`Firestore update error ${order.id}:`, error); Alert.alert("Update Error", "Payment successful, but order update failed."); }
+    };
+
+    // --- Payment Button Handlers ---
+    const handlePayInstallment = (order, installment) => { initializeAndPay(order, installment.amount, 'Installment', installment); };
+    const handlePayFixedDuration = (order, amount) => { initializeAndPay(order, amount, 'Fixed Duration'); };
 
     // --- Render Function for Each Schedule Item ---
     const renderScheduleItem = ({ item: schedule }) => {
@@ -192,15 +273,21 @@ export default function UserBNPLSchedules() {
         const orderStatus = schedule.status || 'Unknown';
         const paymentStatus = schedule.paymentStatus || 'N/A';
         const remainingAmount = calculateRemainingAmount(schedule);
+
         const { paidCount, totalCount, progress } = (isInstallmentPlan || hasInstallmentComponent) ? calculateInstallmentProgress(schedule.installments) : { paidCount: 0, totalCount: 0, progress: 0 };
-        const firstUnpaidInstallment = (isInstallmentPlan || hasInstallmentComponent) && totalCount > paidCount ? schedule.installments.find(inst => inst.status?.toLowerCase() !== PAID_STATUS.toLowerCase()) : null;
+        const firstUnpaidInstallment = (isInstallmentPlan || hasInstallmentComponent) && totalCount > paidCount ? (schedule.installments || []).find(inst => inst.status?.toLowerCase() !== PAID_STATUS.toLowerCase()) : null;
+
         const fixedDueDate = (isFixedDurationPlan || hasFixedDurationComponent) ? schedule.paymentDueDate : null;
         const fixedAmount = (isFixedDurationPlan || hasFixedDurationComponent) ? (schedule.fixedDurationAmountDue ?? schedule.bnplAmount ?? 0) : 0;
-        const isFixedPaid = paymentStatus?.toLowerCase() === PAID_STATUS.toLowerCase() || (isMixedPlan && !hasFixedDurationComponent);
+        const isFixedPaid = paymentStatus?.toLowerCase() === PAID_STATUS.toLowerCase() || (isMixedPlan && !hasFixedDurationComponent && paymentStatus?.toLowerCase() === PARTIALLY_PAID_STATUS.toLowerCase());
         const timeRemainingString = fixedDueDate ? formatTimeRemaining(fixedDueDate) : "";
         const isFixedOverdue = fixedDueDate && isValid(fixedDueDate.toDate? fixedDueDate.toDate() : fixedDueDate) ? isPast(startOfDay(fixedDueDate.toDate? fixedDueDate.toDate() : fixedDueDate)) && !isToday(startOfDay(fixedDueDate.toDate? fixedDueDate.toDate() : fixedDueDate)) : false;
 
-        // Ensure all text is wrapped
+        const isAnyPaymentProcessing = !!payingItemId;
+        const isPayingThisInstallment = firstUnpaidInstallment && payingItemId === `${schedule.id}-Installment-${firstUnpaidInstallment.installmentNumber}`;
+        const isPayingThisFixed = !isFixedPaid && payingItemId === `${schedule.id}-Fixed Duration-fixed`;
+        const disableButton = isAnyPaymentProcessing || stripeLoadingHook;
+
         return (
             <View style={styles.scheduleItemContainer}>
                 {/* Touchable Header Part */}
@@ -238,14 +325,11 @@ export default function UserBNPLSchedules() {
                     <View style={[styles.componentSection, hasCodComponent && styles.componentSpacing]}>
                         <Text style={styles.componentTitle}>Installment Plan</Text>
                         <View style={styles.progressSection}>
-                            <View style={styles.progressWrapper}>
-                                <Progress.Bar progress={progress} width={null} height={10} color={ProgressBarColor} unfilledColor="#E0E0E0" borderRadius={5} borderWidth={0} style={styles.progressBar}/>
-                                <Text style={styles.progressPercentageText}>{Math.round(progress * 100)}%</Text>
-                            </View>
+                            <View style={styles.progressWrapper}><Progress.Bar progress={progress} width={null} height={10} color={ProgressBarColor} unfilledColor="#E0E0E0" borderRadius={5} borderWidth={0} style={styles.progressBar}/><Text style={styles.progressPercentageText}>{Math.round(progress * 100)}%</Text></View>
                              <Text style={styles.progressText}>{paidCount} of {totalCount} installments paid</Text>
                         </View>
                         {schedule.installments && schedule.installments.length > 0 ? ( schedule.installments.map((installment, index) => { const instStatus = installment.status || PENDING_STATUS; const isInstPaid = instStatus.toLowerCase() === PAID_STATUS.toLowerCase(); const isInstOverdue = !isInstPaid && installment.dueDate && isValid(installment.dueDate.toDate ? installment.dueDate.toDate() : installment.dueDate) ? isPast(startOfDay(installment.dueDate.toDate ? installment.dueDate.toDate() : installment.dueDate)) && !isToday(startOfDay(installment.dueDate.toDate ? installment.dueDate.toDate() : installment.dueDate)): false; return ( <View key={`inst-${schedule.id}-${index}`} style={styles.fullInstallmentRow}><View style={styles.installmentRowLeft}><Text style={styles.installmentNumber}>#{installment.installmentNumber || index + 1}</Text><Text style={styles.installmentAmount}>{CURRENCY_SYMBOL} {installment.amount?.toLocaleString() ?? 'N/A'}</Text>{typeof installment.penalty === 'number' && installment.penalty > 0 && (<Text style={styles.penaltyText}>Penalty: {CURRENCY_SYMBOL}{installment.penalty.toFixed(0)}</Text>)}</View><View style={styles.installmentRowRight}><View style={[styles.statusBadgeSmall, getInstallmentStatusStyle(instStatus)]}><Text style={styles.statusTextSmall}>{instStatus}</Text></View><Text style={[styles.installmentDueDate, isInstOverdue && styles.overdueText]}>Due: {formatShortDate(installment.dueDate)} {isInstOverdue ? '(Overdue)' : ''}</Text>{isInstPaid && installment.paidAt && (<Text style={styles.paidAtText}>Paid: {formatShortDate(installment.paidAt)}</Text>)}</View></View> ); }) ) : ( <Text style={styles.noScheduleText}>No installment details.</Text> )}
-                        {firstUnpaidInstallment && (schedule.bnplAmount > 0) && (<TouchableOpacity style={styles.payButton} onPress={() => handlePayInstallment(schedule.id, firstUnpaidInstallment)}><Text style={styles.payButtonText}>Pay Next Installment ({CURRENCY_SYMBOL}{firstUnpaidInstallment.amount?.toLocaleString()})</Text></TouchableOpacity> )}
+                        {firstUnpaidInstallment && remainingAmount > 0 && (<TouchableOpacity style={[styles.payButton, disableButton && styles.payButtonDisabled]} onPress={() => handlePayInstallment(schedule, firstUnpaidInstallment)} disabled={disableButton}>{isPayingThisInstallment ? (<ActivityIndicator size="small" color="#FFFFFF" />) : (<Text style={styles.payButtonText}>Pay Next ({CURRENCY_SYMBOL}{firstUnpaidInstallment.amount?.toLocaleString()})</Text>)}</TouchableOpacity> )}
                     </View>
                  )}
 
@@ -263,7 +347,7 @@ export default function UserBNPLSchedules() {
                          </View>
                          {typeof schedule.penalty === 'number' && schedule.penalty > 0 && (<View style={styles.detailRow}><Text style={[styles.detailLabel, styles.penaltyLabel]}>Penalty:</Text><Text style={[styles.detailValue, styles.penaltyValue]}>{CURRENCY_SYMBOL}{schedule.penalty.toFixed(0)}</Text></View>)}
                          { isFixedPaid && schedule.paymentReceivedAt ? (<View style={styles.detailRow}><Text style={styles.detailLabel}>Payment Status:</Text><Text style={styles.paidText}>Paid ({formatShortDate(schedule.paymentReceivedAt)})</Text></View>) : isFixedPaid && !schedule.paymentReceivedAt ? (<View style={styles.detailRow}><Text style={styles.detailLabel}>Payment Status:</Text><Text style={styles.paidText}>Paid</Text></View>) : (<View style={styles.detailRow}><Text style={styles.detailLabel}>Payment Status:</Text><Text style={styles.detailValue}>Pending</Text></View>) }
-                         {!isFixedPaid && fixedAmount > 0 && ( <TouchableOpacity style={styles.payButton} onPress={() => handlePayFixedDuration(schedule.id, fixedAmount)}><Text style={styles.payButtonText}>Pay Now ({CURRENCY_SYMBOL}{fixedAmount.toLocaleString()})</Text></TouchableOpacity> )}
+                         {!isFixedPaid && fixedAmount > 0 && ( <TouchableOpacity style={[styles.payButton, disableButton && styles.payButtonDisabled]} onPress={() => handlePayFixedDuration(schedule, fixedAmount)} disabled={disableButton}>{isPayingThisFixed ? (<ActivityIndicator size="small" color="#FFFFFF" />) : (<Text style={styles.payButtonText}>Pay Now ({CURRENCY_SYMBOL}{fixedAmount.toLocaleString()})</Text>)}</TouchableOpacity> )}
                     </View>
                  )}
 
@@ -275,43 +359,28 @@ export default function UserBNPLSchedules() {
                       )}
                  </View>
 
-            </View> // Closing View for scheduleItemContainer
+            </View>
         );
      };
 
     // --- Calculate if there are any *active* schedules for the empty state message ---
-    const hasActiveSchedules = useMemo(() => {
-        return schedules.some(schedule => schedule.status?.toLowerCase() === ACTIVE_ORDER_STATUS.toLowerCase());
-    }, [schedules]);
+    const hasActiveSchedules = useMemo(() => { return schedules.some(schedule => schedule.status?.toLowerCase() === ACTIVE_ORDER_STATUS.toLowerCase()); }, [schedules]);
 
     // --- Loading / Error / Empty States ---
     if (loading && schedules.length === 0 && !refreshing) { return (<SafeAreaView style={styles.centeredContainer}><ActivityIndicator size="large" color={AccentColor} /></SafeAreaView>); }
-    if (error && !loading && !refreshing && schedules.length === 0) { return (<SafeAreaView style={styles.centeredContainer}><MaterialIcons name="error-outline" size={60} color={OverdueColor} /><Text style={styles.errorText}>{error}</Text>{error !== "Please log in to view your schedules." && ( <TouchableOpacity onPress={setupScheduleListener} style={styles.retryButton}><Text style={styles.retryButtonText}>Retry</Text></TouchableOpacity>)}</SafeAreaView>); }
+    if (dbError && !loading && !refreshing && schedules.length === 0) { return (<SafeAreaView style={styles.centeredContainer}><MaterialIcons name="error-outline" size={60} color={OverdueColor} /><Text style={styles.errorText}>{dbError}</Text>{dbError !== "Please log in to view your schedules." && ( <TouchableOpacity onPress={setupScheduleListener} style={styles.retryButton}><Text style={styles.retryButtonText}>Retry</Text></TouchableOpacity>)}</SafeAreaView>); }
 
     // --- Main Render ---
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
-            {/* Error Banner for non-blocking errors */}
-            {error && !loading && schedules.length > 0 && (<View style={styles.errorBanner}><Text style={styles.errorBannerText}>⚠️ {error}</Text></View>)}
+            {dbError && !loading && schedules.length > 0 && (<View style={styles.errorBanner}><Text style={styles.errorBannerText}>⚠️ {dbError}</Text></View>)}
             <FlatList
                 data={schedules}
                 renderItem={renderScheduleItem}
                 keyExtractor={(item) => item.id}
-                contentContainerStyle={[styles.listContainer, schedules.length === 0 && styles.emptyListContainer]} // Apply empty style when needed
-                ListEmptyComponent={
-                    !loading && !error ? ( // Only show empty state if not loading and no error blocked loading
-                        <View style={styles.emptyContainer}>
-                             <MaterialIcons name="receipt-long" size={60} color="#CED4DA" />
-                             <Text style={styles.emptyText}>
-                                 {schedules.length > 0 && !hasActiveSchedules
-                                     ? "You have no currently active payment schedules."
-                                     : "You have no Installment or Fixed Duration payment plans."
-                                 }
-                             </Text>
-                        </View>
-                    ) : null // Otherwise, Loading/Error component is shown
-                 }
+                contentContainerStyle={[styles.listContainer, schedules.length === 0 && styles.emptyListContainer]}
+                ListEmptyComponent={ !loading && !dbError ? (<View style={styles.emptyContainer}><MaterialIcons name="receipt-long" size={60} color="#CED4DA" /><Text style={styles.emptyText}>{schedules.length > 0 && !hasActiveSchedules ? "You have no currently active payment schedules." : "You have no Installment or Fixed Duration payment plans."}</Text></View>) : null }
                 refreshControl={ <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[AccentColor]} tintColor={AccentColor} /> }
             />
         </SafeAreaView>
@@ -341,9 +410,7 @@ const styles = StyleSheet.create({
     componentSection: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10 },
     componentSpacing: { marginTop: 10, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
     componentTitle: { fontSize: 14, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 10, borderBottomWidth: 1, borderColor: '#eee', paddingBottom: 5 },
-    planTitle: { fontSize: 15, fontWeight: '600', color: TextColorPrimary, marginBottom: 12 }, // Keep if needed, but componentTitle is primary
-    // Installment Styles
-    progressSection: { marginBottom: 15, paddingBottom: 10 }, // Removed bottom border
+    progressSection: { marginBottom: 15, paddingBottom: 10 },
     progressWrapper: { position: 'relative', height: 10, marginBottom: 4, borderRadius: 5, backgroundColor: '#E0E0E0', overflow: 'hidden' },
     progressBar: { height: '100%', borderRadius: 5 },
     progressPercentageText: { position: 'absolute', right: 5, top: -2, fontSize: 9, fontWeight: 'bold', color: '#FFF', textShadowColor: 'rgba(0, 0, 0, 0.5)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 1, backgroundColor: 'transparent' },
@@ -361,7 +428,6 @@ const styles = StyleSheet.create({
     statusPaidInstallment: { backgroundColor: SuccessColor },
     statusPendingInstallment: { backgroundColor: PendingColor },
     noScheduleText: { color: TextColorSecondary, fontStyle: 'italic', paddingVertical: 10, textAlign: 'center' },
-    // Fixed Duration Styles
     detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingVertical: 2 },
     detailLabel: { fontSize: 14, color: TextColorSecondary, marginRight: 5 },
     codAmountValue: { fontSize: 14, fontWeight: 'bold', color: TextColorPrimary, textAlign: 'right' },
@@ -376,19 +442,17 @@ const styles = StyleSheet.create({
     paidText: { fontSize: 14, fontWeight: 'bold', color: SuccessColor, textAlign: 'right' },
     penaltyLabel: { color: OverdueColor },
     penaltyValue: { color: OverdueColor, fontWeight: 'bold', textAlign: 'right' },
-    // Order Totals Section
-    orderTotalsSection: { marginTop: 15, paddingTop: 12, paddingBottom: 5, paddingHorizontal: 12, borderTopWidth: 1, borderTopColor: '#F0F0F0' }, // Added horizontal padding
-    totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }, // Increased vertical spacing
+    orderTotalsSection: { marginTop: 15, paddingTop: 12, paddingBottom: 5, paddingHorizontal: 12, borderTopWidth: 1, borderTopColor: '#F0F0F0' },
+    totalRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
     totalLabel: { fontSize: 14, color: TextColorSecondary },
     totalValue: { fontSize: 14, fontWeight: '500', color: TextColorPrimary },
     remainingAmountHighlight: { fontWeight: 'bold', color: AccentColor },
-    // Payment Button Styles
-    payButton: { backgroundColor: AccentColor, paddingVertical: 10, paddingHorizontal: 15, borderRadius: 6, alignItems: 'center', marginTop: 15, marginHorizontal: 12, marginBottom: 5 }, // Adjusted margin
+    payButton: { backgroundColor: AccentColor, paddingVertical: 10, paddingHorizontal: 15, borderRadius: 6, alignItems: 'center', marginTop: 15, marginHorizontal: 12, marginBottom: 5 },
+    payButtonDisabled: { backgroundColor: TextColorSecondary },
     payButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold' },
-    // Other Styles
     errorText: { color: OverdueColor, fontSize: 16, textAlign: 'center', marginTop: 15 },
     emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
-    emptyListContainer: { flexGrow: 1 }, // Ensure empty component can center
+    emptyListContainer: { flexGrow: 1 },
     emptyText: { textAlign: 'center', fontSize: 16, color: TextColorSecondary, marginTop: 15 },
     retryButton: { backgroundColor: AccentColor, paddingVertical: 10, paddingHorizontal: 25, borderRadius: 6, marginTop: 20 },
     retryButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: 'bold' },

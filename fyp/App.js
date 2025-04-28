@@ -172,7 +172,7 @@ export default function App() {
             name="UserBNPLSchedules" // The screen using Stripe
             component={UserBNPLSchedules}
             // Decide if this needs the standard header or not
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Payment Schedules' })} // Added standard header
+            options={{ headerShown: false }} // Assuming header is handled within MyOrders or Tabs
           />
 
 

@@ -403,8 +403,7 @@ const styles = StyleSheet.create({
       marginLeft: 4,
   },
   filterScroll: {
-      // No specific margin needed now
-  },
+paddingLeft:10,  },
   filterButton: {
       paddingVertical: 6, paddingHorizontal: 16, borderRadius: 20, backgroundColor: AccentColor,
       borderWidth: 1, borderColor: '#FFFFFF', marginRight: 10, justifyContent: 'center', alignItems: 'center', height: 32,

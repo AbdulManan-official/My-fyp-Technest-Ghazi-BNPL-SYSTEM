@@ -1,4 +1,4 @@
-// OrderScreen.js (COMPLETE CODE - Check for stray text errors)
+// OrderScreen.js (COMPLETE CODE - Indicator BEFORE Price)
 
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
@@ -31,6 +31,13 @@ const BnplIndicatorBgColor = 'rgba(0, 86, 179, 0.1)';
 const BnplIndicatorTextColor = '#0056b3';
 const ACTIVE_FILTER_STATUSES = ['processing', 'active']; // Lowercase statuses
 
+// --- Payment Method Constants (for checking) ---
+const BNPL_TYPE = 'BNPL';
+const FIXED_TYPE = 'Fixed Duration';
+const MIXED_TYPE = 'Mixed';
+const INSTALLMENT_LABEL = 'Installment'; // <-- Added constant
+const SCHEDULED_PAYMENT_METHODS = [BNPL_TYPE.toLowerCase(), FIXED_TYPE.toLowerCase(), MIXED_TYPE.toLowerCase()];
+
 // --- Fixed Filters Configuration ---
 const FIXED_FILTERS = [
   { displayName: 'All', filterValue: 'All' },
@@ -53,9 +60,9 @@ export default function OrderScreen() {
 
   // --- Function to Setup Firestore Listener ---
   const setupOrderListener = useCallback(() => {
+    // (Listener setup logic remains the same)
     console.log("[OrderScreen Admin] Setting up listener for ALL orders...");
     if (listenerUnsubscribeRef.current) {
-        console.log("[OrderScreen Admin] Detaching previous listener...");
         listenerUnsubscribeRef.current();
         listenerUnsubscribeRef.current = null;
     }
@@ -65,17 +72,12 @@ export default function OrderScreen() {
     const q = query(ordersRef, orderBy("createdAt", "desc"));
 
     listenerUnsubscribeRef.current = onSnapshot(q, (snapshot) => {
-      console.log(`[OrderScreen Admin] Snapshot received: ${snapshot.docs.length} total orders.`);
       const fetchedOrders = snapshot.docs.map(docSnap => {
         const data = docSnap.data();
-         if (!data || !(data.createdAt instanceof Timestamp)) {
-             console.warn(`[OrderScreen Admin] Skipping order doc ${docSnap.id}: Missing data or invalid createdAt`, data);
-             return null;
-        }
+         if (!data || !(data.createdAt instanceof Timestamp)) { return null; }
         let formattedDate = 'N/A';
         const createdAtDate = data.createdAt.toDate();
         if (isValid(createdAtDate)) { formattedDate = format(createdAtDate, 'MMM d, yyyy'); }
-
         return {
           id: docSnap.id,
           orderNumber: docSnap.id.substring(0, 8).toUpperCase(),
@@ -86,80 +88,51 @@ export default function OrderScreen() {
           userName: data.userName || 'Unknown User',
           paymentMethod: data.paymentMethod || 'Unknown',
           items: data.items || [],
-          ...data // Include all other fields
+          ...data
         };
       }).filter(item => item !== null);
-
       setAllFetchedOrders(fetchedOrders);
-      setLoading(false);
-      setRefreshing(false);
-
+      setLoading(false); setRefreshing(false);
     }, (error) => {
       console.error("[OrderScreen Admin] Error listening to orders:", error);
       Alert.alert("Error", "Could not load orders in real-time.");
-      setLoading(false);
-      setRefreshing(false);
+      setLoading(false); setRefreshing(false);
     });
-
     return listenerUnsubscribeRef.current;
-
   }, [refreshing, allFetchedOrders.length]);
 
   // --- Effect to Manage Listener Lifecycle ---
   useFocusEffect(
+    // (Lifecycle management remains the same)
     useCallback(() => {
       const unsubscribe = setupOrderListener();
-      return () => {
-        if (unsubscribe) {
-          console.log("[OrderScreen Admin] Cleaning up listener on blur/unmount.");
-          unsubscribe();
-          listenerUnsubscribeRef.current = null;
-        }
-      };
+      return () => { if (unsubscribe) { unsubscribe(); listenerUnsubscribeRef.current = null; }};
     }, [setupOrderListener])
   );
 
-
   // --- Client-Side Filtering Logic ---
   const filteredOrders = useMemo(() => {
-    console.log(`Filtering ${allFetchedOrders.length} orders. Query: "${searchQuery}", Filter Button State: "${filter}"`);
+    // (Filtering logic remains the same)
     return allFetchedOrders.filter(order => {
-      // 1. Check Search Query
       const searchLower = searchQuery.toLowerCase();
-      const matchesSearch = (
-           !searchQuery ||
-           (order.id.toLowerCase().includes(searchLower)) ||
-           (order.orderNumber.toLowerCase().includes(searchLower)) ||
-           (order.userName?.toLowerCase().includes(searchLower)) ||
-           (order.items?.[0]?.name?.toLowerCase().includes(searchLower))
-       );
-
-      // 2. Check Status Filter
+      const matchesSearch = ( !searchQuery || (order.id.toLowerCase().includes(searchLower)) || (order.orderNumber.toLowerCase().includes(searchLower)) || (order.userName?.toLowerCase().includes(searchLower)) || (order.items?.[0]?.name?.toLowerCase().includes(searchLower)) );
       const filterValueLower = filter.toLowerCase();
       const orderStatusLower = order.status?.toLowerCase();
       let matchesFilter = false;
-
-      if (filter === 'All') {
-          matchesFilter = true;
-      } else if (filter === 'Processing') {
-          // 'Active' button filters for Processing OR Active status
-          matchesFilter = ACTIVE_FILTER_STATUSES.includes(orderStatusLower);
-      } else {
-          // For other filters, match exactly
-          matchesFilter = (orderStatusLower === filterValueLower);
-      }
-
+      if (filter === 'All') { matchesFilter = true; }
+      else if (filter === 'Processing') { matchesFilter = ACTIVE_FILTER_STATUSES.includes(orderStatusLower); }
+      else { matchesFilter = (orderStatusLower === filterValueLower); }
       return matchesSearch && matchesFilter;
     });
   }, [allFetchedOrders, searchQuery, filter]);
 
-
   // --- Get Status Badge Style ---
   const getStatusStyle = (status) => {
+      // (Status styling remains the same)
       switch (status?.toLowerCase() ?? 'unknown') {
           case 'pending': case 'unpaid (cod)': case 'unpaid (fixed duration)': case 'unpaid (bnpl)': return styles.statusPending;
           case 'processing': return styles.statusProcessing;
-          case 'active': return styles.statusActive; // *** Style for Active Status ***
+          case 'active': return styles.statusActive;
           case 'shipped': return styles.statusShipped;
           case 'delivered': return styles.statusDelivered;
           case 'cancelled': case 'rejected': return styles.statusCancelled;
@@ -167,15 +140,14 @@ export default function OrderScreen() {
       }
   };
 
-  // --- Render Individual Order Item for FlatList ---
+  // --- Render Individual Order Item for FlatList (MODIFIED LAYOUT) ---
   const renderOrder = ({ item }) => {
     const firstItem = item?.items?.[0] || null;
     const firstItemImage = firstItem?.image || null;
     const imageSource = firstItemImage ? { uri: firstItemImage } : placeholderImagePath;
     const orderPaymentMethodLower = item.paymentMethod?.toLowerCase() ?? '';
-    const isBnplOrder = ['bnpl', 'fixed duration', 'mixed'].includes(orderPaymentMethodLower);
+    const isScheduledPayment = SCHEDULED_PAYMENT_METHODS.includes(orderPaymentMethodLower);
 
-    // Ensure all text elements are wrapped
     return (
         <TouchableOpacity
             style={styles.orderItem}
@@ -186,19 +158,31 @@ export default function OrderScreen() {
               <View style={styles.iconContainer}>
                  <Image source={imageSource} style={styles.previewImage} defaultSource={placeholderImagePath} onError={(e) => console.warn("Error loading product image:", firstItemImage, e.nativeEvent?.error)} />
               </View>
+
+              {/* --- MODIFIED orderInfo SECTION --- */}
               <View style={styles.orderInfo}>
                 <Text style={styles.orderName} numberOfLines={1}>{item.userName}</Text>
                 <Text style={styles.orderIdText}>{'#'}{item.orderNumber}</Text>
+
+                {/* 1. Schedule Indicator placed BEFORE price */}
+                {isScheduledPayment && (
+                    <View style={styles.bnplIndicatorContainer}>
+                        <Icon name="credit-card-clock-outline" size={12} color={BnplIndicatorTextColor} style={styles.bnplIcon} />
+                        <Text style={styles.bnplIndicatorText} numberOfLines={1}>
+                            {/* Display 'Installment' for BNPL, otherwise the actual method */}
+                            {item.paymentMethod === BNPL_TYPE ? INSTALLMENT_LABEL : item.paymentMethod}
+                        </Text>
+                    </View>
+                )}
+
+                {/* 2. Price placed AFTER indicator */}
                 <Text style={styles.orderPrice}>
                     {CURRENCY_SYMBOL}{' '}{item.grandTotal?.toLocaleString(undefined, {maximumFractionDigits: 0}) || 'N/A'}
                 </Text>
-                {isBnplOrder && (
-                    <View style={styles.bnplIndicatorContainer}>
-                        <Icon name="credit-card-clock-outline" size={12} color={BnplIndicatorTextColor} style={styles.bnplIcon} />
-                        <Text style={styles.bnplIndicatorText}>BNPL/Fixed</Text>
-                    </View>
-                )}
+
               </View>
+              {/* --- END MODIFIED orderInfo SECTION --- */}
+
               <View style={styles.statusContainer}>
                 <View style={[styles.statusBadge, getStatusStyle(item.status)]}>
                   <Text style={styles.statusText}>{item.status || 'N/A'}</Text>
@@ -209,90 +193,78 @@ export default function OrderScreen() {
         </TouchableOpacity>
     );
   };
+  // --- END MODIFIED Render ---
 
 
   // --- Handle Pull-to-Refresh ---
   const onRefresh = useCallback(() => {
-    console.log("[OrderScreen Admin] Manual refresh triggered.");
+    // (Refresh logic remains the same)
     setRefreshing(true);
     setupOrderListener();
-    const refreshTimeout = setTimeout(() => {
-        if (refreshing) {
-            console.warn("[OrderScreen Admin] Refresh timeout reached.");
-            setRefreshing(false);
-        }
-     }, 8000);
+    const refreshTimeout = setTimeout(() => { if (refreshing) { setRefreshing(false); }}, 8000);
     return () => clearTimeout(refreshTimeout);
   }, [setupOrderListener, refreshing]);
 
-
   // --- Event Handlers for Header Elements ---
+  // (Handlers remain the same)
   const onSearchInputChange = (text) => { setSearchQuery(text); };
   const clearSearch = () => { setSearchQuery(''); };
-  const onFilterChange = (newFilterValue) => {
-      console.log("Filter changed to:", newFilterValue);
-      setFilter(newFilterValue);
-  };
-
+  const onFilterChange = (newFilterValue) => { setFilter(newFilterValue); };
 
   // --- Component Render ---
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={AccentColor} />
-
-      {/* Header Section */}
+      {/* Header Section (Remains the same) */}
       <View style={styles.headerContainer}>
-          <View style={styles.searchBar}>
+           <View style={styles.searchBar}>
               <Icon name="magnify" size={22} color={AccentColor} style={styles.searchIcon} />
-              <TextInput
-                  style={styles.searchInput}
-                  placeholder="Search User or Order ID..."
-                  placeholderTextColor="#888"
-                  value={searchQuery}
-                  onChangeText={onSearchInputChange}
-                  returnKeyType="search"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-              />
+              <TextInput /* ... search input props ... */
+                   style={styles.searchInput}
+                   placeholder="Search User or Order ID..."
+                   placeholderTextColor="#888"
+                   value={searchQuery}
+                   onChangeText={onSearchInputChange}
+                   returnKeyType="search"
+                   autoCapitalize="none"
+                   autoCorrect={false}
+               />
               {searchQuery.length > 0 && (
-                  <TouchableOpacity onPress={clearSearch} style={styles.clearSearchButton}>
-                      <Icon name="close-circle" size={20} color={AccentColor} />
-                  </TouchableOpacity>
+                   <TouchableOpacity onPress={clearSearch} style={styles.clearSearchButton}>
+                       <Icon name="close-circle" size={20} color={AccentColor} />
+                   </TouchableOpacity>
               )}
-          </View>
-
-          {/* Fixed Filter Buttons */}
+           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
               {FIXED_FILTERS.map(filterItem => (
-                  <TouchableOpacity
-                      key={filterItem.filterValue}
-                      style={[ styles.filterButton, filter === filterItem.filterValue && styles.activeFilter ]}
-                      onPress={() => onFilterChange(filterItem.filterValue)} >
-                      <Text style={[ styles.filterText, filter === filterItem.filterValue && styles.activeFilterText ]}>
-                          {filterItem.displayName}
-                      </Text>
-                  </TouchableOpacity>
-              ))}
-          </ScrollView>
-      </View>
-
-      {/* Main Content: Order List */}
+                   <TouchableOpacity /* ... filter button props ... */
+                       key={filterItem.filterValue}
+                       style={[ styles.filterButton, filter === filterItem.filterValue && styles.activeFilter ]}
+                       onPress={() => onFilterChange(filterItem.filterValue)} >
+                       <Text style={[ styles.filterText, filter === filterItem.filterValue && styles.activeFilterText ]}>
+                           {filterItem.displayName}
+                       </Text>
+                   </TouchableOpacity>
+               ))}
+           </ScrollView>
+       </View>
+      {/* Main Content: Order List (Remains the same) */}
       {loading && allFetchedOrders.length === 0 ? (
            <ActivityIndicator size="large" color={AccentColor} style={styles.loader} />
        ) : (
             <FlatList
                 data={filteredOrders}
                 keyExtractor={(item) => item.id}
-                renderItem={renderOrder}
+                renderItem={renderOrder} // Uses the updated renderOrder function
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
-                ListEmptyComponent={!loading ? (
+                ListEmptyComponent={!loading ? ( /* ... empty list view ... */
                     <View style={styles.emptyView}>
                         <Icon name="clipboard-text-outline" size={50} color="#ccc"/>
                         <Text style={styles.emptyText}>No orders match your criteria.</Text>
                     </View>
                  ) : null}
-                refreshControl={
+                refreshControl={ /* ... refresh control ... */
                    <RefreshControl
                         refreshing={refreshing}
                         onRefresh={onRefresh}
@@ -308,6 +280,7 @@ export default function OrderScreen() {
 }
 
 // --- Styles ---
+// (Styles remain the same)
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: ScreenBackgroundColor },
   headerContainer: { backgroundColor: '#FF0000', paddingTop: Platform.OS === 'ios' ? 50 : 22, paddingBottom: 15, paddingHorizontal: 15, borderBottomLeftRadius: 15, borderBottomRightRadius: 15, },
@@ -331,15 +304,17 @@ const styles = StyleSheet.create({
   orderInfo: { flex: 1, marginRight: 10, justifyContent: 'center' },
   orderName: { fontSize: 15, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 2 },
   orderIdText: { fontSize: 12, color: TextColorSecondary, marginBottom: 4 },
-  orderPrice: { fontSize: 14, color: '#444', fontWeight: '500', },
-  bnplIndicatorContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 5, alignSelf: 'flex-start', backgroundColor: BnplIndicatorBgColor, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 3, },
+  // --- Style Adjustments Might Be Needed Here ---
+  bnplIndicatorContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 2, marginBottom: 4, /* Adjusted Margins */ alignSelf: 'flex-start', backgroundColor: BnplIndicatorBgColor, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 3, maxWidth: '90%' },
   bnplIcon: { marginRight: 4, },
-  bnplIndicatorText: { fontSize: 11, fontWeight: '600', color: BnplIndicatorTextColor, },
+  bnplIndicatorText: { fontSize: 11, fontWeight: '600', color: BnplIndicatorTextColor, flexShrink: 1 },
+  orderPrice: { fontSize: 14, color: 'black', fontWeight: '600', marginTop: 0 /* Ensure no extra top margin */ },
+  // --- End Style Adjustments ---
   statusContainer: { alignItems: 'flex-end', minWidth: 85 },
   statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 15, marginBottom: 4 },
   statusText: { color: '#FFF', fontWeight: 'bold', fontSize: 11 },
   statusPending: { backgroundColor: '#FFA726' }, statusProcessing: { backgroundColor: '#42A5F5' }, statusShipped: { backgroundColor: '#66BB6A' }, statusDelivered: { backgroundColor: '#78909C' }, statusCancelled: { backgroundColor: '#EF5350' }, statusUnknown: { backgroundColor: '#BDBDBD' },
-  statusActive: { backgroundColor: '#29B6F6' }, // Style for Active status
+  statusActive: { backgroundColor: '#29B6F6' },
   orderDateText: { fontSize: 11, color: TextColorSecondary, marginTop: 2 },
   separator: { height: 1, backgroundColor: LightBorderColor, },
 });

@@ -1,6 +1,7 @@
-// SchedulesDetailScreen.js - FINAL COMPLETE CODE v28 - Redesigned based on V12 UI
+// SchedulesDetailScreen.js - FINAL COMPLETE CODE v29 - Incorporates V12 Detailed Timer
 // Adopts V12 UI patterns (Cards, Detail Rows, Installment Rows, Progress Bar, Colors)
 // Retains V27 Functionality (Stripe, Listener, Notifications, Animated Timer)
+// ** NEW: Added detailed V12-style countdown timer (e.g., "2d 5h 10m left") for next installment **
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
@@ -9,13 +10,16 @@ import {
     Image, Alert, Platform, AppState, Animated
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { MaterialIcons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons'; // Added FontAwesome5
+import { MaterialIcons, MaterialCommunityIcons, FontAwesome5 } from '@expo/vector-icons';
 import {
     getFirestore, collection, query, where, Timestamp,
     onSnapshot, doc, updateDoc, getDocs, writeBatch
 } from 'firebase/firestore';
 import { db, auth } from '../../firebaseConfig'; // Verify path
-import { format, isValid, isPast, differenceInDays, isToday, isTomorrow, startOfDay } from 'date-fns';
+import {
+    format, isValid, isPast, differenceInDays, isToday, isTomorrow, startOfDay,
+    differenceInMilliseconds // <-- ADDED for V12 timer
+} from 'date-fns';
 import { useStripe } from '@stripe/stripe-react-native';
 import axios from 'axios';
 
@@ -69,6 +73,12 @@ const placeholderImagePath = require('../../assets/p3.jpg'); // **** ADJUST PATH
 const PAYMENT_API_ENDPOINT = "https://back.txyber.com/create-payment-intent"; // <--- !!! UPDATE THIS !!!
 const EXPO_PUSH_ENDPOINT = "https://exp.host/--/api/v2/push/send";
 
+// ** ADDED: Time Constants for V12 Timer **
+const ONE_SECOND = 1000;
+const ONE_MINUTE = ONE_SECOND * 60;
+const ONE_HOUR = ONE_MINUTE * 60;
+const ONE_DAY = ONE_HOUR * 24;
+
 // --- Helper Functions ---
 
 /**
@@ -81,11 +91,10 @@ const formatShortDate = (timestamp) => {
     } else if (timestamp instanceof Date) { // JavaScript Date object
         dateToFormat = timestamp;
     }
-    // Check if we have a valid date object before formatting
     if (dateToFormat && isValid(dateToFormat)) {
         try { return format(dateToFormat, 'MMM d, yyyy'); } catch (e) { return 'Invalid Date'; }
     }
-    return 'N/A'; // Return 'N/A' for invalid or null inputs
+    return 'N/A';
 };
 
 /**
@@ -110,14 +119,41 @@ const getOverallStatusStyle = (status) => {
  * Returns the appropriate style object for an individual installment status badge. (Using V12 colors)
  */
 const getInstallmentStatusStyle = (status) => {
-    // Use specific styles defined at the bottom matching PaidColor and PendingColor
     return (status?.toLowerCase() === PAID_STATUS.toLowerCase())
         ? styles.statusPaidInstallment   // Style using PaidColor (Green)
         : styles.statusPendingInstallment; // Style using PendingColor (Orange)
 };
 
+/**
+ * ** NEW: Formats time difference for detailed countdown timer (from V12) **
+ * Formats the time difference into a readable countdown string (e.g., "2d 5h 10m left").
+ * Handles overdue and due now cases.
+ * @param {number} milliseconds The time difference in milliseconds.
+ * @returns {string} Formatted countdown string, "Due Now", or "Overdue".
+ */
+const formatTimeDifference = (milliseconds) => {
+    if (milliseconds <= 0) {
+        if (milliseconds > -ONE_MINUTE) { return "Due Now"; } // Grace period
+        return "Overdue";
+    }
+    const days = Math.floor(milliseconds / ONE_DAY);
+    const hours = Math.floor((milliseconds % ONE_DAY) / ONE_HOUR);
+    const minutes = Math.floor((milliseconds % ONE_HOUR) / ONE_MINUTE);
+    let parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (parts.length === 0) {
+        const seconds = Math.floor((milliseconds % ONE_MINUTE) / ONE_SECOND);
+        if (seconds > 0) return `${seconds}s left`;
+        return "Due Now";
+    }
+    return parts.join(' ') + " left";
+};
+
+
 // V27 Helper functions (calculateInstallmentProgress, calculateRemainingAmount, formatTimeRemaining) remain unchanged...
-const calculateInstallmentProgress = (installments = []) => { /* ... V27 code ... */
+const calculateInstallmentProgress = (installments = []) => {
     if (!Array.isArray(installments) || installments.length === 0) { return { paidCount: 0, totalCount: 0, progressPercent: 0, nextDueDate: null, nextAmount: null, totalPaidAmount: 0 }; }
     const totalCount = installments.length;
     let paidCount = 0, totalPaidAmount = 0, nextDueDate = null, nextAmount = null, foundNext = false;
@@ -128,7 +164,7 @@ const calculateInstallmentProgress = (installments = []) => { /* ... V27 code ..
     const progressPercent = totalCount > 0 ? (paidCount / totalCount) * 100 : 0;
     return { paidCount, totalCount, progressPercent, nextDueDate, nextAmount, totalPaidAmount };
 };
-const calculateRemainingAmount = (orderData) => { /* ... V27 code ... */
+const calculateRemainingAmount = (orderData) => {
     if (!orderData || typeof orderData.grandTotal !== 'number') return 0;
     if (orderData.paymentStatus?.toLowerCase() === PAID_STATUS.toLowerCase()) return 0;
     let remainingCalculated = 0;
@@ -150,7 +186,7 @@ const calculateRemainingAmount = (orderData) => { /* ... V27 code ... */
     }
     return Math.max(0, remainingCalculated);
  };
-const formatTimeRemaining = (dueDateTimestamp) => { /* ... V27 code ... */
+const formatTimeRemaining = (dueDateTimestamp) => { // V27's less detailed timer (used for fixed)
     let dueDate = null;
     if (dueDateTimestamp instanceof Timestamp) { try { dueDate = dueDateTimestamp.toDate(); } catch (e) { return "Invalid Date"; } }
     else if (dueDateTimestamp instanceof Date) { dueDate = dueDateTimestamp; }
@@ -175,13 +211,12 @@ const AnimatedTimeRemaining = ({ timeString, isOverdue }) => {
         animation.start();
         return () => animation.stop();
     }, [pulseAnim]);
-    // Use OverdueColor (Mapped to CancelledColor Red #EF5350) when overdue
     const textColor = isOverdue ? OverdueColor : TextColorPrimary;
     return ( <Animated.View style={[styles.timeRemainingAnimatedContainer, { transform: [{ scale: pulseAnim }] }]}><MaterialIcons name="timer" size={15} color={textColor} style={styles.iconStyle} /><Text style={[styles.detailValueDate, { color: textColor }]}>{timeString || ''}</Text></Animated.View> );
 };
 
 // V27 Admin Notification Helpers remain unchanged...
-async function getAdminExpoTokens() { /* ... V27 code ... */
+async function getAdminExpoTokens() {
     const tokens = [];
     try {
         const q = query(collection(db, ADMIN_COLLECTION), where("role", "==", "admin"));
@@ -195,7 +230,7 @@ async function getAdminExpoTokens() { /* ... V27 code ... */
     } catch (error) { console.error("[getAdminExpoTokens] Error:", error); }
     return tokens;
 }
-async function sendAdminPaymentNotification(orderIdentifier, userName, finalPaidAmount, paymentMethod) { /* ... V27 code ... */
+async function sendAdminPaymentNotification(orderIdentifier, userName, finalPaidAmount, paymentMethod) {
     const adminTokens = await getAdminExpoTokens();
     if (!adminTokens || adminTokens.length === 0) { console.log("[AdminPaymentNotify] No tokens. Skipping final completion."); return; }
     const messages = adminTokens.map(token => ({
@@ -209,7 +244,7 @@ async function sendAdminPaymentNotification(orderIdentifier, userName, finalPaid
         console.log(`[AdminPaymentNotify] Sent FINAL for order ${orderIdentifier}.`);
     } catch (error) { console.error(`[AdminPaymentNotify] Failed FINAL for ${orderIdentifier}:`, error.response?.data || error.message); }
 }
-async function sendAdminInstallmentPaidNotification(orderId, userName, installmentNumber, installmentAmount) { /* ... V27 code ... */
+async function sendAdminInstallmentPaidNotification(orderId, userName, installmentNumber, installmentAmount) {
     const adminTokens = await getAdminExpoTokens();
     if (!adminTokens || adminTokens.length === 0) { console.log("[AdminInstallmentNotify] No admin tokens found. Skipping."); return; }
     const shortOrderId = orderId.substring(0, 6).toUpperCase();
@@ -224,7 +259,7 @@ async function sendAdminInstallmentPaidNotification(orderId, userName, installme
         console.log(`[AdminInstallmentNotify] Sent for Order ${orderId}, Inst #${installmentNumber}.`);
     } catch (error) { console.error(`[AdminInstallmentNotify] Failed for Order ${orderId}, Inst #${installmentNumber}:`, error.response?.data || error.message); }
 }
-async function sendAdminFixedPaymentNotification(orderId, userName, amountPaid) { /* ... V27 code ... */
+async function sendAdminFixedPaymentNotification(orderId, userName, amountPaid) {
     const adminTokens = await getAdminExpoTokens();
     if (!adminTokens || adminTokens.length === 0) { console.log("[AdminFixedNotify] No admin tokens found. Skipping."); return; }
     const shortOrderId = orderId.substring(0, 6).toUpperCase();
@@ -246,16 +281,21 @@ export default function SchedulesDetailScreen() {
     const navigation = useNavigation();
     const initialOrder = route.params?.order;
 
-    // State (V27)
+    // State (V27 + V12 Timer State)
     const [order, setOrder] = useState(initialOrder);
     const { initPaymentSheet, presentPaymentSheet, loading: stripeLoadingHook } = useStripe();
     const [payingItemId, setPayingItemId] = useState(null);
     const [localError, setLocalError] = useState(null);
+    const [timeLeft, setTimeLeft] = useState(''); // ** NEW: State for V12 Timer **
     const appState = useRef(AppState.currentState);
     const listenerUnsubscribeRef = useRef(null);
+    const timerIntervalRef = useRef(null); // ** NEW: Ref for V12 Timer Interval **
 
-    // Effects (V27) - Real-time Listener & Update from Params
-    useEffect(() => { /* ... V27 code ... */
+
+    // --- Effects ---
+
+    // V27 Effect - Real-time Listener & Update from Params
+    useEffect(() => {
         const currentOrderId = order?.id || initialOrder?.id;
         if (!currentOrderId) { if (!initialOrder) setLocalError("Order details missing."); return; }
         const orderRef = doc(db, ORDERS_COLLECTION, currentOrderId);
@@ -276,11 +316,69 @@ export default function SchedulesDetailScreen() {
         const subscription = AppState.addEventListener('change', handleAppStateChange);
         if (appState.current === 'active') setupListener();
         return () => { subscription.remove(); if (listenerUnsubscribeRef.current) listenerUnsubscribeRef.current(); };
-     }, [initialOrder?.id]);
+     }, [initialOrder?.id]); // Rerun ONLY if the initial order ID changes
+
+    // V27 Effect - Update local state if different order passed via params
     useEffect(() => { if (route.params?.order && route.params.order.id !== order?.id) { setOrder(route.params.order); } }, [route.params?.order, order?.id]);
 
+    // ** NEW: Effect for V12 Detailed Countdown Timer **
+    useEffect(() => {
+        // Define firstUnpaidInstallment calculation locally for this effect scope
+        const currentInstallments = order?.installments || [];
+        const showInstallmentSectionForTimer = order?.paymentMethod === BNPL_TYPE || (order?.paymentMethod === MIXED_TYPE && Array.isArray(currentInstallments) && currentInstallments.length > 0);
+        const firstUnpaid = showInstallmentSectionForTimer
+            ? currentInstallments.find(inst => inst.status?.toLowerCase() !== PAID_STATUS.toLowerCase())
+            : null;
+
+        // Cleanup previous timer if any
+        if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
+            timerIntervalRef.current = null;
+        }
+        setTimeLeft(''); // Reset timer display
+
+        if (firstUnpaid) {
+            const dueDateTimestamp = firstUnpaid.dueDate;
+            let dueDate = null;
+
+            // Convert potential Timestamp to Date
+            if (dueDateTimestamp && typeof dueDateTimestamp.toDate === 'function') {
+                try { dueDate = dueDateTimestamp.toDate(); } catch (e) { console.warn("Timer: Invalid due date conversion"); }
+            } else if (dueDateTimestamp instanceof Date && isValid(dueDateTimestamp)) {
+                dueDate = dueDateTimestamp;
+            }
+
+            if (dueDate && isValid(dueDate)) {
+                const updateTimer = () => {
+                    const now = new Date();
+                    const diff = differenceInMilliseconds(dueDate, now);
+                    setTimeLeft(formatTimeDifference(diff)); // Use the V12 helper
+
+                    // Stop the timer if due date passed significantly
+                    if (diff <= -ONE_MINUTE && timerIntervalRef.current) { // Use grace period before stopping
+                        clearInterval(timerIntervalRef.current);
+                        timerIntervalRef.current = null;
+                    }
+                };
+                updateTimer(); // Initial call
+                timerIntervalRef.current = setInterval(updateTimer, ONE_SECOND); // Update every second
+            } else {
+                setTimeLeft('Invalid Due Date');
+            }
+        }
+
+        // Cleanup function for when the component unmounts or dependencies change
+        return () => {
+            if (timerIntervalRef.current) {
+                clearInterval(timerIntervalRef.current);
+            }
+        };
+        // Dependencies: Re-run timer setup if the order data changes (which might change firstUnpaid)
+    }, [order]); // Depend on the entire order object to recalculate
+
+
     // --- Payment Functions (V27) ---
-    const initializeAndPay = async (currentOrderData, amountToPay, paymentTypeLabel, installmentDetails = null) => { /* ... V27 code ... */
+    const initializeAndPay = async (currentOrderData, amountToPay, paymentTypeLabel, installmentDetails = null) => {
         const orderId = currentOrderData.id;
         const paymentAttemptId = `${orderId}-${paymentTypeLabel}-${installmentDetails?.installmentNumber ?? 'fixed'}-${Date.now()}`;
         if (!amountToPay || amountToPay <= 0) { Alert.alert("Error", "Invalid payment amount specified."); return; }
@@ -293,24 +391,19 @@ export default function SchedulesDetailScreen() {
         setLocalError(null);
         try {
             console.log(`[Payment] Initiating payment for Order ${orderId}, Type: ${paymentTypeLabel}, Amount: ${amountToPay}`);
-            const response = await axios.post(PAYMENT_API_ENDPOINT, { /* ... V27 API call details ... */
-                amount: Math.round(amountToPay * 100), // Amount in cents
-                currency: CURRENCY_CODE.toLowerCase(),
-                orderId: currentOrderData.id,
-                userId: auth.currentUser.uid,
+            const response = await axios.post(PAYMENT_API_ENDPOINT, {
+                amount: Math.round(amountToPay * 100), currency: CURRENCY_CODE.toLowerCase(),
+                orderId: currentOrderData.id, userId: auth.currentUser.uid,
                 paymentDescription: `Payment for Order #${currentOrderData.orderNumber || currentOrderData.id.substring(0,6)} - ${paymentTypeLabel}`,
-                customerName: currentOrderData.userName || 'N/A',
-                customerEmail: auth.currentUser.email || undefined,
+                customerName: currentOrderData.userName || 'N/A', customerEmail: auth.currentUser.email || undefined,
                 metadata: { order_id: currentOrderData.id, user_id: auth.currentUser.uid, payment_type: paymentTypeLabel, installment_number: installmentDetails?.installmentNumber ?? null }
             });
             const { clientSecret, ephemeralKey, customer, error: backendError } = response.data;
             if (backendError || !clientSecret) throw new Error(backendError || "Failed to set up payment on the server.");
             console.log(`[Payment] Initializing Stripe Payment Sheet for Order ${orderId}`);
-            const { error: initError } = await initPaymentSheet({ /* ... V27 init details ... */
-                merchantDisplayName: "Txyber",
-                paymentIntentClientSecret: clientSecret,
-                customerId: customer,
-                customerEphemeralKeySecret: ephemeralKey,
+            const { error: initError } = await initPaymentSheet({
+                merchantDisplayName: "Txyber", paymentIntentClientSecret: clientSecret,
+                customerId: customer, customerEphemeralKeySecret: ephemeralKey,
                 allowsDelayedPaymentMethods: false,
              });
             if (initError) throw new Error(`Failed to initialize payment sheet: ${initError.localizedMessage || initError.message}`);
@@ -330,7 +423,7 @@ export default function SchedulesDetailScreen() {
             setLocalError(`Payment failed: ${error.message}`);
         } finally { setPayingItemId(null); }
     };
-    const updateFirestoreAfterPayment = async (orderData, paidAmount, paymentType, paidInstallment = null) => { /* ... V27 code ... */
+    const updateFirestoreAfterPayment = async (orderData, paidAmount, paymentType, paidInstallment = null) => {
         const orderRef = doc(db, ORDERS_COLLECTION, orderData.id);
         const batch = writeBatch(db);
         console.log(`[Firestore Update] Starting update for Order ${orderData.id}, Payment Type: ${paymentType}`);
@@ -384,33 +477,34 @@ export default function SchedulesDetailScreen() {
     };
 
     // --- Payment Button Handlers (V27 - wrapped in useCallback) ---
-    const handlePayInstallment = useCallback((installment) => { /* ... V27 code ... */
+    const handlePayInstallment = useCallback((installment) => {
         if (!order || !installment) { console.error("[handlePayInstallment] Order or Installment data is missing."); Alert.alert("Error", "Cannot proceed with payment. Order details are incomplete."); return; }
         const amountToPay = (installment.amount || 0) + (installment.penalty || 0);
         if (amountToPay <= 0) { Alert.alert("Error", "The calculated installment amount is invalid."); return; }
         console.log(`[Pay Button] Initiating payment for Installment #${installment.installmentNumber}, Amount: ${amountToPay}`);
         initializeAndPay(order, amountToPay, 'Installment', installment);
-    }, [order, initializeAndPay]);
-    const handlePayFixedDuration = useCallback((amountDue) => { /* ... V27 code ... */
+    }, [order, initializeAndPay]); // Depend on order state
+    const handlePayFixedDuration = useCallback((amountDue) => {
         if (!order) { console.error("[handlePayFixedDuration] Order data is missing."); Alert.alert("Error", "Cannot proceed with payment. Order details are incomplete."); return; }
         if (typeof amountDue !== 'number' || amountDue <= 0) { Alert.alert("Error", "The specified fixed duration amount is invalid."); return; }
         const amountToPay = amountDue + (order?.penalty || 0);
         if (amountToPay <= 0) { Alert.alert("Error", "The calculated fixed duration amount is invalid."); return; }
         console.log(`[Pay Button] Initiating payment for Fixed Duration, Amount: ${amountToPay}`);
         initializeAndPay(order, amountToPay, 'Fixed Duration');
-    }, [order, initializeAndPay]);
+    }, [order, initializeAndPay]); // Depend on order state
 
     // --- Loading/Error State Rendering (V27 - updated error icon/button color) ---
-    if (!order && !localError && initialOrder === undefined) { /* ... V27 code ... */
-        return ( <SafeAreaView style={styles.centeredContainer}><StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} /><ActivityIndicator size="large" color={OverdueColor /* Use Red for accent */} /><Text style={styles.loadingText}>Loading order details...</Text></SafeAreaView> ); }
-    if (!order && localError) { /* ... V27 code ... */
-        return ( <SafeAreaView style={styles.centeredContainer}><StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} /><MaterialIcons name="error-outline" size={60} color={OverdueColor} /><Text style={styles.errorText}>{localError}</Text>{navigation.canGoBack() && (<TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backButton, {backgroundColor: OverdueColor /* Use Red */} ]}><Text style={styles.backButtonText}>Go Back</Text></TouchableOpacity>)}</SafeAreaView> ); }
-     if (!order && !localError && initialOrder !== undefined) { /* ... V27 code ... */
+    if (!order && !localError && initialOrder === undefined) {
+        return ( <SafeAreaView style={styles.centeredContainer}><StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} /><ActivityIndicator size="large" color={OverdueColor} /><Text style={styles.loadingText}>Loading order details...</Text></SafeAreaView> ); }
+    if (!order && localError) {
+        return ( <SafeAreaView style={styles.centeredContainer}><StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} /><MaterialIcons name="error-outline" size={60} color={OverdueColor} /><Text style={styles.errorText}>{localError}</Text>{navigation.canGoBack() && (<TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backButton, {backgroundColor: OverdueColor}]}><Text style={styles.backButtonText}>Go Back</Text></TouchableOpacity>)}</SafeAreaView> ); }
+     if (!order && !localError && initialOrder !== undefined) {
          return ( <SafeAreaView style={styles.centeredContainer}><StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} /><ActivityIndicator size="large" color={OverdueColor} /><Text style={styles.loadingText}>Loading latest order details...</Text></SafeAreaView> ); }
-    if (!order) { /* ... V27 code ... */
+    if (!order) {
         return ( <SafeAreaView style={styles.centeredContainer}><StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} /><MaterialIcons name="search-off" size={60} color={TextColorSecondary} /><Text style={styles.errorText}>Failed to load order details or order not found.</Text>{navigation.canGoBack() && (<TouchableOpacity onPress={() => navigation.goBack()} style={[styles.backButton, {backgroundColor: OverdueColor}]}><Text style={styles.backButtonText}>Go Back</Text></TouchableOpacity>)}</SafeAreaView> ); }
 
-    // --- Derive data for Rendering (V27 - minor updates) ---
+    // --- Derive data for Rendering (V27 - minor updates, plus V12 timer related) ---
+    // This section runs on every render, ensuring derived data is up-to-date with the `order` state
     const paymentMethod = order.paymentMethod || 'Unknown';
     const displayPaymentMethodText = paymentMethod === BNPL_TYPE ? INSTALLMENT_DISPLAY_TEXT : paymentMethod;
     const displayId = order.orderNumber ? `#${order.orderNumber}` : `#${order.id.substring(0, 6).toUpperCase()}`;
@@ -427,6 +521,7 @@ export default function SchedulesDetailScreen() {
     const { paidCount, totalCount, progressPercent } = showInstallmentSection ? calculateInstallmentProgress(order.installments) : { paidCount: 0, totalCount: 0, progressPercent: 0 };
     const remainingAmount = calculateRemainingAmount(order);
 
+    // *** Crucial: Derive firstUnpaidInstallment here for use in rendering AND timer effect dependency check ***
     const firstUnpaidInstallment = showInstallmentSection && totalCount > paidCount
         ? (order.installments || []).find(inst => inst.status?.toLowerCase() !== PAID_STATUS.toLowerCase())
         : null;
@@ -436,7 +531,7 @@ export default function SchedulesDetailScreen() {
     const fixedAmountToPay = fixedAmountDue + (order.penalty || 0);
     const isFixedPaid = showFixedDurationSection && !!order.paymentReceivedAt;
 
-    const timeRemainingString = fixedDueDate ? formatTimeRemaining(fixedDueDate) : "";
+    const timeRemainingString = fixedDueDate ? formatTimeRemaining(fixedDueDate) : ""; // V27 general timer for fixed
     const isFixedOverdue = !isFixedPaid && fixedDueDate && isValid(fixedDueDate?.toDate ? fixedDueDate.toDate() : fixedDueDate)
         ? isPast(startOfDay(fixedDueDate.toDate())) && !isToday(startOfDay(fixedDueDate.toDate()))
         : false;
@@ -455,7 +550,7 @@ export default function SchedulesDetailScreen() {
                 {/* V27 Optional Error Banner */}
                 {localError && order ? ( <View style={styles.errorBanner}><Text style={styles.errorBannerText}>⚠️ {localError}</Text></View> ) : null}
 
-                 {/* Card 1: Header (V27 structure, V12 Card Style, V12 Status Colors) */}
+                 {/* Card 1: Header */}
                  <View style={styles.card}>
                     <View style={styles.headerProductInfo}>
                         <Image source={imageSource} style={styles.headerImage} defaultSource={placeholderImagePath} />
@@ -463,11 +558,9 @@ export default function SchedulesDetailScreen() {
                              <Text style={styles.headerProductName} numberOfLines={2}>{firstItem?.name || 'Order Item(s)'}</Text>
                              <Text style={styles.headerOrderId}>Order ID: {displayId}</Text>
                              <Text style={styles.headerOrderDate}>Ordered on: {formatShortDate(order.createdAt)}</Text>
-                             {/* Statuses (V27 layout, V12 colors) */}
                             <View style={styles.headerStatusColumn}>
                                 <View style={styles.headerStatusLineItem}>
                                     <Text style={styles.headerStatusLabel}>Payment:</Text>
-                                    {/* Apply V12 color logic */}
                                     <View style={[styles.statusBadgeValue, getOverallStatusStyle(paymentStatus)]}>
                                         <MaterialCommunityIcons name="credit-card-check-outline" size={13} color="#fff" style={styles.badgeIcon}/>
                                         <Text style={styles.statusBadgeTextValue}>{paymentStatus}</Text>
@@ -475,7 +568,6 @@ export default function SchedulesDetailScreen() {
                                 </View>
                                 <View style={styles.headerStatusLineItem}>
                                     <Text style={styles.headerStatusLabel}>Order:</Text>
-                                     {/* Apply V12 color logic */}
                                     <View style={[styles.statusBadgeValue, getOverallStatusStyle(orderStatus)]}>
                                         <MaterialCommunityIcons name="package-variant-closed" size={13} color="#fff" style={styles.badgeIcon}/>
                                         <Text style={styles.statusBadgeTextValue}>{orderStatus}</Text>
@@ -493,17 +585,16 @@ export default function SchedulesDetailScreen() {
                     </View>
                  </View>
 
-                {/* Card 2: Payment Details (V12 Card Style, V12 Sub-sections, V12 Detail Rows, V12 Progress Bar, V12 Installment Row Style, V12 Colors/Highlights) */}
+                {/* Card 2: Payment Details */}
                 <View style={styles.card}>
                     <Text style={styles.sectionTitle}>Payment Breakdown</Text>
 
-                    {/* COD Section (V12 sub-section + detail row style) */}
+                    {/* COD Section */}
                     {showCodSection ? (
                         <View style={styles.componentSubSection}>
                             <Text style={styles.componentTitle}>Cash on Delivery</Text>
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Amount:</Text>
-                                {/* Use V12 style, maybe slightly less emphasis */}
                                 <Text style={styles.detailValue}>{CURRENCY_SYMBOL}{(order.codAmount || 0).toLocaleString()}</Text>
                             </View>
                             <View style={styles.detailRow}>
@@ -515,12 +606,12 @@ export default function SchedulesDetailScreen() {
                         </View>
                     ) : null }
 
-                    {/* Installment Section (V12 sub-section, progress bar, installment row styles) */}
+                    {/* Installment Section */}
                     {showInstallmentSection ? (
                         <View style={[styles.componentSubSection, showCodSection && styles.componentSpacing]}>
                             <Text style={styles.componentTitle}>Installment Plan</Text>
 
-                             {/* V12 Progress Bar Style (#FF0000 fill) */}
+                             {/* V12 Progress Bar */}
                              {totalCount > 0 ? (
                                 <View style={styles.progressSection}>
                                     <View style={styles.progressTextContainer}>
@@ -535,33 +626,31 @@ export default function SchedulesDetailScreen() {
                                 </View>
                              ) : null }
 
-                             {/* Installment List (Using .map, but with V12 Row Styling) */}
+                             {/* Installment List */}
                              {(order.installments && order.installments.length > 0) ? (
                                  order.installments.map((installment, index, arr) => {
                                      const isLast = index === arr.length - 1;
+                                     // Check if this is the next one using the derived variable
                                      const isNext = firstUnpaidInstallment?.installmentNumber === installment.installmentNumber;
                                      const isPaid = installment.status?.toLowerCase() === PAID_STATUS.toLowerCase();
                                      const installmentDueDate = installment.dueDate?.toDate ? installment.dueDate.toDate() : installment.dueDate;
                                      const isOverdue = !isPaid && installmentDueDate && isValid(installmentDueDate) && isPast(startOfDay(installmentDueDate)) && !isToday(startOfDay(installmentDueDate));
 
                                      return (
-                                        // V12 Installment Row Style
                                         <View
                                             key={`inst-${order.id}-${installment.installmentNumber || index}`}
                                             style={[
-                                                styles.installmentRow, // Base V12 row style
+                                                styles.installmentRow,
                                                 isLast && styles.installmentRow_lastChild,
-                                                isNext && styles.nextInstallmentHighlight // V12 Red Border Highlight
+                                                isNext && styles.nextInstallmentHighlight // V12 Red Border
                                             ]}
                                         >
-                                            {/* V12 Left Side */}
+                                            {/* Left Side */}
                                             <View style={styles.installmentLeft}>
-                                                {/* V12 Number style + Red Text Highlight */}
                                                 <Text style={[styles.installmentNumber, isNext && styles.nextInstallmentText]}>
                                                     Inst. #{installment.installmentNumber || index + 1}
                                                 </Text>
                                                 <Text style={styles.installmentAmount}>{CURRENCY_SYMBOL} {installment.amount?.toLocaleString() ?? 'N/A'}</Text>
-                                                {/* V12 Penalty Style (#EF5350 Red) */}
                                                 {typeof installment.penalty === 'number' && installment.penalty > 0 ? (
                                                     <Text style={styles.penaltyText}>
                                                         <MaterialIcons name="warning" size={12} color={OverdueColor} style={{marginRight: 2}}/>
@@ -569,26 +658,37 @@ export default function SchedulesDetailScreen() {
                                                     </Text>
                                                 ) : null}
                                             </View>
-                                            {/* V12 Right Side */}
+                                            {/* Right Side */}
                                             <View style={styles.installmentRight}>
-                                                {/* V12 Small Badge Style + Colors */}
+                                                {/* Status Badge */}
                                                 <View style={[styles.statusBadgeSmall, getInstallmentStatusStyle(installment.status)]}>
                                                     <Text style={styles.statusTextSmall}>{installment.status || PENDING_STATUS}</Text>
                                                 </View>
-                                                {/* V12 Date Row Style */}
+                                                {/* Due Date */}
                                                 <View style={styles.dateRow}>
-                                                   <FontAwesome5 name="calendar-alt" size={11} color={isOverdue ? OverdueColor : TextColorSecondary} style={styles.dateIcon} />
-                                                   <Text style={[styles.installmentDueDate, isOverdue && styles.overdueText]}>
-                                                        Due: {formatShortDate(installment.dueDate)} {isOverdue ? '(Overdue)' : ''}
+                                                   <FontAwesome5 name="calendar-alt" size={11} color={isOverdue && !isPaid ? OverdueColor : TextColorSecondary} style={styles.dateIcon} />
+                                                   <Text style={[styles.installmentDueDate, isOverdue && !isPaid && styles.overdueText]}>
+                                                        Due: {formatShortDate(installment.dueDate)} {isOverdue && !isPaid ? '(Overdue)' : ''}
                                                     </Text>
                                                 </View>
-                                                {/* V12 Paid Date Style (Green) */}
+                                                {/* Paid Date */}
                                                 {isPaid && installment.paidAt ? (
                                                      <View style={styles.dateRow}>
                                                          <FontAwesome5 name="check-circle" size={11} color={PaidColor} style={styles.dateIcon} />
                                                          <Text style={styles.paidDateTextGreen}>Paid: {formatShortDate(installment.paidAt)}</Text>
                                                      </View>
                                                 ) : null}
+
+                                                {/* --- V12 Style Detailed Timer --- */}
+                                                {/* Show ONLY for the next pending installment */}
+                                                {isNext && !isPaid && timeLeft ? (
+                                                    <View style={styles.timerContainer}>
+                                                         <MaterialIcons name="timer" size={11} color={timeLeft === 'Overdue' || timeLeft === 'Due Now' ? OverdueColor : TextColorSecondary} style={styles.timerIcon} />
+                                                         <Text style={[styles.timerText, (timeLeft === 'Overdue' || timeLeft === 'Due Now') && styles.timerTextOverdue]}>{timeLeft}</Text>
+                                                    </View>
+                                                ) : null}
+                                                {/* --- End V12 Timer --- */}
+
                                             </View>
                                         </View>
                                      );
@@ -599,25 +699,22 @@ export default function SchedulesDetailScreen() {
                         </View>
                     ) : null }
 
-                    {/* Fixed Duration Section (V12 sub-section + detail row style, V12 Red highlight for due date/penalty) */}
+                    {/* Fixed Duration Section */}
                     {showFixedDurationSection ? (
                         <View style={[styles.componentSubSection, (showCodSection || showInstallmentSection) && styles.componentSpacing]}>
                             <Text style={styles.componentTitle}>Fixed Duration Payment</Text>
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Amount Due:</Text>
-                                {/* Use V12 Plan Amount color or primary text */}
                                 <Text style={styles.detailValueEmphasized}>{CURRENCY_SYMBOL}{fixedAmountDue.toLocaleString()}</Text>
                             </View>
                             <View style={styles.detailRow}>
                                 <Text style={styles.detailLabel}>Due Date:</Text>
                                 <View style={styles.fixedDueDateContainer}>
-                                    {/* Use V27's animated component */}
+                                    {/* Use V27's less detailed timer here */}
                                     <AnimatedTimeRemaining timeString={timeRemainingString} isOverdue={isFixedOverdue && !isFixedPaid} />
-                                     {/* V12 Red Highlight for absolute date if overdue */}
                                     <Text style={[styles.absoluteDateText, isFixedOverdue && !isFixedPaid && styles.overdueText]}>({formatShortDate(fixedDueDate)})</Text>
                                 </View>
                             </View>
-                            {/* V12 Penalty Style (#EF5350 Red) */}
                             {typeof order.penalty === 'number' && order.penalty > 0 && !isFixedPaid ? (
                                 <View style={styles.detailRow}>
                                     <Text style={[styles.detailLabel, styles.penaltyLabel]}>
@@ -644,14 +741,12 @@ export default function SchedulesDetailScreen() {
                         </View>
                     ) : null }
 
-                    {/* Totals Section (V12 detail row style, V12 Red highlight for Grand/Remaining) */}
+                    {/* Totals Section */}
                     <View style={[styles.orderTotalsSubSection, !(showCodSection || showInstallmentSection || showFixedDurationSection) && styles.componentSubSection_lastChild]}>
-                         {/* Subtotal */}
                          <View style={styles.totalRow}>
                              <Text style={styles.totalLabel}>Subtotal:</Text>
                              <Text style={styles.totalValue}>{CURRENCY_SYMBOL}{order.subtotal?.toLocaleString() ?? 'N/A'}</Text>
                          </View>
-                         {/* Delivery Fee */}
                          {typeof order.deliveryFee === 'number' && order.deliveryFee > 0 ? (
                             <View style={styles.totalRow}>
                                 <Text style={styles.totalLabel}>Delivery Fee:</Text>
@@ -659,12 +754,10 @@ export default function SchedulesDetailScreen() {
                             </View>
                          ) : null }
                          <View style={styles.totalDivider} />
-                         {/* Grand Total (V12 Red Highlight) */}
                          <View style={styles.totalRow}>
                              <Text style={styles.grandTotalLabel}>Grand Total:</Text>
                              <Text style={styles.grandTotalValue}>{CURRENCY_SYMBOL}{order.grandTotal?.toLocaleString() ?? 'N/A'}</Text>
                          </View>
-                          {/* Remaining Amount (V12 Red Highlight) */}
                           {paymentStatus?.toLowerCase() !== PAID_STATUS.toLowerCase() && remainingAmount > 0 ? (
                             <View style={[styles.totalRow, styles.remainingRow]}>
                                 <Text style={styles.remainingLabel}>Total Remaining:</Text>
@@ -675,10 +768,10 @@ export default function SchedulesDetailScreen() {
                           ) : null }
                      </View>
 
-                     {/* Pay Buttons Container (V12 Red Button Color) */}
+                     {/* Pay Buttons Container */}
                      {paymentStatus?.toLowerCase() !== PAID_STATUS.toLowerCase() && remainingAmount > 0 && (
                          <View style={styles.payButtonContainer}>
-                             {/* Pay Next Installment Button (#FF0000 Red) */}
+                             {/* Pay Next Installment Button */}
                              {showInstallmentSection && firstUnpaidInstallment ? (
                                 <TouchableOpacity
                                     style={[ styles.payButton, disableButton && styles.payButtonDisabled ]}
@@ -694,7 +787,7 @@ export default function SchedulesDetailScreen() {
                                 </TouchableOpacity>
                              ) : null }
 
-                             {/* Pay Fixed Duration Button (#FF0000 Red) */}
+                             {/* Pay Fixed Duration Button */}
                              {showFixedDurationSection && !isFixedPaid && fixedAmountDue > 0 ? (
                                 <TouchableOpacity
                                     style={[ styles.payButton, disableButton && styles.payButtonDisabled, (showInstallmentSection && firstUnpaidInstallment) && styles.secondaryPayButton ]}
@@ -719,37 +812,27 @@ export default function SchedulesDetailScreen() {
     );
 }
 
-// --- Styles (Merging V12 and V27, prioritizing V12 patterns) ---
+// --- Styles (Merging V12 and V27, prioritizing V12 patterns, adding V12 timer styles) ---
 const styles = StyleSheet.create({
-    // Base & Containers (V12 Style)
+    // Base & Containers
     container: { flex: 1, backgroundColor: ScreenBackgroundColor },
     scrollContainer: { flexGrow: 1, paddingBottom: 30, paddingHorizontal: 10, paddingTop: 10 },
     centeredContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: ScreenBackgroundColor },
-    card: { // V12 Card Style
-        backgroundColor: CardBackgroundColor,
-        borderRadius: 10, // Slightly rounder than V12's 8
-        marginBottom: 15,
-        padding: 15,
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.08,
-        shadowRadius: 3,
-        borderWidth: Platform.OS === 'ios' ? 1 : 0,
-        borderColor: CardBorderColor,
+    card: {
+        backgroundColor: CardBackgroundColor, borderRadius: 10, marginBottom: 15, padding: 15,
+        elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.08, shadowRadius: 3,
+        borderWidth: Platform.OS === 'ios' ? 1 : 0, borderColor: CardBorderColor,
     },
-    sectionTitle: { // V12 Style
+    sectionTitle: {
         fontSize: 18, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 15, borderBottomWidth: 1, borderBottomColor: SubtleDividerColor, paddingBottom: 10,
     },
-    componentSubSection: { // V12 Inspired Structure
-        paddingBottom: 15, marginBottom: 15, borderBottomWidth: 1, borderBottomColor: SubtleDividerColor,
-    },
+    componentSubSection: { paddingBottom: 15, marginBottom: 15, borderBottomWidth: 1, borderBottomColor: SubtleDividerColor, },
     componentSubSection_lastChild: { borderBottomWidth: 0, marginBottom: 0, paddingBottom: 0 },
     componentSpacing: { marginTop: 15 },
     componentTitle: { fontSize: 16, fontWeight: '600', color: TextColorPrimary, marginBottom: 15 },
     noScheduleText: { color: TextColorSecondary, fontStyle: 'italic', paddingVertical: 15, textAlign: 'center' },
 
-    // Header (V27 structure, V12 colors)
+    // Header
     headerProductInfo: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, },
     headerImage: { width: 65, height: 65, borderRadius: 8, marginRight: 15, backgroundColor: PlaceholderBgColor },
     headerTextContainer: { flex: 1, justifyContent: 'flex-start', },
@@ -759,151 +842,99 @@ const styles = StyleSheet.create({
     headerStatusColumn: { flexDirection: 'column', alignItems: 'flex-start', marginTop: 0, },
     headerStatusLineItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 6, width: '100%', },
     headerStatusLabel: { fontSize: 13, color: TextColorSecondary, marginRight: 8, minWidth: 65, textAlign: 'left', },
-    statusBadgeValue: { // Base badge style for header
-        flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 14, flexShrink: 1,
-    },
+    statusBadgeValue: { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 14, flexShrink: 1, },
     statusBadgeTextValue: { color: '#fff', fontSize: 11, fontWeight: 'bold', },
     badgeIcon: { marginRight: 4 },
-    // Status Badge Colors for Header (Using V12 Colors/Mappings)
-    statusBadgePending: { backgroundColor: PendingColor },
-    statusBadgeProcessing: { backgroundColor: ProcessingColor },
-    statusBadgePartiallyPaid: { backgroundColor: PartiallyPaidColor },
-    statusBadgeShipped: { backgroundColor: ShippedColor },
-    statusBadgeActive: { backgroundColor: ActiveColor },
-    statusBadgeDelivered: { backgroundColor: DeliveredColor },
-    statusBadgeCancelled: { backgroundColor: CancelledColor },
-    statusBadgePaid: { backgroundColor: PaidColor },
-    statusBadgeUnknown: { backgroundColor: UnknownColor },
-    paymentMethodBadge: { backgroundColor: PlanAmountColor }, // Keep specific color for method
+    statusBadgePending: { backgroundColor: PendingColor }, statusBadgeProcessing: { backgroundColor: ProcessingColor },
+    statusBadgePartiallyPaid: { backgroundColor: PartiallyPaidColor }, statusBadgeShipped: { backgroundColor: ShippedColor },
+    statusBadgeActive: { backgroundColor: ActiveColor }, statusBadgeDelivered: { backgroundColor: DeliveredColor },
+    statusBadgeCancelled: { backgroundColor: CancelledColor }, statusBadgePaid: { backgroundColor: PaidColor },
+    statusBadgeUnknown: { backgroundColor: UnknownColor }, paymentMethodBadge: { backgroundColor: PlanAmountColor },
 
     // Progress Bar (V12 Style)
     progressSection: { marginVertical: 15, paddingHorizontal: 0 },
     progressTextContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 5 },
     progressText: { fontSize: 13, color: TextColorSecondary },
     progressCountText: { fontSize: 13, color: TextColorPrimary, fontWeight: '500' },
-    progressBarContainer: { // V12 Style
-        height: 14, // Increased Height from V12
-        backgroundColor: ProgressBarBackgroundColor, // Background color of the track
-        borderRadius: 7, // Adjust rounding for new height
-        marginVertical: 10, // Vertical spacing (adjust as needed)
-        overflow: 'hidden', // Clip the fill to rounded corners
-    },
+    progressBarContainer: { height: 14, backgroundColor: ProgressBarBackgroundColor, borderRadius: 7, marginVertical: 10, overflow: 'hidden', },
     progressBarBackground: { flex: 1, },
-    progressBarFill: { // V12 Style
-        backgroundColor: ActionButtonRed, // *** Bright Red (#FF0000) Fill Color ***
-        height: '100%', // Fill the container height
-        borderRadius: 7, // Match container rounding
-    },
+    progressBarFill: { backgroundColor: ActionButtonRed, height: '100%', borderRadius: 7, },
 
     // Installment List (V12 Row Styling)
-    installmentRow: { // V12 Base Style
+    installmentRow: {
         flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 10, alignItems: 'center', borderRadius: 6,
-        marginBottom: 8, // V12 Margin
-        borderWidth: 1, // V12 Border
-        borderColor: InstallmentRowDefaultBorderColor, // V12 Default Subtle Border
-        backgroundColor: CardBackgroundColor, // Match card background
+        marginBottom: 8, borderWidth: 1, borderColor: InstallmentRowDefaultBorderColor, backgroundColor: CardBackgroundColor,
     },
-    nextInstallmentHighlight: { // V12 Highlight Style
-        borderColor: ActionButtonRed, // ** Bright Red (#FF0000) Border ONLY **
-        borderWidth: 1.5, // Make border slightly thicker
-    },
+    nextInstallmentHighlight: { borderColor: ActionButtonRed, borderWidth: 1.5, },
     installmentRow_lastChild: { marginBottom: 0 },
-    installmentLeft: { flex: 1.2, marginRight: 10 }, // V12 Layout
-    installmentRight: { flex: 1, alignItems: 'flex-end', minWidth: 100 }, // V12 Layout
-    installmentNumber: { fontSize: 14, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 4 }, // V12 Style
-    nextInstallmentText: { // V12 Highlight Style
-        color: ActionButtonRed // ** Bright Red (#FF0000) Text **
+    installmentLeft: { flex: 1.2, marginRight: 10 },
+    installmentRight: { flex: 1, alignItems: 'flex-end', minWidth: 100 },
+    installmentNumber: { fontSize: 14, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 4 },
+    nextInstallmentText: { color: ActionButtonRed },
+    installmentAmount: { fontSize: 14, color: TextColorSecondary, marginBottom: 4 },
+    dateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, },
+    dateIcon: { marginRight: 4, width: 12, textAlign: 'center', },
+    installmentDueDate: { fontSize: 12, color: TextColorSecondary, },
+    paidDateTextGreen: { color: PaidColor, fontWeight: '500', fontSize: 11, fontStyle: 'italic', },
+    penaltyText: { fontSize: 12, color: OverdueColor, marginTop: 3, fontWeight: '500', fontStyle: 'italic', display: 'flex', alignItems: 'center' },
+    statusBadgeSmall: { paddingVertical: 3, paddingHorizontal: 8, borderRadius: 10, marginBottom: 5 },
+    statusTextSmall: { fontSize: 11, fontWeight: 'bold', color: '#fff' },
+    statusPaidInstallment: { backgroundColor: PaidColor }, statusPendingInstallment: { backgroundColor: PendingColor },
+    // ** NEW: V12 Timer Styles **
+    timerContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 4, }, // Container for timer icon+text
+    timerIcon: { marginRight: 4, color: ActionButtonRed, }, // Style for the timer icon
+    timerText: { // Style for the countdown timer text (default)
+        fontSize: 11, color: ActionButtonRed, fontWeight: 'bold', fontStyle: 'italic',
     },
-    installmentAmount: { fontSize: 14, color: TextColorSecondary, marginBottom: 4 }, // V12 Style
-    dateRow: { // V12 Container for Icon + Date Text
-        flexDirection: 'row', alignItems: 'center', marginTop: 4,
+    timerTextOverdue: { // Style for overdue/due now state
+        color: OverdueColor, // Use the red color
     },
-    dateIcon: { // V12 Style for the calendar/check icon
-        marginRight: 4, width: 12, textAlign: 'center',
-    },
-    installmentDueDate: { fontSize: 12, color: TextColorSecondary, }, // V12 Style
-    paidDateTextGreen: { // V12 Specific style to make paid date text green
-        color: PaidColor, // Use the green 'Paid' color constant
-        fontWeight: '500', fontSize: 11, fontStyle: 'italic',
-    },
-    penaltyText: { // V12 Style for penalty text
-        fontSize: 12, color: OverdueColor, marginTop: 3, fontWeight: '500', fontStyle: 'italic', display: 'flex', alignItems: 'center'
-    },
-    statusBadgeSmall: { // V12 Style for Installment Badge
-        paddingVertical: 3, paddingHorizontal: 8, borderRadius: 10, marginBottom: 5
-    },
-    statusTextSmall: { fontSize: 11, fontWeight: 'bold', color: '#fff' }, // V12 Style
-    // V12 Installment Status Badge Colors
-    statusPaidInstallment: { backgroundColor: PaidColor },     // Green (#4CAF50)
-    statusPendingInstallment: { backgroundColor: PendingColor },// Orange (#FFA726)
 
-    // Fixed Duration & Detail Rows (V12 detailRow Style)
-    detailRow: { // V12 Style
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, // Slightly less padding than V12 original
-        borderBottomWidth: 1, borderBottomColor: SubtleDividerColor, // Keep divider for clarity here
-        minHeight: 35, marginBottom: 5, // Ensure rows have height and small margin
-    },
-    detailLabel: { // V12 Style
-        fontSize: 14, color: TextColorSecondary, marginRight: 10,
-    },
-    detailValue: { // V12 Style
-        fontSize: 14, fontWeight: '500', color: TextColorPrimary, textAlign: 'right', flexShrink: 1, flex: 1, marginLeft: 10,
-    },
-    detailValueEmphasized: { fontSize: 15, fontWeight: '600', color: TextColorPrimary, textAlign: 'right' }, // V27 Style
+
+    // Fixed Duration & Detail Rows
+    detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: SubtleDividerColor, minHeight: 35, marginBottom: 5, },
+    detailLabel: { fontSize: 14, color: TextColorSecondary, marginRight: 10, },
+    detailValue: { fontSize: 14, fontWeight: '500', color: TextColorPrimary, textAlign: 'right', flexShrink: 1, flex: 1, marginLeft: 10, },
+    detailValueEmphasized: { fontSize: 15, fontWeight: '600', color: TextColorPrimary, textAlign: 'right' },
     fixedDueDateContainer: { alignItems: 'flex-end' },
     timeRemainingAnimatedContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
-    iconStyle: { marginRight: 4 }, // V12 Style for icons within text
+    iconStyle: { marginRight: 4 },
     absoluteDateText: { fontSize: 11, color: TextColorSecondary, fontStyle: 'italic', textAlign: 'right' },
-    overdueText: { color: OverdueColor, fontWeight: 'bold' }, // V12 Red Highlight
-    paidStatusContainer: { flexDirection: 'row', alignItems: 'center' }, // For Paid Status with Icon
-    paidText: { fontSize: 14, fontWeight: 'bold', color: PaidColor, textAlign: 'right', }, // V12 Green Paid Text
-    penaltyLabel: { // V12 Style
-        color: OverdueColor, fontWeight: 'bold', display: 'flex', alignItems: 'center'
-    },
-    penaltyValue: { // V12 Style
-        color: OverdueColor, fontWeight: 'bold', textAlign: 'right', flex: 1
-    },
-    detailValueDate: { fontSize: 14, fontWeight: '600', textAlign: 'right' }, // V27 Style for animated date
+    overdueText: { color: OverdueColor, fontWeight: 'bold' },
+    paidStatusContainer: { flexDirection: 'row', alignItems: 'center' },
+    paidText: { fontSize: 14, fontWeight: 'bold', color: PaidColor, textAlign: 'right', },
+    penaltyLabel: { color: OverdueColor, fontWeight: 'bold', display: 'flex', alignItems: 'center' },
+    penaltyValue: { color: OverdueColor, fontWeight: 'bold', textAlign: 'right', flex: 1 },
+    detailValueDate: { fontSize: 14, fontWeight: '600', textAlign: 'right' },
 
-    // Totals (V12 detailRow Style, V12 Red Highlight)
+    // Totals
     orderTotalsSubSection: { marginTop: 15, paddingTop: 15, paddingHorizontal: 5, },
-    totalRow: { // Use detailRow styling for consistency
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4, marginBottom: 6,
-    },
-    totalLabel: { fontSize: 14, color: TextColorSecondary }, // V12 detailLabel style
-    totalValue: { fontSize: 14, fontWeight: '500', color: TextColorPrimary }, // V12 detailValue style
+    totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4, marginBottom: 6, },
+    totalLabel: { fontSize: 14, color: TextColorSecondary },
+    totalValue: { fontSize: 14, fontWeight: '500', color: TextColorPrimary },
     remainingRow: { marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: SubtleDividerColor },
     remainingLabel: { fontSize: 15, fontWeight: 'bold', color: TextColorPrimary },
-    remainingAmountHighlight: { // V12 Red Highlight
-        fontWeight: 'bold', color: OverdueColor, fontSize: 16
-    },
+    remainingAmountHighlight: { fontWeight: 'bold', color: OverdueColor, fontSize: 16 },
     grandTotalLabel: { fontWeight: 'bold', fontSize: 16, color: TextColorPrimary },
-    grandTotalValue: { // V12 Red Highlight
-        fontWeight: 'bold', fontSize: 16, color: OverdueColor
-    },
+    grandTotalValue: { fontWeight: 'bold', fontSize: 16, color: OverdueColor },
     totalDivider: { height: 1, backgroundColor: SubtleDividerColor, marginVertical: 10 },
 
     // Pay Buttons (V12 Red Button Color #FF0000)
     payButtonContainer: { marginTop: 25, paddingHorizontal: 5, paddingBottom: 10 },
-    payButton: { // V12 Red Button Color
-        backgroundColor: ActionButtonRed, // *** BRIGHT RED (#FF0000) Background ***
-        paddingVertical: 14, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', marginBottom: 10, minHeight: 50,
+    payButton: {
+        backgroundColor: ActionButtonRed, paddingVertical: 14, borderRadius: 8, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', marginBottom: 10, minHeight: 50,
         elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.15, shadowRadius: 2,
     },
     payButtonContent: { flexDirection: 'row', alignItems: 'center' },
     payButtonIcon: { marginRight: 8 },
-    payButtonDisabled: { // V12 Style
-        backgroundColor: '#A5A5A5', // Gray background
-        opacity: 0.7,
-        elevation: 0
-    },
+    payButtonDisabled: { backgroundColor: '#A5A5A5', opacity: 0.7, elevation: 0 },
     payButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold', textAlign: 'center' },
     secondaryPayButton: { marginTop: 5, },
 
-    // Error & Loading (V27 Styles, updated colors)
+    // Error & Loading
     loadingText: { marginTop: 10, color: TextColorSecondary },
     errorText: { color: OverdueColor, fontSize: 16, textAlign: 'center', marginBottom: 20, lineHeight: 22 },
-    backButton: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 6, marginTop: 10 }, // Background set dynamically
+    backButton: { paddingVertical: 10, paddingHorizontal: 20, borderRadius: 6, marginTop: 10 },
     backButtonText: { color: '#fff', fontWeight: 'bold' },
     errorBanner: { backgroundColor: '#FFF3E0', paddingVertical: 8, paddingHorizontal: 15, marginHorizontal: 0, marginBottom: 15, borderRadius: 6, borderWidth: 1, borderColor: '#FFCC80' },
     errorBannerText: { color: '#E65100', fontSize: 13, textAlign: 'center' },

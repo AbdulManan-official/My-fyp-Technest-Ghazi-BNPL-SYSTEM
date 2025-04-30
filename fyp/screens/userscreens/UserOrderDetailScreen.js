@@ -932,7 +932,7 @@ const styles = StyleSheet.create({
     grandTotalLabel: { fontWeight: 'bold', fontSize: 16, color: TextColorPrimary },
     grandTotalValue: { fontWeight: 'bold', fontSize: 16, color: AccentColor }, // Highlight Grand Total
     // OTP Display Styling
-    otpDisplayRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#E8F5E9', borderRadius: 6, borderWidth: 1, borderColor: '#C8E6C9', alignSelf: 'flex-start' },
+    otpDisplayRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12, paddingVertical: 8, paddingHorizontal: 60, backgroundColor: '#E8F5E9', borderRadius: 6, borderWidth: 1, borderColor: '#C8E6C9', alignSelf: 'flex-start' },
     otpIcon: { marginRight: 6 },
     otpDisplayLabel: { fontSize: 14, color: TextColorSecondary, marginRight: 8 },
     otpDisplayValue: { fontSize: 15, fontWeight: 'bold', color: SuccessColor, letterSpacing: 2 },

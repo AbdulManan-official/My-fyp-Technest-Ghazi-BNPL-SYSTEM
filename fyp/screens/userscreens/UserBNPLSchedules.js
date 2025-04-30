@@ -229,7 +229,7 @@ export default function UserBNPLSchedules() {
              <View style={styles.headerContainer}>
                    <View style={styles.headerTopRow}>
                       <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
-                          <Icon name="arrow-left" size={24} color={HeaderIconColor} />
+                          <Icon name="arrow-left" size={28} color={HeaderIconColor} />
                       </TouchableOpacity>
                       <View style={styles.searchBar}>
                           <Icon name="magnify" size={20} color={AccentColor} style={styles.searchIcon} />
@@ -309,7 +309,7 @@ const styles = StyleSheet.create({
     errorBannerText: { color: '#E65100', fontSize: 13, textAlign: 'center' },
     headerContainer: { backgroundColor: AccentColor, paddingTop: Platform.OS === 'ios' ? 50 : 20, paddingBottom: 10, paddingHorizontal: 10, borderBottomLeftRadius: 15, borderBottomRightRadius: 15, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 3, marginBottom: 5, },
     headerTopRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, paddingHorizontal: 5, },
-    backButton: { padding: 6, marginRight: 6, },
+    backButton: { padding: 4, marginRight: 4, },
     searchBar: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 50, paddingHorizontal: 13, height: 40, },
     searchIcon: { marginRight: 8, color: AccentColor },
     searchInput: { flex: 1, fontSize: 14, color: '#333', },

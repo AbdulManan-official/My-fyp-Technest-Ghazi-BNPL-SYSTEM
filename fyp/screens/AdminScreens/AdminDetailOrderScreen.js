@@ -1,4 +1,4 @@
-// AdminDetailOrderScreen.js (Complete Code - Final Version - Includes All Functionality - Verified Full)
+// AdminDetailOrderScreen.js (Complete Code - Final Version - Includes All Functionality - Verified Full - Updated Fixed Duration Amount Display)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -508,7 +508,8 @@ export default function AdminDetailOrderScreen() {
                     };
                     successMessage = "OTP Verified! Delivery confirmed. COD portion paid. Fixed Duration payment remains pending.";
                     // Get Fixed details for notification
-                    const fixedAmount = currentOrderData.fixedDurationDetails?.amountDue ?? currentOrderData.fixedAmount ?? 0;
+                    // *** USE fixedDurationAmountDue here for notification consistency ***
+                    const fixedAmount = currentOrderData.fixedDurationAmountDue ?? 0;
                     const dueDate = currentOrderData.fixedDurationDetails?.dueDate ?? currentOrderData.paymentDueDate; // Get due date
                     if (dueDate && fixedAmount > 0) {
                          notificationToSend = () => sendMixedCodPaidNotification(currentOrderData.userId, currentOrderData.id, fixedAmount, dueDate);
@@ -920,8 +921,11 @@ export default function AdminDetailOrderScreen() {
                                 <Text style={styles.paymentSubHeader}>Fixed Duration Plan Details</Text>
                                 <View style={styles.summaryRow}>
                                     <Text style={styles.summaryLabel}>Total Plan Amount:</Text>
-                                    {/* Use fixedAmount if exists, else fallback to bnplAmount (assuming it holds the fixed value sometimes) */}
-                                    <Text style={styles.paymentValueHighlight}>{CURRENCY_SYMBOL} {(currentOrderData.fixedAmount ?? currentOrderData.bnplAmount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Text>
+                                    {/* === UPDATED TO USE fixedDurationAmountDue === */}
+                                    <Text style={styles.paymentValueHighlight}>
+                                        {CURRENCY_SYMBOL} {(currentOrderData.fixedDurationAmountDue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </Text>
+                                    {/* ============================================ */}
                                 </View>
                                 {/* Display Plan Details if available */}
                                 {relevantPlanDetails && (

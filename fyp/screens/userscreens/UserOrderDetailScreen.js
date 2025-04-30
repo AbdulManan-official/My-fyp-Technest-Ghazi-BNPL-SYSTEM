@@ -715,7 +715,7 @@ export default function UserOrderDetailScreen() {
                                     <Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration || 'N/A'} Months</Text>
                                     {/* Conditionally show interest rate */}
                                     {typeof relevantPlanDetails.interestRate === 'number' && (
-                                        <Text style={styles.planDetailText}>Interest: {(relevantPlanDetails.interestRate * 100).toFixed(1)}%</Text>
+                                        <Text style={styles.planDetailText}>Interest: {(relevantPlanDetails.interestRate ).toFixed(1)}%</Text>
                                     )}
                                 </View>
                             )}
@@ -739,7 +739,7 @@ export default function UserOrderDetailScreen() {
                                 {relevantPlanDetails && <Text style={styles.planDetailTitle}>Plan: {relevantPlanDetails.name || 'Fixed Plan'}</Text>}
                                 {relevantPlanDetails?.duration && <Text style={styles.planDetailText}>Duration: {relevantPlanDetails.duration} Months</Text>}
                                 {typeof relevantPlanDetails?.interestRate === 'number' && (
-                                    <Text style={styles.planDetailText}>Interest: {(relevantPlanDetails.interestRate * 100).toFixed(1)}%</Text>
+                                    <Text style={styles.planDetailText}>Interest: {(relevantPlanDetails.interestRate).toFixed(1)}%</Text>
                                 )}
                                 <Text style={styles.planDetailText}>Payment Due: {formatShortDate(currentOrderData.paymentDueDate)}</Text>
                                 {/* Show penalty if applied */}

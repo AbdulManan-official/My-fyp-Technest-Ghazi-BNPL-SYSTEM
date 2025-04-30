@@ -36,12 +36,18 @@ const ORDERS_COLLECTION = 'orders';
 const ADMIN_COLLECTION = 'Admin'; // Verify collection name
 
 // Define statuses that indicate an INCOMPLETE BNPL/Fixed order for the check
+// *Includes* statuses for Fixed Duration orders
 const INCOMPLETE_BNPL_FIXED_STATUSES = [
-    'Partially Paid', 'Unpaid (Fixed Duration)', 'Overdue',
-    'Unpaid (BNPL)', 'Pending First Installment', 'Mixed (COD/BNPL Pending)',
-    'Mixed (COD/Fixed Pending)',
+    'Partially Paid',
+    'Unpaid (Fixed Duration)', // <<< Relevant for Fixed
+    'Overdue',
+    'Unpaid (BNPL)',
+    'Pending First Installment',
+    'Mixed (COD/BNPL Pending)',
+    'Mixed (COD/Fixed Pending)', // <<< Relevant for Fixed
 ];
 // Define payment methods that trigger the existing order check
+// *Includes* Fixed Duration
 const BNPL_FIXED_METHODS = ['BNPL', 'Fixed Duration', 'Mixed'];
 
 // --- Payment Related Constants ---
@@ -492,24 +498,43 @@ export default function OrderConfirmationScreen() {
 
         try {
             // === Check for Existing Incomplete BNPL/Fixed Orders ===
+            // This check triggers if the *new* order contains BNPL or Fixed items.
             const newOrderHasBnplOrFixed = currentCartItems.some(item => item?.paymentMethod === 'BNPL' || item?.paymentMethod === 'Fixed Duration');
             if (newOrderHasBnplOrFixed) {
                 console.log(`[ConfirmScreen] Checking existing incomplete orders for user ${userId}...`);
                 const ordersRef = collection(db, ORDERS_COLLECTION);
-                const qExisting = query( ordersRef, where('userId', '==', userId), where('paymentMethod', 'in', BNPL_FIXED_METHODS), where('paymentStatus', 'in', INCOMPLETE_BNPL_FIXED_STATUSES), limit(1) );
+                // Query looks for *any* existing order that is BNPL/Fixed/Mixed
+                // AND has an incomplete status (including Fixed statuses).
+                const qExisting = query(
+                    ordersRef,
+                    where('userId', '==', userId),
+                    where('paymentMethod', 'in', BNPL_FIXED_METHODS), // Checks BNPL, Fixed Duration, Mixed
+                    where('paymentStatus', 'in', INCOMPLETE_BNPL_FIXED_STATUSES), // Checks all relevant incomplete statuses
+                    limit(1)
+                );
                 try {
                     const existingIncompleteSnapshot = await getDocs(qExisting);
                     if (!existingIncompleteSnapshot.empty) {
-                        console.warn(`[ConfirmScreen] Blocking order: User ${userId} has incomplete order ${existingIncompleteSnapshot.docs[0].id}.`);
-                        Alert.alert( 'Order Restriction', 'You have an existing payment plan (BNPL/Fixed) not yet complete. Please settle current payments first.', [{ text: 'OK' }] );
-                        setIsPlacingOrder(false); return;
-                    } else { console.log("[ConfirmScreen] No blocking orders found."); }
+                        const existingOrder = existingIncompleteSnapshot.docs[0].data();
+                        const existingOrderId = existingIncompleteSnapshot.docs[0].id;
+                        console.warn(`[ConfirmScreen] Blocking order: User ${userId} has incomplete order ${existingOrderId} (Method: ${existingOrder.paymentMethod}, Status: ${existingOrder.paymentStatus}).`);
+                        Alert.alert(
+                            'Order Restriction',
+                            'You have an existing payment plan (BNPL or Fixed Duration) that is not yet fully paid. Please settle current payments before placing a new order with a payment plan.',
+                            [{ text: 'OK' }]
+                        );
+                        setIsPlacingOrder(false); return; // STOP order placement
+                    } else {
+                        console.log("[ConfirmScreen] No blocking incomplete BNPL/Fixed orders found.");
+                    }
                 } catch (queryError) {
                     console.error("[ConfirmScreen] Error querying existing orders:", queryError);
-                    if (queryError.code === 'failed-precondition') { Alert.alert('Server Busy', 'Checking payment history failed. Please try again shortly.'); }
-                    else { Alert.alert('Verification Error', 'Could not verify payment history. Check connection.'); }
-                    setIsPlacingOrder(false); return;
+                    if (queryError.code === 'failed-precondition') { Alert.alert('Server Busy', 'Checking payment history failed due to server index setup. Please try again shortly.'); }
+                    else { Alert.alert('Verification Error', 'Could not verify payment history. Please check your connection and try again.'); }
+                    setIsPlacingOrder(false); return; // STOP on query error
                 }
+            } else {
+                 console.log("[ConfirmScreen] New order is COD/Prepaid only. Skipping existing order check.");
             }
             // === End Existing Order Check ===
 
@@ -542,7 +567,7 @@ export default function OrderConfirmationScreen() {
             else if (hasBnpl) { overallPaymentMethod = 'BNPL'; }
             else if (hasFixed) { overallPaymentMethod = 'Fixed Duration'; }
             else if (hasCod) { overallPaymentMethod = 'COD'; }
-            else { overallPaymentMethod = 'Prepaid'; overallPaymentStatus = 'Paid'; }
+            else { overallPaymentMethod = 'Prepaid'; overallPaymentStatus = 'Paid'; } // Assuming non-COD/BNPL/Fixed is prepaid and paid upfront
 
             console.log(`[ConfirmScreen] Determined Payment Method: ${overallPaymentMethod}`);
 
@@ -573,9 +598,11 @@ export default function OrderConfirmationScreen() {
                     orderSpecificData = {
                         paymentStatus: overallPaymentStatus,
                         fixedDurationDetails: { id: relevantBnplPlan.id, name: relevantBnplPlan.name, duration: relevantBnplPlan.duration, interestRate: relevantBnplPlan.interestRate, planType: relevantBnplPlan.planType },
-                        paymentDueDate: fixedDueDate, fixedDurationAmountDue: fixedSubTotal, penalty: 0
+                        paymentDueDate: fixedDueDate, // Due date for the single fixed payment
+                        fixedDurationAmountDue: fixedSubTotal, // The total amount due for fixed items
+                        penalty: 0 // Initialize penalty
                     };
-                    isBnplInstallmentOrder = false; // NO immediate payment prompt
+                    isBnplInstallmentOrder = false; // NO immediate payment prompt for Fixed Duration
                 } else { console.error("[ConfirmScreen] Fixed Duration method but plan details missing/invalid."); overallPaymentStatus = 'Pending Review (Missing Fixed Plan)'; isBnplInstallmentOrder = false; }
             }
             // Case 3: Pure COD
@@ -588,11 +615,12 @@ export default function OrderConfirmationScreen() {
             // Case 4: Other (e.g., Prepaid)
             else {
                  console.log("[ConfirmScreen] Processing Other/Prepaid order part.");
+                 // Assuming prepaid orders are marked as paid immediately (adjust if external payment happens elsewhere)
                  orderSpecificData = { paymentStatus: overallPaymentStatus };
                  isBnplInstallmentOrder = false;
             }
 
-            // Set initial preference (null unless BNPL Installment)
+            // Set initial preference (null unless BNPL Installment requires choice)
             let firstInstallmentPref = isBnplInstallmentOrder ? 'Pending Choice' : null;
 
             // === Build the Final Order Object to Save ===
@@ -608,21 +636,22 @@ export default function OrderConfirmationScreen() {
                 subtotal: currentSubTotal, grandTotal: currentGrandTotal,
                 codAmount: codSubTotal, // Store COD amount
                 bnplAmount: bnplSubTotal, // Store BNPL Installment amount
-                // fixedDurationAmountDue is now part of orderSpecificData for Fixed orders
-                createdAt: firestoreWriteTimestamp, orderDate: jsOrderPlacementDate,
-                status: 'Pending', // Initial fulfillment status
+                // fixedDurationAmount is captured in fixedSubTotal calculation above.
+                // Specific details like due date and amount are in orderSpecificData for Fixed orders
+                createdAt: firestoreWriteTimestamp, orderDate: jsOrderPlacementDate, // Use JS Date for easier calculations
+                status: 'Pending', // Initial fulfillment status (e.g., processing, pending shipment)
                 paymentMethod: overallPaymentMethod,
                 // Spread specific data: paymentStatus, installments OR fixedDurationDetails, paymentDueDate, fixedDurationAmountDue, penalty
                 ...orderSpecificData,
-                // Add preference field ONLY for BNPL Installment orders
+                // Add preference field ONLY for BNPL Installment orders needing a choice
                 ...(isBnplInstallmentOrder && { firstInstallmentPaymentPreference: firstInstallmentPref })
             };
 
-            // Final validation
+            // Final validation before saving
             if (!orderDetailsToSave.items || orderDetailsToSave.items.length === 0) { throw new Error("Order contains no valid items."); }
             if (!orderDetailsToSave.paymentMethod || orderDetailsToSave.paymentMethod === 'Unknown') { throw new Error("Could not determine valid payment method."); }
 
-            console.log("[ConfirmScreen] Final Order Object Prepared:", JSON.stringify(orderDetailsToSave, null, 2));
+            console.log("[ConfirmScreen] Final Order Object Prepared:", JSON.stringify(orderDetailsToSave, (key, value) => key === 'createdAt' ? 'SERVER_TIMESTAMP' : value, 2)); // Avoid logging huge timestamp object
 
             // === Step 1: Save Order to Firestore ===
             console.log('[ConfirmScreen] Saving order to Firestore...');
@@ -640,6 +669,8 @@ export default function OrderConfirmationScreen() {
                 console.log(`[ConfirmScreen] Cart cleared successfully.`);
             } catch (cartError) {
                  console.error(`[ConfirmScreen] CRITICAL ERROR: Failed to clear cart for user ${userId} after order ${newOrderId}:`, cartError);
+                 // Non-fatal for the order itself, but needs monitoring
+                 Alert.alert("Cart Clear Issue", "Order placed, but failed to clear cart. Please manually remove items or contact support.");
             }
 
             // === Step 3: Send Initial Admin Notification ===
@@ -660,19 +691,20 @@ export default function OrderConfirmationScreen() {
             // === Step 4: Handle Post-Order Action (Payment Prompt or Simple Success) ===
             setIsPlacingOrder(false); // Done placing order
 
-            // Show payment prompt ONLY for BNPL Installment Orders
+            // Show payment prompt ONLY for BNPL Installment Orders that have installments generated
             if (isBnplInstallmentOrder && orderDetailsToSave.installments && orderDetailsToSave.installments.length > 0) {
                 const firstInstallment = orderDetailsToSave.installments[0];
                 const amountToPay = (firstInstallment.amount || 0) + (firstInstallment.penalty || 0);
                 if (amountToPay <= 0) {
                      console.warn(`[ConfirmScreen] First installment amount zero or less for ${newOrderId}. Skipping payment prompt.`);
-                     Alert.alert('Order Placed Successfully!', `Order (#${newOrderId.substring(0, 8)}) confirmed.`, [{ text: 'OK', onPress: () => navigation.popToTop() }], { cancelable: false });
+                     Alert.alert('Order Placed Successfully!', `Order (#${newOrderId.substring(0, 8)}) confirmed. Installment details available in order history.`, [{ text: 'OK', onPress: () => navigation.popToTop() }], { cancelable: false });
                 } else {
                     Alert.alert( 'Order Placed & First Installment Due', `Order (#${newOrderId.substring(0, 8)}) confirmed.\n\nFirst installment: ${CURRENCY_SYMBOL}${amountToPay.toFixed(2)}. Pay online now?`,
                         [
                             { text: 'Pay Now Online', onPress: async () => {
                                     if (isProcessingFirstPayment || stripeLoadingHook) { Alert.alert("Please Wait", "Payment process initializing..."); return; }
                                     console.log(`[ConfirmScreen] User chose 'Pay Now Online' for order ${newOrderId}.`);
+                                    // Pass the full orderDetailsToSave, as it contains the latest generated installments array
                                     await initializeAndPayFirstInstallment( newOrderId, firstInstallment, currentUserDetails, amountToPay, setIsProcessingFirstPayment, { initPaymentSheet, presentPaymentSheet }, orderDetailsToSave, navigation );
                             } },
                             { text: 'Pay at Delivery', onPress: async () => {
@@ -687,7 +719,7 @@ export default function OrderConfirmationScreen() {
             } else {
                 // For Fixed Duration, COD, Prepaid - Show simple success message
                 console.log(`[ConfirmScreen] Order ${newOrderId} (Type: ${overallPaymentMethod}) placed. No immediate prompt needed.`);
-                Alert.alert( 'Order Placed Successfully!', `Your Order (#${newOrderId.substring(0, 8)}) has been confirmed.`,
+                Alert.alert( 'Order Placed Successfully!', `Your Order (#${newOrderId.substring(0, 8)}) has been confirmed. Check order history for details.`,
                     [{ text: 'OK', onPress: () => navigation.popToTop() }], { cancelable: false }
                 );
             }
@@ -696,10 +728,12 @@ export default function OrderConfirmationScreen() {
              console.error('[ConfirmScreen] CRITICAL ERROR during order placement:', error);
              setIsPlacingOrder(false); setIsProcessingFirstPayment(false); // Reset both loaders
              let errorMsg = 'Could not place order. Please try again.';
-             if (error.code === 'permission-denied') errorMsg = 'Permission Error. Please log in again.';
-             else if (error.message?.includes('index required') || error.code === 'failed-precondition') errorMsg = 'Server busy checking history. Try again shortly.';
+             if (error.code === 'permission-denied') errorMsg = 'Authentication Error. Please log in again and retry.';
+             else if (error.code === 'failed-precondition' || error.message?.includes('index required')) errorMsg = 'Server busy processing history. Please try again in a moment.';
              else if (error.message) errorMsg = `Failed: ${error.message}`;
              Alert.alert('Order Placement Failed', errorMsg);
+             // Potentially clean up if order was partially created but failed later? (Complex)
+             // if (newOrderId) { console.warn(`Order ${newOrderId} might be in an inconsistent state.`); }
         }
     }, [ // Dependencies
         currentUserDetails, cartItems, subTotal, grandTotal, navigation,
@@ -707,7 +741,7 @@ export default function OrderConfirmationScreen() {
     ]);
 
     // --- Render Logic ---
-    if (!currentUserDetails) { return (<SafeAreaView style={styles.safeArea}><View style={styles.loadingContainer}><ActivityIndicator size="large" color={AccentColor} /><Text style={styles.loadingText}>Loading...</Text></View></SafeAreaView>); }
+    if (!currentUserDetails) { return (<SafeAreaView style={styles.safeArea}><View style={styles.loadingContainer}><ActivityIndicator size="large" color={AccentColor} /><Text style={styles.loadingText}>Loading User Details...</Text></View></SafeAreaView>); }
     if (isCartEmpty) { return ( <SafeAreaView style={styles.safeArea}><StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} /><View style={styles.emptyCartContainer}><Icon name="remove-shopping-cart" size={60} color={TextColorSecondary} /><Text style={styles.emptyCartTitle}>Your Cart is Empty</Text><Text style={styles.emptyCartSubtitle}>Add items to place an order.</Text><TouchableOpacity style={styles.goShoppingButton} onPress={() => navigation.navigate('Home')}><Text style={styles.goShoppingButtonText}>Start Shopping</Text></TouchableOpacity></View></SafeAreaView> ); }
 
     // --- Main Confirmation Screen Render ---
@@ -731,7 +765,7 @@ export default function OrderConfirmationScreen() {
                 <View style={styles.sectionContainer}>
                      <Text style={styles.sectionTitle}>Order Items ({totalItemCount})</Text>
                      <View style={styles.cartListContainer}>
-                         <FlatList data={cartItems} keyExtractor={(item, index) => item.cartItemId || item.id?.toString() || `confirm-${index}`} renderItem={renderConfirmationItem} scrollEnabled={false} ListEmptyComponent={<Text style={styles.emptyListText}>No items.</Text>} />
+                         <FlatList data={cartItems} keyExtractor={(item, index) => item.cartItemId || item.id?.toString() || `confirm-${index}`} renderItem={renderConfirmationItem} scrollEnabled={false} ListEmptyComponent={<Text style={styles.emptyListText}>No items found in cart data.</Text>} />
                      </View>
                 </View>
                 {/* Order Summary */}
@@ -740,6 +774,7 @@ export default function OrderConfirmationScreen() {
                      <View style={styles.summaryBox}>
                          <View style={styles.summaryRow}><Text style={styles.summaryText}>Subtotal:</Text><Text style={styles.summaryValue}>{`${CURRENCY_SYMBOL} ${subTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`}</Text></View>
                          <View style={styles.summaryRow}><Text style={styles.summaryText}>Total Items:</Text><Text style={styles.summaryValue}>{totalItemCount}</Text></View>
+                         {/* Add Delivery Fee / Discounts here if applicable */}
                          <View style={styles.divider} />
                          <View style={styles.summaryRow}><Text style={styles.totalText}>Grand Total:</Text><Text style={styles.totalValue}>{`${CURRENCY_SYMBOL} ${grandTotal.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`}</Text></View>
                      </View>
@@ -761,7 +796,7 @@ export default function OrderConfirmationScreen() {
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: ScreenBackgroundColor },
     scrollView: { flex: 1 },
-    scrollContentContainer: { flexGrow: 1, paddingHorizontal: 15, paddingTop: 20, paddingBottom: 120 },
+    scrollContentContainer: { flexGrow: 1, paddingHorizontal: 15, paddingTop: 20, paddingBottom: 120 }, // Increased paddingBottom for footer
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: ScreenBackgroundColor },
     loadingText: { marginTop: 15, fontSize: 16, color: TextColorSecondary },
     emptyCartContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 30, paddingBottom: 40, backgroundColor: ScreenBackgroundColor },

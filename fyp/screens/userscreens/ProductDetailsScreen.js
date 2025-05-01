@@ -63,8 +63,9 @@ const PopupTextColor = '#FFFFFF';
 const BrightRedButtonColor = '#FF0000';
 const BrightRedGradientEndColor = '#E60000'; // Slightly darker red for gradient end
 
-// Assume placeholder image exists at this path
+// Assume placeholder images exist at these paths
 const placeholderImage = require('../../assets/p3.jpg'); // MAKE SURE THIS PATH IS CORRECT
+const defaultProfileImage = 'https://www.w3schools.com/w3images/avatar2.png';
 const { width: screenWidth } = Dimensions.get('window');
 const GALLERY_HEIGHT = screenWidth * 0.9;
 const MAX_INITIAL_REVIEWS = 2; // Show max 2 reviews initially
@@ -87,7 +88,7 @@ export default function ProductDetailsScreen() {
     const [product, setProduct] = useState(null);
     const [isLoadingProduct, setIsLoadingProduct] = useState(true);
     const [isLoadingPlans, setIsLoadingPlans] = useState(false);
-    const [isWishlisted, setIsWishlisted] = useState(false);
+    const [isWishlisted, setIsWishlisted] = useState(false); // Note: Local state only for now
     const [activeIndex, setActiveIndex] = useState(0);
     const [showAllReviews, setShowAllReviews] = useState(false);
     const [relatedProducts, setRelatedProducts] = useState([]);
@@ -100,8 +101,8 @@ export default function ProductDetailsScreen() {
     const [showAddedToCartPopup, setShowAddedToCartPopup] = useState(false);
     const popupOpacity = useRef(new Animated.Value(0)).current;
 
-    // *** State for Reviews ***
-    const [reviews, setReviews] = useState([]); // Holds fetched reviews
+    // *** State for Reviews (includes user info now) ***
+    const [reviews, setReviews] = useState([]); // Holds fetched reviews with user details
     const [isLoadingReviews, setIsLoadingReviews] = useState(false); // Loading status for reviews
     const [reviewsError, setReviewsError] = useState(null); // Error state for reviews
     // --- End State Variables ---
@@ -119,16 +120,14 @@ export default function ProductDetailsScreen() {
         const productIdFromRoute = route.params?.productId ?? null;
 
         const loadProductAndPlans = async (productData) => {
-            if (!productData || !productData.id) {
+             if (!productData || !productData.id) {
                 console.warn("loadProductAndPlans called with invalid data", productData);
                 setIsLoadingProduct(false);
                 setProduct(null);
                 return;
             }
-
-            // Normalize incoming product data
-            const baseProduct = {
-                ...productData,
+            const baseProduct = { /* ... (Normalization logic remains the same) ... */
+                 ...productData,
                 bnplAvailable: productData.paymentOption?.BNPL === true,
                 codAvailable: productData.paymentOption?.COD === true,
                 originalPrice: typeof productData.originalPrice === 'number' ? productData.originalPrice : null,
@@ -144,18 +143,14 @@ export default function ProductDetailsScreen() {
                 media: productData.media || {},
                 image: productData.image || productData.media?.images?.[0] || null,
                 category: productData.category || 'Uncategorized',
-                rating: typeof productData.rating === 'number' ? productData.rating : null, // Keep pre-calculated rating if exists
+                rating: typeof productData.rating === 'number' ? productData.rating : null,
                 soldCount: typeof productData.soldCount === 'number' ? productData.soldCount : 0,
-                // reviews field is no longer loaded directly from product data
             };
-
             const needsPlanFetch = baseProduct.bnplAvailable && baseProduct.BNPLPlanIDs.length > 0 && baseProduct.BNPLPlans.length === 0;
             console.log(`Product ${baseProduct.id}: Initializing. Needs Plan Fetch: ${needsPlanFetch}`);
-
             setProduct(baseProduct);
             setIsLoadingProduct(false);
-
-            if (needsPlanFetch) {
+            if (needsPlanFetch) { /* ... (BNPL Plan fetching logic remains the same) ... */
                 console.log(`Product ${baseProduct.id}: Fetching ${baseProduct.BNPLPlanIDs.length} plans...`);
                 setIsLoadingPlans(true);
                 try {
@@ -176,36 +171,22 @@ export default function ProductDetailsScreen() {
                 } finally {
                     setIsLoadingPlans(false);
                 }
-            } else {
-                setIsLoadingPlans(false);
-            }
+            } else { setIsLoadingPlans(false); }
         };
 
-        // Reset all relevant state on new product load
-        setProduct(null);
-        setIsLoadingProduct(true);
-        setIsLoadingPlans(false);
-        setRelatedProducts([]);
-        setLoadingRelatedProducts(true);
-        setSelectedBnplPlan(null);
-        setSelectedPaymentMethod(null);
-        setActiveIndex(0);
-        setActionType(null);
-        setIsProcessingCart(false);
-        setShowAddedToCartPopup(false);
-        setIsWishlisted(false);
-        // Reset review state
-        setReviews([]);
-        setIsLoadingReviews(false);
-        setReviewsError(null);
-        setShowAllReviews(false);
+        // Reset logic remains the same
+        setProduct(null); setIsLoadingProduct(true); setIsLoadingPlans(false);
+        setRelatedProducts([]); setLoadingRelatedProducts(true); setSelectedBnplPlan(null);
+        setSelectedPaymentMethod(null); setActiveIndex(0); setActionType(null);
+        setIsProcessingCart(false); setShowAddedToCartPopup(false); setIsWishlisted(false);
+        setReviews([]); setIsLoadingReviews(false); setReviewsError(null); setShowAllReviews(false);
 
-        // Determine how to load product data
-        if (initialProductFromRoute) {
-            console.log("Loading product from route params:", initialProductFromRoute.id);
+        // Product loading determination logic remains the same
+        if (initialProductFromRoute) { /* ... */
+             console.log("Loading product from route params:", initialProductFromRoute.id);
             loadProductAndPlans(initialProductFromRoute);
-        } else if (productIdFromRoute) {
-            console.log("Loading product by ID:", productIdFromRoute);
+        } else if (productIdFromRoute) { /* ... */
+             console.log("Loading product by ID:", productIdFromRoute);
             const fetchProductById = async () => {
                 try {
                     const productRef = doc(db, 'Products', productIdFromRoute);
@@ -224,78 +205,102 @@ export default function ProductDetailsScreen() {
                 }
             };
             fetchProductById();
-        } else {
+        } else { /* ... */
             console.error("No product data or ID provided.");
             setIsLoadingProduct(false); setProduct(null);
             Alert.alert("Error", "Could not load product information.");
         }
-
-        // Cleanup for popup timer
-        return () => {
-            if (popupTimeoutRef.current) {
-                clearTimeout(popupTimeoutRef.current);
-            }
-        };
-    }, [route.params?.product, route.params?.productId]); // Re-run if product object or ID changes in route
+        return () => { if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current); };
+    }, [route.params?.product, route.params?.productId]);
 
 
-    // Effect 2: Fetch Reviews when Product ID is available
+    // Effect 2: Fetch Reviews and User Data when Product ID is available
     useEffect(() => {
         if (!isLoadingProduct && product && product.id) {
-            const fetchReviewsForProduct = async (productIdToFetch) => {
+            const fetchReviewsAndUsers = async (productIdToFetch) => {
                 console.log(`Fetching reviews for productId: ${productIdToFetch}`);
                 setIsLoadingReviews(true);
                 setReviewsError(null);
-                setReviews([]); // Clear previous reviews before fetching
+                setReviews([]); // Clear previous reviews
 
                 try {
+                    // 1. Fetch Reviews
                     const reviewsQuery = query(
                         collection(db, 'Reviews'),
                         where('productId', '==', productIdToFetch),
                         orderBy('timestamp', 'desc')
                     );
-                    const querySnapshot = await getDocs(reviewsQuery);
-                    const fetchedReviews = [];
+                    const reviewsSnapshot = await getDocs(reviewsQuery);
+                    const reviewDocsData = reviewsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-                    // Optional: Fetch user data in parallel if names are needed
-                    // const userIds = querySnapshot.docs.map(doc => doc.data().userId).filter(id => id);
-                    // const userNamesMap = {}; // = await fetchUserNames(userIds); // Implement this function
+                    // 2. Extract Unique User IDs
+                    const userIds = [
+                        ...new Set( // Use Set for uniqueness
+                            reviewDocsData
+                                .map(data => data.userId)
+                                .filter(id => typeof id === 'string' && id.trim() !== '') // Filter out invalid IDs
+                        )
+                    ];
 
-                    querySnapshot.forEach((docSnapshot) => {
-                        const data = docSnapshot.data();
-                        if (!data.rating || !data.reviewText || !data.timestamp || !data.userId) {
-                             console.warn("Skipping review with missing data:", docSnapshot.id, data);
-                             return;
-                        }
+                    // 3. Fetch User Data (if any user IDs were found)
+                    const userDataMap = {}; // To store fetched user data { userId: { name, profileImage } }
+                    if (userIds.length > 0) {
+                        console.log(`Fetching user data for ${userIds.length} users.`);
+                        // Firestore 'in' query limit is 30 as of recent updates (was 10). Chunk if expecting more.
+                        // Simple approach assuming <= 30 unique reviewers per load:
+                         try {
+                            const usersQuery = query(collection(db, 'Users'), where(documentId(), 'in', userIds));
+                            const usersSnapshot = await getDocs(usersQuery);
 
-                        let formattedDate = 'Date unavailable';
-                        if (data.timestamp instanceof Timestamp) { // Check if it's a Firestore Timestamp
+                            usersSnapshot.forEach(userDoc => {
+                                const userData = userDoc.data();
+                                userDataMap[userDoc.id] = {
+                                    name: userData?.name || 'Anonymous User', // Fallback name
+                                    profileImage: userData?.profileImage || null // Store null if not present
+                                };
+                            });
+                            console.log(`Fetched data for ${usersSnapshot.size} users.`);
+                         } catch (userFetchError) {
+                            console.error("Error fetching user data for reviews:", userFetchError);
+                            // Continue without user data, reviews will show defaults
+                         }
+                    }
+
+                    // 4. Combine Review and User Data
+                    const combinedReviews = reviewDocsData.map((data) => {
+                         if (!data.rating || !data.reviewText || !data.timestamp || !data.userId) {
+                             console.warn("Skipping review with missing data:", data.id, data);
+                             return null; // Skip invalid reviews
+                         }
+
+                         let formattedDate = 'Date unavailable';
+                         if (data.timestamp instanceof Timestamp) {
+                             try {
+                                 formattedDate = data.timestamp.toDate().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+                             } catch (e) { console.error("Error formatting timestamp:", e); }
+                         } else if (data.timestamp) { // Handle other date formats if necessary
                             try {
-                                formattedDate = data.timestamp.toDate().toLocaleDateString(undefined, {
-                                    year: 'numeric', month: 'long', day: 'numeric'
-                                });
-                            } catch (e) {
-                                console.error("Error formatting timestamp:", e);
-                            }
-                        } else if (data.timestamp) { // Handle if it's already a Date object or string
-                           try {
-                               formattedDate = new Date(data.timestamp).toLocaleDateString(undefined, {
-                                    year: 'numeric', month: 'long', day: 'numeric'
-                                });
-                           } catch(e) { /* Ignore if cannot parse */ }
-                        }
+                                 formattedDate = new Date(data.timestamp).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+                            } catch(e) { /* Ignore if cannot parse */ }
+                         }
 
-                        fetchedReviews.push({
-                            id: docSnapshot.id,
-                            rating: data.rating,
-                            comment: data.reviewText,
-                            date: formattedDate,
-                            name: 'Anonymous User', // Placeholder - Add user fetching logic if needed
-                            userId: data.userId
-                        });
-                    });
-                    setReviews(fetchedReviews);
-                    console.log(`Fetched ${fetchedReviews.length} reviews.`);
+                         // Get user details from map or use default
+                         const userDetails = userDataMap[data.userId] || { name: 'Anonymous User', profileImage: null };
+
+                         return {
+                             id: data.id,
+                             rating: data.rating,
+                             comment: data.reviewText,
+                             date: formattedDate,
+                             name: userDetails.name, // Use fetched name
+                             profileImage: userDetails.profileImage, // Use fetched image URL (or null)
+                             userId: data.userId
+                         };
+                     }).filter(review => review !== null); // Filter out skipped reviews
+
+                    setReviews(combinedReviews);
+                    console.log(`Processed ${combinedReviews.length} reviews with user data.`);
+
                 } catch (error) {
                     console.error("Error fetching reviews:", error);
                     setReviewsError("Could not load reviews.");
@@ -304,23 +309,22 @@ export default function ProductDetailsScreen() {
                     setIsLoadingReviews(false);
                 }
             };
-            fetchReviewsForProduct(product.id);
+            fetchReviewsAndUsers(product.id);
         }
     }, [product?.id, isLoadingProduct]); // Depends on product ID and product loading status
 
 
-    // Effect 3: Fetch Related Products
+    // Effect 3: Fetch Related Products (Remains the same)
     useEffect(() => {
         if (!product || !product.id || !product.category || isLoadingProduct) {
             if (!isLoadingProduct && !product) setLoadingRelatedProducts(false);
             return;
         }
-
-        const fetchRelated = async () => {
+        const fetchRelated = async () => { /* ... (Related product fetching logic remains the same) ... */
             console.log(`Fetching related products for category: ${product.category}, excluding: ${product.id}`);
             setLoadingRelatedProducts(true);
             setRelatedProducts([]);
-            try {
+             try {
                 const q = query(
                     collection(db, 'Products'),
                     where('category', '==', product.category),
@@ -350,7 +354,6 @@ export default function ProductDetailsScreen() {
                         codAvailable: d.paymentOption?.COD === true,
                     };
                 });
-
                 if (fetched.length > 0 && fetched.length < RELATED_PRODUCTS_LIMIT && fetched.length % 2 !== 0) {
                     fetched.push({ id: `placeholder-${Date.now()}`, isPlaceholder: true });
                 }
@@ -367,191 +370,121 @@ export default function ProductDetailsScreen() {
     }, [product?.id, product?.category, isLoadingProduct]);
     // --- End Effects ---
 
-    // --- Memos ---
-    const galleryItems = useMemo(() => {
-        if (!product || (!product.media && !product.image)) {
-            return [{ type: 'image', url: null, id: 'placeholder-img', isPlaceholder: true }];
-        }
-        const items = []; const seenUrls = new Set();
-        const addItem = (item) => {
-            if (item.url && typeof item.url === 'string' && !seenUrls.has(item.url)) {
-                items.push(item); seenUrls.add(item.url);
-            } else if (item.isPlaceholder) { items.push(item); }
-        };
-        if (product.media?.images && Array.isArray(product.media.images)) {
-            product.media.images.forEach(url => addItem({ type: 'image', url: url, id: `img-${url}` }));
-        }
-        const videoUrl = product.media?.video;
-        if (videoUrl) addItem({ type: 'video', url: videoUrl, id: `vid-${videoUrl}` });
-        if (product.image) {
-            const fallbackAlreadyAdded = items.some(item => item.type === 'image' && item.url === product.image);
-            if (!fallbackAlreadyAdded) {
-                if (items.filter(i => i.type === 'image').length === 0) items.unshift({ type: 'image', url: product.image, id: `img-fallback-${product.image}` });
-                else items.push({ type: 'image', url: product.image, id: `img-fallback-${product.image}` });
-            }
-        }
-        if (items.length === 0) items.push({ type: 'image', url: null, id: 'placeholder-img', isPlaceholder: true });
-        return items;
+
+    // --- Memos --- (Most memos remain the same, averageRating updates)
+    const galleryItems = useMemo(() => { /* ... (Gallery logic remains the same) ... */
+         if (!product || (!product.media && !product.image)) { return [{ type: 'image', url: null, id: 'placeholder-img', isPlaceholder: true }]; }
+         const items = []; const seenUrls = new Set();
+         const addItem = (item) => { if (item.url && typeof item.url === 'string' && !seenUrls.has(item.url)) { items.push(item); seenUrls.add(item.url); } else if (item.isPlaceholder) { items.push(item); } };
+         if (product.media?.images && Array.isArray(product.media.images)) { product.media.images.forEach(url => addItem({ type: 'image', url: url, id: `img-${url}` })); }
+         const videoUrl = product.media?.video;
+         if (videoUrl) addItem({ type: 'video', url: videoUrl, id: `vid-${videoUrl}` });
+         if (product.image) { const fallbackAlreadyAdded = items.some(item => item.type === 'image' && item.url === product.image); if (!fallbackAlreadyAdded) { if (items.filter(i => i.type === 'image').length === 0) items.unshift({ type: 'image', url: product.image, id: `img-fallback-${product.image}` }); else items.push({ type: 'image', url: product.image, id: `img-fallback-${product.image}` }); } }
+         if (items.length === 0) items.push({ type: 'image', url: null, id: 'placeholder-img', isPlaceholder: true });
+         return items;
     }, [product?.media, product?.image]);
 
     const originalPriceValue = useMemo(() => product?.originalPrice, [product?.originalPrice]);
     const discountedPriceValue = useMemo(() => product?.discountedPrice, [product?.discountedPrice]);
-    const hasDiscount = useMemo(() =>
-        typeof originalPriceValue === 'number' && typeof discountedPriceValue === 'number' && discountedPriceValue < originalPriceValue,
-        [originalPriceValue, discountedPriceValue]);
-
+    const hasDiscount = useMemo(() => typeof originalPriceValue === 'number' && typeof discountedPriceValue === 'number' && discountedPriceValue < originalPriceValue, [originalPriceValue, discountedPriceValue]);
     const mainDisplayOriginalPrice = useMemo(() => typeof originalPriceValue === 'number' ? `${CURRENCY_SYMBOL} ${originalPriceValue.toFixed(0)}` : null, [originalPriceValue]);
     const mainDisplayDiscountedPrice = useMemo(() => typeof discountedPriceValue === 'number' ? `${CURRENCY_SYMBOL} ${discountedPriceValue.toFixed(0)}` : null, [discountedPriceValue]);
     const mainFinalDisplayPrice = useMemo(() => mainDisplayDiscountedPrice || mainDisplayOriginalPrice, [mainDisplayDiscountedPrice, mainDisplayOriginalPrice]);
+    const basePriceForCalculations = useMemo(() => (hasDiscount && typeof discountedPriceValue === 'number') ? discountedPriceValue : (typeof originalPriceValue === 'number') ? originalPriceValue : null, [hasDiscount, discountedPriceValue, originalPriceValue]);
 
-    const basePriceForCalculations = useMemo(() =>
-        (hasDiscount && typeof discountedPriceValue === 'number') ? discountedPriceValue : (typeof originalPriceValue === 'number') ? originalPriceValue : null,
-        [hasDiscount, discountedPriceValue, originalPriceValue]);
-
-    // Average rating calculation using fetched reviews or product data
+    // Average rating calculation now primarily uses fetched reviews
     const averageRating = useMemo(() => {
-        if (typeof product?.rating === 'number') return product.rating; // Use pre-calculated if available
         if (reviews && reviews.length > 0) {
             const sum = reviews.reduce((acc, review) => acc + (review.rating || 0), 0);
             const avg = sum / reviews.length;
             return isNaN(avg) ? null : avg; // Calculate from fetched reviews
         }
+        if (typeof product?.rating === 'number') return product.rating; // Fallback to pre-calculated if reviews fail/empty
         return null; // No rating available
-    }, [product?.rating, reviews]);
+    }, [reviews, product?.rating]); // Depends on fetched reviews and product data fallback
 
     const soldCount = useMemo(() => product?.soldCount ?? 0, [product?.soldCount]);
     const displaySoldCount = useMemo(() => soldCount > 999 ? `${(soldCount / 1000).toFixed(1)}k` : soldCount.toString(), [soldCount]);
 
-    // Memoized reviews from state
+    // Memoized reviews from state (includes user info now)
     const allReviews = useMemo(() => reviews, [reviews]);
-    const displayReviews = useMemo(() =>
-        showAllReviews ? allReviews : allReviews.slice(0, MAX_INITIAL_REVIEWS),
-        [showAllReviews, allReviews]);
+    const displayReviews = useMemo(() => showAllReviews ? allReviews : allReviews.slice(0, MAX_INITIAL_REVIEWS), [showAllReviews, allReviews]);
 
-    const hasLoadedBnplOption = useMemo(() =>
-        product?.bnplAvailable === true && !isLoadingPlans && Array.isArray(product.BNPLPlans) && product.BNPLPlans.length > 0,
-        [product?.bnplAvailable, product?.BNPLPlans, isLoadingPlans]);
-
-    const bnplPlanGroups = useMemo(() => {
-        if (!hasLoadedBnplOption || !product?.BNPLPlans) return {};
-        return product.BNPLPlans.reduce((acc, plan) => {
-            if (!plan || typeof plan !== 'object') return acc;
-            const type = ['Installment', 'BNPL', 'PayLater'].includes(plan.planType) ? 'BNPL Plans'
-                         : plan.planType === 'Fixed Duration' ? 'Fixed Duration Plans' : 'Other Plans';
-            if (!acc[type]) acc[type] = [];
-            acc[type].push(plan);
-            return acc;
-        }, {});
+    const hasLoadedBnplOption = useMemo(() => product?.bnplAvailable === true && !isLoadingPlans && Array.isArray(product.BNPLPlans) && product.BNPLPlans.length > 0, [product?.bnplAvailable, product?.BNPLPlans, isLoadingPlans]);
+    const bnplPlanGroups = useMemo(() => { /* ... (BNPL grouping logic remains the same) ... */
+         if (!hasLoadedBnplOption || !product?.BNPLPlans) return {};
+         return product.BNPLPlans.reduce((acc, plan) => {
+             if (!plan || typeof plan !== 'object') return acc;
+             const type = ['Installment', 'BNPL', 'PayLater'].includes(plan.planType) ? 'BNPL Plans'
+                          : plan.planType === 'Fixed Duration' ? 'Fixed Duration Plans' : 'Other Plans';
+             if (!acc[type]) acc[type] = [];
+             acc[type].push(plan);
+             return acc;
+         }, {});
     }, [hasLoadedBnplOption, product?.BNPLPlans]);
     // --- End Memos ---
 
-    // --- Handlers ---
+
+    // --- Handlers --- (Most handlers remain the same)
     const toggleWishlist = () => setIsWishlisted(!isWishlisted);
-
-    const shareProduct = async () => {
-        if (!product || !product.name) return;
-        try {
-            const message = `Check out this product: ${product.name}${mainFinalDisplayPrice ? ` - ${mainFinalDisplayPrice}` : ''}`;
-            const url = product?.productPageUrl; // Add deep link or web URL if available
-            await Share.share({ message, ...(url && { url }) });
-        } catch (error) { console.error('Error sharing product:', error.message); }
+    const shareProduct = async () => { /* ... (Share logic remains the same) ... */
+         if (!product || !product.name) return;
+         try {
+             const message = `Check out this product: ${product.name}${mainFinalDisplayPrice ? ` - ${mainFinalDisplayPrice}` : ''}`;
+             const url = product?.productPageUrl; // Add deep link or web URL if available
+             await Share.share({ message, ...(url && { url }) });
+         } catch (error) { console.error('Error sharing product:', error.message); }
     };
-
-    const onViewableItemsChanged = useRef(({ viewableItems }) => {
-        if (viewableItems && viewableItems.length > 0 && viewableItems[0].index != null) {
-            setActiveIndex(viewableItems[0].index);
-        }
-    }).current;
+    const onViewableItemsChanged = useRef(({ viewableItems }) => { if (viewableItems && viewableItems.length > 0 && viewableItems[0].index != null) { setActiveIndex(viewableItems[0].index); } }).current;
     const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
-
-    const handlePlanSelection = (plan) => {
-        if (!plan || !plan.id) return;
-        if (selectedBnplPlan?.id === plan.id) {
-            setSelectedBnplPlan(null);
-            if (selectedPaymentMethod === 'BNPL') setSelectedPaymentMethod(null);
-        } else {
-            setSelectedBnplPlan(plan);
-            setSelectedPaymentMethod('BNPL');
-        }
+    const handlePlanSelection = (plan) => { /* ... (Plan selection logic remains the same) ... */
+         if (!plan || !plan.id) return;
+         if (selectedBnplPlan?.id === plan.id) { setSelectedBnplPlan(null); if (selectedPaymentMethod === 'BNPL') setSelectedPaymentMethod(null); }
+         else { setSelectedBnplPlan(plan); setSelectedPaymentMethod('BNPL'); }
+    };
+    const openPaymentModal = (type) => { /* ... (Open modal logic remains the same) ... */
+         if (!product || !product.id || isProcessingCart) return;
+         if (selectedBnplPlan) setSelectedPaymentMethod('BNPL'); // Keep BNPL if pre-selected
+         else setSelectedPaymentMethod(null); // Start fresh otherwise
+         setActionType(type);
+         setIsPaymentModalVisible(true);
     };
 
-    const openPaymentModal = (type) => {
-        if (!product || !product.id || isProcessingCart) return;
-        if (selectedBnplPlan) setSelectedPaymentMethod('BNPL'); // Keep BNPL if pre-selected
-        else setSelectedPaymentMethod(null); // Start fresh otherwise
-        setActionType(type);
-        setIsPaymentModalVisible(true);
-    };
-
-    const updateFirestoreCart = async (cartItemDetails) => {
-        const auth = getAuth();
-        const user = auth.currentUser;
-        if (!user) { Alert.alert("Login Required", "Please log in to add items to your cart."); return false; }
-        if (!cartItemDetails?.productId || typeof cartItemDetails?.priceAtAddition !== 'number') {
-            Alert.alert("Error", "Invalid item data."); return false;
-        }
-        if (cartItemDetails.paymentMethod === 'BNPL' && !cartItemDetails.bnplPlan?.id) {
-            Alert.alert("Error", "BNPL plan details missing."); return false;
-        }
-
-        const cartDocRef = doc(db, "Carts", user.uid);
-        console.log(`Updating cart for user: ${user.uid}, Product: ${cartItemDetails.productId}, Method: ${cartItemDetails.paymentMethod}`);
-        try {
-            const cartSnap = await getDoc(cartDocRef);
-            if (cartSnap.exists()) {
-                const cartData = cartSnap.data();
-                const items = cartData.items || [];
-                let updatedItems = [...items]; // Create a mutable copy
-                let itemFoundAndUpdated = false;
-
-                if (cartItemDetails.paymentMethod === 'COD') {
+    // Firestore cart update logic remains largely the same
+    const updateFirestoreCart = async (cartItemDetails) => { /* ... (Cart update logic remains the same) ... */
+         const auth = getAuth();
+         const user = auth.currentUser;
+         if (!user) { Alert.alert("Login Required", "Please log in to add items to your cart."); return false; }
+         if (!cartItemDetails?.productId || typeof cartItemDetails?.priceAtAddition !== 'number') { Alert.alert("Error", "Invalid item data."); return false; }
+         if (cartItemDetails.paymentMethod === 'BNPL' && !cartItemDetails.bnplPlan?.id) { Alert.alert("Error", "BNPL plan details missing."); return false; }
+         const cartDocRef = doc(db, "Carts", user.uid);
+         console.log(`Updating cart for user: ${user.uid}, Product: ${cartItemDetails.productId}, Method: ${cartItemDetails.paymentMethod}`);
+         try {
+             const cartSnap = await getDoc(cartDocRef);
+             if (cartSnap.exists()) {
+                 const cartData = cartSnap.data(); const items = cartData.items || [];
+                 let updatedItems = [...items]; let itemFoundAndUpdated = false;
+                 if (cartItemDetails.paymentMethod === 'COD') { /* ... (COD quantity update) ... */
                     const existingIndex = items.findIndex(item => item.productId === cartItemDetails.productId && item.paymentMethod === 'COD');
-                    if (existingIndex > -1) {
-                        updatedItems[existingIndex] = { ...items[existingIndex], quantity: (items[existingIndex].quantity || 0) + 1 };
-                        itemFoundAndUpdated = true;
-                        console.log("COD Item quantity updated.");
-                    }
-                } else if (cartItemDetails.paymentMethod === 'BNPL') {
+                    if (existingIndex > -1) { updatedItems[existingIndex] = { ...items[existingIndex], quantity: (items[existingIndex].quantity || 0) + 1 }; itemFoundAndUpdated = true; console.log("COD Item quantity updated."); }
+                 } else if (cartItemDetails.paymentMethod === 'BNPL') { /* ... (BNPL quantity/conflict check) ... */
                     const planIdToAdd = cartItemDetails.bnplPlan.id;
                     const existingIndex = items.findIndex(item => item.productId === cartItemDetails.productId && item.paymentMethod === 'BNPL' && item.bnplPlan?.id === planIdToAdd);
-                    if (existingIndex > -1) {
-                        updatedItems[existingIndex] = { ...items[existingIndex], quantity: (items[existingIndex].quantity || 0) + 1 };
-                        itemFoundAndUpdated = true;
-                        console.log("BNPL Item quantity updated.");
-                    } else {
-                        // Check for conflict: same product with a *different* BNPL plan
-                        const conflictExists = items.some(item => item.productId === cartItemDetails.productId && item.paymentMethod === 'BNPL');
-                        if (conflictExists) {
-                            Alert.alert("Plan Conflict", `${cartItemDetails.productName} is already in your cart with a different BNPL plan.`);
-                            return false; // Prevent adding
-                        }
-                    }
-                }
-
-                if (itemFoundAndUpdated) {
-                    await updateDoc(cartDocRef, { items: updatedItems, lastUpdated: serverTimestamp() });
-                } else {
-                    // If not found/updated (new item or new BNPL plan for product), add it
-                    await updateDoc(cartDocRef, { items: arrayUnion({ ...cartItemDetails, quantity: 1 }), lastUpdated: serverTimestamp() });
-                    console.log("New item added to cart.");
-                }
-                return true;
-
-            } else {
-                // Cart doesn't exist, create it
-                const initialCartItem = { ...cartItemDetails, quantity: 1, addedAt: serverTimestamp() };
-                await setDoc(cartDocRef, { userId: user.uid, items: [initialCartItem], createdAt: serverTimestamp(), lastUpdated: serverTimestamp() });
-                console.log("New cart created and item added.");
-                return true;
-            }
-        } catch (error) {
-            console.error("Error updating/creating Firestore cart:", error);
-            Alert.alert("Error", "Could not update your cart.");
-            return false;
-        }
+                    if (existingIndex > -1) { updatedItems[existingIndex] = { ...items[existingIndex], quantity: (items[existingIndex].quantity || 0) + 1 }; itemFoundAndUpdated = true; console.log("BNPL Item quantity updated."); }
+                    else { const conflictExists = items.some(item => item.productId === cartItemDetails.productId && item.paymentMethod === 'BNPL'); if (conflictExists) { Alert.alert("Plan Conflict", `${cartItemDetails.productName} is already in your cart with a different BNPL plan.`); return false; } }
+                 }
+                 if (itemFoundAndUpdated) { await updateDoc(cartDocRef, { items: updatedItems, lastUpdated: serverTimestamp() }); }
+                 else { await updateDoc(cartDocRef, { items: arrayUnion({ ...cartItemDetails, quantity: 1 }), lastUpdated: serverTimestamp() }); console.log("New item added to cart."); }
+                 return true;
+             } else { /* ... (Create new cart) ... */
+                 const initialCartItem = { ...cartItemDetails, quantity: 1, addedAt: serverTimestamp() };
+                 await setDoc(cartDocRef, { userId: user.uid, items: [initialCartItem], createdAt: serverTimestamp(), lastUpdated: serverTimestamp() });
+                 console.log("New cart created and item added."); return true;
+             }
+         } catch (error) { console.error("Error updating/creating Firestore cart:", error); Alert.alert("Error", "Could not update your cart."); return false; }
     };
 
-    const triggerAddedToCartPopup = () => {
+    const triggerAddedToCartPopup = () => { /* ... (Popup animation logic remains the same) ... */
         if (popupTimeoutRef.current) clearTimeout(popupTimeoutRef.current);
         popupOpacity.setValue(0); setShowAddedToCartPopup(true);
         Animated.timing(popupOpacity, { toValue: 1, duration: 300, useNativeDriver: true }).start();
@@ -560,143 +493,72 @@ export default function ProductDetailsScreen() {
         }, 2000);
     };
 
-    const proceedDirectlyWithCOD_AddToCart = async () => {
-        if (isProcessingCart || !product?.id) return;
-        setActionType('addToCart'); setIsProcessingCart(true);
-        const priceForCart = basePriceForCalculations;
-        if (priceForCart === null) {
-            Alert.alert("Error", "Price information missing.");
-            setIsProcessingCart(false); setActionType(null); return;
-        }
-        const cartItem = {
-            productId: product.id,
-            productName: product.name || 'Unnamed Product',
-            image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage,
-            paymentMethod: 'COD',
-            priceAtAddition: Number(priceForCart.toFixed(2)),
-            bnplPlan: null,
-            // quantity will be handled by updateFirestoreCart logic
-        };
-        let success = false;
-        try { success = await updateFirestoreCart(cartItem); }
-        catch (e) { console.error("Error during direct COD AddToCart:", e); success = false; }
-        finally { setIsProcessingCart(false); setActionType(null); }
-        if (success) triggerAddedToCartPopup();
+    const proceedDirectlyWithCOD_AddToCart = async () => { /* ... (Direct COD add logic remains the same) ... */
+         if (isProcessingCart || !product?.id) return;
+         setActionType('addToCart'); setIsProcessingCart(true);
+         const priceForCart = basePriceForCalculations;
+         if (priceForCart === null) { Alert.alert("Error", "Price information missing."); setIsProcessingCart(false); setActionType(null); return; }
+         const cartItem = { productId: product.id, productName: product.name || 'Unnamed Product', image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage, paymentMethod: 'COD', priceAtAddition: Number(priceForCart.toFixed(2)), bnplPlan: null };
+         let success = false;
+         try { success = await updateFirestoreCart(cartItem); }
+         catch (e) { console.error("Error during direct COD AddToCart:", e); success = false; }
+         finally { setIsProcessingCart(false); setActionType(null); }
+         if (success) triggerAddedToCartPopup();
     };
 
-    const handleAddToCart = () => {
-        if (isProcessingCart || !product?.id) return;
-        const canCOD = product.codAvailable === true;
-        const canBNPL = hasLoadedBnplOption;
-        if (!canCOD && !canBNPL) { Alert.alert("Payment Unavailable", "No payment options available."); return; }
-        if (canCOD && !canBNPL) proceedDirectlyWithCOD_AddToCart();
-        else openPaymentModal('addToCart');
+    const handleAddToCart = () => { /* ... (Add to cart logic remains the same) ... */
+         if (isProcessingCart || !product?.id) return;
+         const canCOD = product.codAvailable === true; const canBNPL = hasLoadedBnplOption;
+         if (!canCOD && !canBNPL) { Alert.alert("Payment Unavailable", "No payment options available."); return; }
+         if (canCOD && !canBNPL) proceedDirectlyWithCOD_AddToCart();
+         else openPaymentModal('addToCart');
     };
 
-    const handleBuyNow = () => {
-        if (isProcessingCart || !product?.id) return;
-        setActionType('buyNow');
-        const canCOD = product.codAvailable === true;
-        const canBNPL = hasLoadedBnplOption;
-        if (!canCOD && !canBNPL) { Alert.alert("Payment Unavailable", "No payment options available."); setActionType(null); return; }
-
-        if (canCOD && !canBNPL) {
-            console.log("Buy Now with COD only");
-            setIsProcessingCart(true);
-            const priceForCheckout = basePriceForCalculations;
-            if (priceForCheckout === null) {
-                Alert.alert("Error", "Price information missing."); setIsProcessingCart(false); setActionType(null); return;
-            }
-            const checkoutItem = {
-                id: product.id, name: product.name || 'Unnamed Product',
-                image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage,
-                quantity: 1, price: Number(priceForCheckout.toFixed(2)),
-                paymentMethod: 'COD', bnplPlan: null
-            };
-            console.log("Navigating to CheckoutScreen:", checkoutItem);
-            setTimeout(() => { // Allow loader to render
-                navigation.navigate('CheckoutScreen', { cartItems: [checkoutItem], totalPrice: checkoutItem.price });
-                setIsProcessingCart(false); setActionType(null);
-            }, 50);
-        } else {
-            console.log("Buy Now requires payment selection");
-            openPaymentModal('buyNow'); // Set actionType in openPaymentModal
-        }
+    const handleBuyNow = () => { /* ... (Buy now logic remains the same) ... */
+         if (isProcessingCart || !product?.id) return;
+         setActionType('buyNow');
+         const canCOD = product.codAvailable === true; const canBNPL = hasLoadedBnplOption;
+         if (!canCOD && !canBNPL) { Alert.alert("Payment Unavailable", "No payment options available."); setActionType(null); return; }
+         if (canCOD && !canBNPL) { /* ... (Direct COD Buy Now -> Checkout) ... */
+             console.log("Buy Now with COD only"); setIsProcessingCart(true);
+             const priceForCheckout = basePriceForCalculations;
+             if (priceForCheckout === null) { Alert.alert("Error", "Price information missing."); setIsProcessingCart(false); setActionType(null); return; }
+             const checkoutItem = { id: product.id, name: product.name || 'Unnamed Product', image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage, quantity: 1, price: Number(priceForCheckout.toFixed(2)), paymentMethod: 'COD', bnplPlan: null };
+             console.log("Navigating to CheckoutScreen:", checkoutItem);
+             setTimeout(() => { navigation.navigate('CheckoutScreen', { cartItems: [checkoutItem], totalPrice: checkoutItem.price }); setIsProcessingCart(false); setActionType(null); }, 50);
+         } else { console.log("Buy Now requires payment selection"); openPaymentModal('buyNow'); }
     };
 
     const handleChat = () => Alert.alert("Chat", "Chat functionality not implemented.");
     const handleSeeMoreReviews = () => setShowAllReviews(true);
     const handleSeeLessReviews = () => setShowAllReviews(false);
 
-    const handleProceedWithPayment = async () => {
-        if (isProcessingCart) return;
-        if (!selectedPaymentMethod) { Alert.alert("Selection Required", "Please select a payment method."); return; }
-        if (selectedPaymentMethod === 'BNPL' && !selectedBnplPlan) { Alert.alert("Selection Required", "Please select a BNPL plan."); return; }
-        if (!product?.id || basePriceForCalculations === null) { Alert.alert("Error", "Product or price details missing."); return; }
-
-        const currentActionType = actionType;
-        setIsProcessingCart(true);
-        setIsPaymentModalVisible(false); // Close modal immediately
-
-        let finalPrice = basePriceForCalculations;
-        let bnplDetailsForAction = null;
-
-        if (selectedPaymentMethod === 'BNPL' && selectedBnplPlan) {
+    const handleProceedWithPayment = async () => { /* ... (Modal proceed logic remains the same) ... */
+         if (isProcessingCart) return;
+         if (!selectedPaymentMethod) { Alert.alert("Selection Required", "Please select a payment method."); return; }
+         if (selectedPaymentMethod === 'BNPL' && !selectedBnplPlan) { Alert.alert("Selection Required", "Please select a BNPL plan."); return; }
+         if (!product?.id || basePriceForCalculations === null) { Alert.alert("Error", "Product or price details missing."); return; }
+         const currentActionType = actionType; setIsProcessingCart(true); setIsPaymentModalVisible(false);
+         let finalPrice = basePriceForCalculations; let bnplDetailsForAction = null;
+         if (selectedPaymentMethod === 'BNPL' && selectedBnplPlan) { /* ... (Calculate final price with interest) ... */
             const interestRateValue = typeof selectedBnplPlan.interestRate === 'number' ? selectedBnplPlan.interestRate : 0;
             finalPrice = basePriceForCalculations * (1 + (interestRateValue / 100));
             const duration = typeof selectedBnplPlan.duration === 'number' ? selectedBnplPlan.duration : null;
-            const planType = selectedBnplPlan.planType;
-            let calculatedMonthly = null;
-            if (duration && duration > 0 && planType !== 'Fixed Duration') {
-                calculatedMonthly = Number((finalPrice / duration).toFixed(2));
-            }
-            bnplDetailsForAction = {
-                id: selectedBnplPlan.id, name: selectedBnplPlan.planName || 'Unnamed Plan',
-                duration: duration, interestRate: interestRateValue, calculatedMonthly: calculatedMonthly, planType: planType
-            };
-        }
-
-        const itemDetailsForAction = {
-            productId: product.id,
-            productName: product.name || 'Unnamed Product',
-            image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage,
-            quantity: 1, // Assuming quantity 1 for both actions from this screen
-            paymentMethod: selectedPaymentMethod,
-            priceAtAddition: Number(finalPrice.toFixed(2)), // Price including potential interest
-            bnplPlan: bnplDetailsForAction,
-        };
-
-        if (currentActionType === 'addToCart') {
-            console.log("Proceeding with Add to Cart from modal:", itemDetailsForAction);
-            let success = false;
-            try { success = await updateFirestoreCart(itemDetailsForAction); }
-            catch (e) { console.error("Error during Modal AddToCart:", e); success = false; }
-            finally { setIsProcessingCart(false); setActionType(null); }
+            const planType = selectedBnplPlan.planType; let calculatedMonthly = null;
+            if (duration && duration > 0 && planType !== 'Fixed Duration') { calculatedMonthly = Number((finalPrice / duration).toFixed(2)); }
+            bnplDetailsForAction = { id: selectedBnplPlan.id, name: selectedBnplPlan.planName || 'Unnamed Plan', duration: duration, interestRate: interestRateValue, calculatedMonthly: calculatedMonthly, planType: planType };
+         }
+         const itemDetailsForAction = { productId: product.id, productName: product.name || 'Unnamed Product', image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage, quantity: 1, paymentMethod: selectedPaymentMethod, priceAtAddition: Number(finalPrice.toFixed(2)), bnplPlan: bnplDetailsForAction };
+         if (currentActionType === 'addToCart') { /* ... (Modal -> Add To Cart) ... */
+            console.log("Proceeding with Add to Cart from modal:", itemDetailsForAction); let success = false;
+            try { success = await updateFirestoreCart(itemDetailsForAction); } catch (e) { console.error("Error during Modal AddToCart:", e); success = false; } finally { setIsProcessingCart(false); setActionType(null); }
             if (success) triggerAddedToCartPopup();
-
-        } else if (currentActionType === 'buyNow') {
+         } else if (currentActionType === 'buyNow') { /* ... (Modal -> Buy Now -> Checkout) ... */
             console.log("Proceeding with Buy Now from modal, preparing checkout data:", itemDetailsForAction);
-            // Structure for CheckoutScreen
-            const checkoutItem = {
-                id: itemDetailsForAction.productId,
-                name: itemDetailsForAction.productName,
-                image: itemDetailsForAction.image,
-                quantity: itemDetailsForAction.quantity,
-                price: itemDetailsForAction.priceAtAddition, // Final price for checkout
-                paymentMethod: itemDetailsForAction.paymentMethod,
-                bnplPlan: itemDetailsForAction.bnplPlan
-             };
-             console.log("Navigating to CheckoutScreen from Modal:", checkoutItem);
-             setTimeout(() => { // Allow UI update
-                navigation.navigate('CheckoutScreen', { cartItems: [checkoutItem], totalPrice: checkoutItem.price });
-                setIsProcessingCart(false); setActionType(null);
-             }, 50);
-
-        } else {
-            console.warn("Invalid action type:", currentActionType);
-            setIsProcessingCart(false); setActionType(null);
-            Alert.alert("Error", "An unexpected error occurred.");
-        }
+            const checkoutItem = { id: itemDetailsForAction.productId, name: itemDetailsForAction.productName, image: itemDetailsForAction.image, quantity: itemDetailsForAction.quantity, price: itemDetailsForAction.priceAtAddition, paymentMethod: itemDetailsForAction.paymentMethod, bnplPlan: itemDetailsForAction.bnplPlan };
+            console.log("Navigating to CheckoutScreen from Modal:", checkoutItem);
+            setTimeout(() => { navigation.navigate('CheckoutScreen', { cartItems: [checkoutItem], totalPrice: checkoutItem.price }); setIsProcessingCart(false); setActionType(null); }, 50);
+         } else { console.warn("Invalid action type:", currentActionType); setIsProcessingCart(false); setActionType(null); Alert.alert("Error", "An unexpected error occurred."); }
     };
     // --- End Handlers ---
 
@@ -704,262 +566,166 @@ export default function ProductDetailsScreen() {
     // --- Render Functions ---
     const formatCurrency = (value) => typeof value === 'number' ? `${CURRENCY_SYMBOL} ${value.toFixed(0)}` : null;
 
-    const renderGalleryItem = ({ item }) => {
-        if (item.isPlaceholder || !item.url) return <Image source={placeholderImage} style={styles.galleryItemImage} resizeMode="contain" />;
-        if (item.type === 'image') return <Image source={{ uri: item.url }} style={styles.galleryItemImage} resizeMode="contain" onError={(e) => console.error(`Img Load Err: ${item.url}`, e.nativeEvent.error)} />;
-        if (item.type === 'video') return <Video ref={(ref) => videoRefs.current[item.id] = ref} style={styles.galleryItemVideo} source={{ uri: item.url }} useNativeControls resizeMode={ResizeMode.CONTAIN} onError={(e) => console.error(`Vid Load Err: ${item.url}`, e)} />;
-        return null;
+    // Gallery rendering remains the same
+    const renderGalleryItem = ({ item }) => { /* ... */
+         if (item.isPlaceholder || !item.url) return <Image source={placeholderImage} style={styles.galleryItemImage} resizeMode="contain" />;
+         if (item.type === 'image') return <Image source={{ uri: item.url }} style={styles.galleryItemImage} resizeMode="contain" onError={(e) => console.error(`Img Load Err: ${item.url}`, e.nativeEvent.error)} />;
+         if (item.type === 'video') return <Video ref={(ref) => videoRefs.current[item.id] = ref} style={styles.galleryItemVideo} source={{ uri: item.url }} useNativeControls resizeMode={ResizeMode.CONTAIN} onError={(e) => console.error(`Vid Load Err: ${item.url}`, e)} />;
+         return null;
+    };
+    const renderTextPagination = () => { /* ... */
+         if (galleryItems.length <= 1) return null;
+         return <View style={styles.paginationTextContainer}><Text style={styles.paginationText}>{activeIndex + 1}/{galleryItems.length}</Text></View>;
     };
 
-    const renderTextPagination = () => {
-        if (galleryItems.length <= 1) return null;
-        return <View style={styles.paginationTextContainer}><Text style={styles.paginationText}>{activeIndex + 1}/{galleryItems.length}</Text></View>;
+    // Price section rendering remains the same
+    const renderPriceSection = () => { /* ... */
+         if (!mainFinalDisplayPrice) return <Text style={styles.noPriceText}>Price unavailable</Text>;
+         return (<View style={styles.priceRow}><Text style={styles.finalPrice}>{mainFinalDisplayPrice}</Text>{hasDiscount && mainDisplayOriginalPrice && <Text style={styles.originalPrice}>{mainDisplayOriginalPrice}</Text>}</View>);
     };
 
-    const renderPriceSection = () => {
-        if (!mainFinalDisplayPrice) return <Text style={styles.noPriceText}>Price unavailable</Text>;
-        return (
-            <View style={styles.priceRow}>
-                <Text style={styles.finalPrice}>{mainFinalDisplayPrice}</Text>
-                {hasDiscount && mainDisplayOriginalPrice && <Text style={styles.originalPrice}>{mainDisplayOriginalPrice}</Text>}
-            </View>
-        );
-    };
-
-    const renderBnplPlansSection = () => {
+    // BNPL Plans section rendering remains the same
+    const renderBnplPlansSection = () => { /* ... */
         if (isLoadingPlans) return <View style={styles.bnplSectionContainer}><Text style={styles.sectionTitle}>Installment Options</Text><ActivityIndicator style={{marginTop: 20}} size="small" color={AccentColor} /></View>;
         if (!hasLoadedBnplOption || basePriceForCalculations === null) return null;
-        if (!product?.BNPLPlans || product.BNPLPlans.length === 0) {
-             if (product.bnplAvailable) return <View style={styles.bnplSectionContainer}><Text style={styles.sectionTitle}>Installment Options</Text><Text style={styles.noPaymentOptionsText}>No installment plans found.</Text></View>;
-             return null;
-        }
-
-        const renderSinglePlanCard = (plan, index, arrayLength) => {
+        if (!product?.BNPLPlans || product.BNPLPlans.length === 0) { if (product.bnplAvailable) return <View style={styles.bnplSectionContainer}><Text style={styles.sectionTitle}>Installment Options</Text><Text style={styles.noPaymentOptionsText}>No installment plans found.</Text></View>; return null; }
+        const renderSinglePlanCard = (plan, index, arrayLength) => { /* ... (Plan card details rendering) ... */
             if (!plan?.id) return null;
-            const isSelectedOnMain = selectedBnplPlan?.id === plan.id;
-            const planName = plan.planName || 'Unnamed Plan';
-            const durationMonths = typeof plan.duration === 'number' ? plan.duration : null;
-            const interestRateValue = typeof plan.interestRate === 'number' ? plan.interestRate : null;
-            const interestRateDisplay = typeof interestRateValue === 'number' ? `${interestRateValue.toFixed(1)}%` : 'N/A';
-            const planType = plan.planType || 'General';
-            const isFixedDuration = planType === 'Fixed Duration';
-            let totalPriceNumeric = null, formattedTotalPrice = null, calculatedMonthlyPayment = null;
-            const basePrice = basePriceForCalculations;
-
-            if (typeof interestRateValue === 'number' && typeof basePrice === 'number') {
-                totalPriceNumeric = basePrice * (1 + (interestRateValue / 100));
-                formattedTotalPrice = formatCurrency(totalPriceNumeric);
-            } else if (interestRateValue === 0 && typeof basePrice === 'number') {
-                 totalPriceNumeric = basePrice; formattedTotalPrice = formatCurrency(totalPriceNumeric);
-            }
-            const numberOfInstallments = !isFixedDuration && durationMonths ? durationMonths : 1;
-            if (!isFixedDuration && durationMonths && totalPriceNumeric) {
-                calculatedMonthlyPayment = formatCurrency(totalPriceNumeric / durationMonths);
-            }
-
-            return (
-                <TouchableOpacity key={plan.id} style={[styles.bnplPlanCard, index < arrayLength - 1 && styles.bnplPlanCardSeparator, isSelectedOnMain && styles.bnplPlanCardSelected]} onPress={() => handlePlanSelection(plan)} activeOpacity={0.7}>
+            const isSelectedOnMain = selectedBnplPlan?.id === plan.id; const planName = plan.planName || 'Unnamed Plan'; const durationMonths = typeof plan.duration === 'number' ? plan.duration : null; const interestRateValue = typeof plan.interestRate === 'number' ? plan.interestRate : null; const interestRateDisplay = typeof interestRateValue === 'number' ? `${interestRateValue.toFixed(1)}%` : 'N/A'; const planType = plan.planType || 'General'; const isFixedDuration = planType === 'Fixed Duration'; let totalPriceNumeric = null, formattedTotalPrice = null, calculatedMonthlyPayment = null; const basePrice = basePriceForCalculations;
+            if (typeof interestRateValue === 'number' && typeof basePrice === 'number') { totalPriceNumeric = basePrice * (1 + (interestRateValue / 100)); formattedTotalPrice = formatCurrency(totalPriceNumeric); } else if (interestRateValue === 0 && typeof basePrice === 'number') { totalPriceNumeric = basePrice; formattedTotalPrice = formatCurrency(totalPriceNumeric); } const numberOfInstallments = !isFixedDuration && durationMonths ? durationMonths : 1; if (!isFixedDuration && durationMonths && totalPriceNumeric) { calculatedMonthlyPayment = formatCurrency(totalPriceNumeric / durationMonths); }
+            return ( <TouchableOpacity key={plan.id} style={[styles.bnplPlanCard, index < arrayLength - 1 && styles.bnplPlanCardSeparator, isSelectedOnMain && styles.bnplPlanCardSelected]} onPress={() => handlePlanSelection(plan)} activeOpacity={0.7}>
                     <View style={styles.bnplPlanHeader}><MaterialIcons name="payments" size={18} color={BnplPlanIconColor} style={styles.bnplPlanIcon} /><Text style={styles.bnplPlanNameText}>{planName}</Text></View>
                     <View style={styles.bnplPlanDetails}>
-                        <View style={styles.detailRow}><MaterialIcons name="info-outline" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Type: <Text style={styles.bnplPlanDetailValue}>{planType}</Text></Text></View>
-                        {durationMonths && <View style={styles.detailRow}><MaterialIcons name="schedule" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Duration:<Text style={styles.bnplPlanDetailValue}> {durationMonths} {durationMonths === 1 ? 'Month' : 'Months'}</Text>{isFixedDuration ? <Text style={styles.bnplPlanDetailValue}> (1 Payment)</Text> : <Text style={styles.bnplPlanDetailValue}> / {numberOfInstallments} Installments</Text>}</Text></View>}
-                        {calculatedMonthlyPayment && <View style={styles.detailRow}><MaterialIcons name="calculate" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Est. Monthly: <Text style={styles.bnplPlanDetailValue}>{calculatedMonthlyPayment}</Text></Text></View>}
-                        {interestRateValue !== null && <View style={styles.detailRow}><MaterialIcons name="percent" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Interest: <Text style={styles.bnplPlanDetailValue}>{interestRateDisplay}</Text></Text></View>}
-                        {formattedTotalPrice && <View style={styles.detailRow}><MaterialIcons name="monetization-on" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Total Price: <Text style={styles.bnplPlanDetailValue}>{formattedTotalPrice}</Text></Text></View>}
+                         <View style={styles.detailRow}><MaterialIcons name="info-outline" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Type: <Text style={styles.bnplPlanDetailValue}>{planType}</Text></Text></View>
+                         {durationMonths && <View style={styles.detailRow}><MaterialIcons name="schedule" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Duration:<Text style={styles.bnplPlanDetailValue}> {durationMonths} {durationMonths === 1 ? 'Month' : 'Months'}</Text>{isFixedDuration ? <Text style={styles.bnplPlanDetailValue}> (1 Payment)</Text> : <Text style={styles.bnplPlanDetailValue}> / {numberOfInstallments} Installments</Text>}</Text></View>}
+                         {calculatedMonthlyPayment && <View style={styles.detailRow}><MaterialIcons name="calculate" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Est. Monthly: <Text style={styles.bnplPlanDetailValue}>{calculatedMonthlyPayment}</Text></Text></View>}
+                         {interestRateValue !== null && <View style={styles.detailRow}><MaterialIcons name="percent" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Interest: <Text style={styles.bnplPlanDetailValue}>{interestRateDisplay}</Text></Text></View>}
+                         {formattedTotalPrice && <View style={styles.detailRow}><MaterialIcons name="monetization-on" size={14} color={BnplPlanDetailIconColor} style={styles.detailIcon} /><Text style={styles.bnplPlanDetailText}>Total Price: <Text style={styles.bnplPlanDetailValue}>{formattedTotalPrice}</Text></Text></View>}
                     </View>
-                </TouchableOpacity>
-            );
+                </TouchableOpacity> );
         };
-
         const groupKeys = Object.keys(bnplPlanGroups);
-        return (
-            <View style={styles.bnplSectionContainer}>
-                <Text style={styles.sectionTitle}>Installment Options</Text>
-                {groupKeys.map(groupTitle => (
-                    <View key={groupTitle} style={styles.bnplGroupContainer}>
-                        <Text style={styles.bnplGroupTitle}>{groupTitle}</Text>
-                        {bnplPlanGroups[groupTitle].map((plan, index, arr) => renderSinglePlanCard(plan, index, arr.length))}
-                    </View>
-                ))}
-            </View>
-        );
+        return ( <View style={styles.bnplSectionContainer}><Text style={styles.sectionTitle}>Installment Options</Text>{groupKeys.map(groupTitle => ( <View key={groupTitle} style={styles.bnplGroupContainer}><Text style={styles.bnplGroupTitle}>{groupTitle}</Text>{bnplPlanGroups[groupTitle].map((plan, index, arr) => renderSinglePlanCard(plan, index, arr.length))}</View> ))}</View> );
     };
 
-    // Renders a single review card based on fetched & mapped data
+    // *** UPDATED: Renders a single review card with profile image ***
     const renderReviewCard = ({ item, index }) => {
         if (!item?.id) return null;
         const isLastReviewOverall = allReviews.findIndex(r => r.id === item.id) === allReviews.length - 1;
         const shouldHideBorder = isLastReviewOverall && (showAllReviews || allReviews.length <= MAX_INITIAL_REVIEWS);
 
+        // Determine the image source: fetched profile image or dummy fallback
+        const profileImageSource = item.profileImage ? { uri: item.profileImage } : dummyProfilePic;
+
         return (
             <View style={[ styles.reviewCard, shouldHideBorder && { borderBottomWidth: 0 } ]}>
                 <View style={styles.reviewHeader}>
-                    <View style={styles.reviewHeaderRating}>
-                        {[...Array(5)].map((_, i) => <MaterialIcons key={`star-${item.id}-${i}`} name="star" size={16} color={i < (item.rating || 0) ? StarColor : PlaceholderStarColor} />)}
+                    {/* Profile Image */}
+                    <Image
+                        source={profileImageSource}
+                        style={styles.reviewerImage}
+                        onError={(e) => {
+                            console.log(`Failed to load profile image URI: ${item.profileImage}. Falling back to dummy.`);
+                            // In case URI exists but fails, you might force a state update
+                            // or just let the dummyPic show via the initial check.
+                            // For simplicity, we rely on the initial check mostly.
+                        }}
+                    />
+                    {/* Text Content Container */}
+                    <View style={styles.reviewHeaderTextContainer}>
+                         {/* Rating */}
+                        <View style={styles.reviewHeaderRating}>
+                            {[...Array(5)].map((_, i) => <MaterialIcons key={`star-${item.id}-${i}`} name="star" size={16} color={i < (item.rating || 0) ? StarColor : PlaceholderStarColor} />)}
+                        </View>
+                         {/* Name and Date */}
+                        <Text style={styles.reviewerName} numberOfLines={1}>
+                            {item.name} {/* Use the fetched name */}
+                            {item.date && <Text style={styles.reviewDate}> · {item.date}</Text>}
+                        </Text>
                     </View>
-                    <Text style={styles.reviewerName}>{item.name || 'Anonymous'}{item.date && <Text style={styles.reviewDate}> · {item.date}</Text>}</Text>
                 </View>
+                 {/* Comment Text */}
                 <Text style={styles.reviewText}>{item.comment || 'No comment provided.'}</Text>
             </View>
         );
     };
 
-    // Renders the content of the reviews section (loading/error/list)
-    const renderReviewsSectionContent = () => {
-        if (isLoadingReviews) return <ActivityIndicator style={{ marginVertical: 20 }} size="small" color={AccentColor} />;
-        if (reviewsError) return <Text style={[styles.errorText, { marginTop: 15, marginBottom: 15 }]}>{reviewsError}</Text>;
-        if (!isLoadingReviews && allReviews.length === 0) return <Text style={styles.noReviewsText}>No reviews yet for this product.</Text>;
-
-        return (
-            <>
-                <FlatList data={displayReviews} renderItem={renderReviewCard} keyExtractor={(item) => item.id} scrollEnabled={false} />
-                {allReviews.length > MAX_INITIAL_REVIEWS && (
-                    <View>
-                        {!showAllReviews ? (
-                            <TouchableOpacity style={styles.seeMoreButton} onPress={handleSeeMoreReviews} activeOpacity={0.7}>
-                                <Text style={styles.seeMoreButtonText}>See More Reviews</Text><MaterialIcons name="keyboard-arrow-down" size={20} color={AccentColor} />
-                            </TouchableOpacity>
-                        ) : (
-                            <TouchableOpacity style={styles.seeMoreButton} onPress={handleSeeLessReviews} activeOpacity={0.7}>
-                                <Text style={styles.seeMoreButtonText}>See Less</Text><MaterialIcons name="keyboard-arrow-up" size={20} color={AccentColor} />
-                            </TouchableOpacity>
-                        )}
-                    </View>
-                )}
-            </>
-        );
+    // Review section content rendering remains the same structurally
+    const renderReviewsSectionContent = () => { /* ... */
+         if (isLoadingReviews) return <ActivityIndicator style={{ marginVertical: 20 }} size="small" color={AccentColor} />;
+         if (reviewsError) return <Text style={[styles.errorText, { marginTop: 15, marginBottom: 15 }]}>{reviewsError}</Text>;
+         if (!isLoadingReviews && allReviews.length === 0) return <Text style={styles.noReviewsText}>No reviews yet for this product.</Text>;
+         return (<>
+             <FlatList data={displayReviews} renderItem={renderReviewCard} keyExtractor={(item) => item.id} scrollEnabled={false} />
+             {allReviews.length > MAX_INITIAL_REVIEWS && ( <View>
+                 {!showAllReviews ? ( <TouchableOpacity style={styles.seeMoreButton} onPress={handleSeeMoreReviews} activeOpacity={0.7}><Text style={styles.seeMoreButtonText}>See More Reviews</Text><MaterialIcons name="keyboard-arrow-down" size={20} color={AccentColor} /></TouchableOpacity> )
+                  : ( <TouchableOpacity style={styles.seeMoreButton} onPress={handleSeeLessReviews} activeOpacity={0.7}><Text style={styles.seeMoreButtonText}>See Less</Text><MaterialIcons name="keyboard-arrow-up" size={20} color={AccentColor} /></TouchableOpacity> )}
+             </View> )}
+         </>);
     };
 
-    const renderRelatedProductCard = ({ item }) => {
+    // Related product card rendering remains the same
+    const renderRelatedProductCard = ({ item }) => { /* ... */
         if (item.isPlaceholder || !item?.id) return <View style={styles.relatedProductCardPlaceholder} />;
-        const itemHasDiscount = typeof item.originalPrice === 'number' && typeof item.discountedPrice === 'number' && item.discountedPrice < item.originalPrice;
-        const op = formatCurrency(item.originalPrice);
-        const dp = formatCurrency(item.discountedPrice);
-        const finalPriceDisplay = dp || op;
-        const originalPriceDisplay = itemHasDiscount ? op : null;
-        const bnplAvailable = item.bnplAvailable === true;
-        const codAvailable = item.codAvailable === true;
-
-        return (
-            <TouchableOpacity style={styles.relatedProductCard} onPress={() => !isProcessingCart && navigation.push('ProductDetails', { productId: item.id })} activeOpacity={0.8} disabled={isProcessingCart}>
-                <Image source={item.image ? { uri: item.image } : placeholderImage} style={styles.relatedCardImage} resizeMode="contain" onError={() => console.log(`Rel Img Err: ${item.id}`)} />
-                <Text style={styles.relatedCardName} numberOfLines={1}>{item.name || ''}</Text>
-                <View style={styles.relatedCardPriceContainer}>
-                    {finalPriceDisplay ? <Text style={styles.relatedCardDiscountedPrice}>{finalPriceDisplay}</Text> : <View style={styles.relatedCardPricePlaceholder} />}
-                    {originalPriceDisplay && <Text style={[styles.relatedCardProductPrice, styles.relatedCardStrikethroughPrice]}>{originalPriceDisplay}</Text>}
-                </View>
-                {item.description ? <Text style={styles.relatedCardDescription} numberOfLines={2}>{item.description}</Text> : <View style={styles.relatedCardDescriptionPlaceholder}/> }
-                <View style={styles.relatedCardBadgesContainer}>
-                     {bnplAvailable ? <View style={styles.relatedCardBnplBadge}><MaterialIcons name="schedule" size={14} color={BnplBadgeText} /><Text style={styles.relatedCardBnplText}>BNPL Available</Text></View>
-                      : codAvailable ? <View style={styles.relatedCardCodBadge}><MaterialIcons name="local-shipping" size={14} color={CodBadgeText} /><Text style={styles.relatedCardCodText}>COD Available</Text></View>
-                      : <View style={styles.relatedCardBadgePlaceholder} />}
-                 </View>
-            </TouchableOpacity>
-        );
+        const itemHasDiscount = typeof item.originalPrice === 'number' && typeof item.discountedPrice === 'number' && item.discountedPrice < item.originalPrice; const op = formatCurrency(item.originalPrice); const dp = formatCurrency(item.discountedPrice); const finalPriceDisplay = dp || op; const originalPriceDisplay = itemHasDiscount ? op : null; const bnplAvailable = item.bnplAvailable === true; const codAvailable = item.codAvailable === true;
+        return ( <TouchableOpacity style={styles.relatedProductCard} onPress={() => !isProcessingCart && navigation.push('ProductDetails', { productId: item.id })} activeOpacity={0.8} disabled={isProcessingCart}>
+             <Image source={item.image ? { uri: item.image } : placeholderImage} style={styles.relatedCardImage} resizeMode="contain" onError={() => console.log(`Rel Img Err: ${item.id}`)} />
+             <Text style={styles.relatedCardName} numberOfLines={1}>{item.name || ''}</Text>
+             <View style={styles.relatedCardPriceContainer}>{finalPriceDisplay ? <Text style={styles.relatedCardDiscountedPrice}>{finalPriceDisplay}</Text> : <View style={styles.relatedCardPricePlaceholder} />}{originalPriceDisplay && <Text style={[styles.relatedCardProductPrice, styles.relatedCardStrikethroughPrice]}>{originalPriceDisplay}</Text>}</View>
+             {item.description ? <Text style={styles.relatedCardDescription} numberOfLines={2}>{item.description}</Text> : <View style={styles.relatedCardDescriptionPlaceholder}/> }
+             <View style={styles.relatedCardBadgesContainer}>{bnplAvailable ? <View style={styles.relatedCardBnplBadge}><MaterialIcons name="schedule" size={14} color={BnplBadgeText} /><Text style={styles.relatedCardBnplText}>BNPL Available</Text></View> : codAvailable ? <View style={styles.relatedCardCodBadge}><MaterialIcons name="local-shipping" size={14} color={CodBadgeText} /><Text style={styles.relatedCardCodText}>COD Available</Text></View> : <View style={styles.relatedCardBadgePlaceholder} />}</View>
+         </TouchableOpacity> );
     };
 
-    const renderRelatedProductsSection = () => {
+    // Related products section rendering remains the same
+    const renderRelatedProductsSection = () => { /* ... */
         if (loadingRelatedProducts) return <View style={styles.relatedLoadingContainer}><ActivityIndicator size="large" color={AccentColor} /><Text style={styles.relatedLoadingText}>Loading Related Products...</Text></View>;
         if (!relatedProducts || relatedProducts.filter(p => !p.isPlaceholder).length === 0) return null;
-        return (
-            <View style={styles.relatedProductsContainer}>
-                <Text style={styles.relatedProductsTitle}>Related Products</Text>
-                <FlatList data={relatedProducts} renderItem={renderRelatedProductCard} keyExtractor={(item) => item.id} numColumns={NUM_COLUMNS} scrollEnabled={false} contentContainerStyle={styles.relatedProductsGridContainer} />
-            </View>
-        );
+        return ( <View style={styles.relatedProductsContainer}><Text style={styles.relatedProductsTitle}>Related Products</Text><FlatList data={relatedProducts} renderItem={renderRelatedProductCard} keyExtractor={(item) => item.id} numColumns={NUM_COLUMNS} scrollEnabled={false} contentContainerStyle={styles.relatedProductsGridContainer} /></View> );
     };
 
-    const renderPaymentModal = () => {
+    // Payment modal rendering remains the same
+    const renderPaymentModal = () => { /* ... */
         if (!product) return null;
-        const modalProceedDisabled = isProcessingCart || !selectedPaymentMethod || (selectedPaymentMethod === 'BNPL' && !selectedBnplPlan);
-        const hasCodOption = product.codAvailable === true;
-        const hasBnplOptionModal = hasLoadedBnplOption; // Based on loaded plans
-        const formatModCur = (value) => typeof value === 'number' ? `${CURRENCY_SYMBOL} ${value.toFixed(0)}` : null;
-
-        const renderModalPlanRow = (plan) => {
-             if (!plan?.id || basePriceForCalculations === null) return null;
-             const isSelected = selectedBnplPlan?.id === plan.id;
-             const planName = plan.planName || 'Unnamed Plan';
-             const duration = typeof plan.duration === 'number' ? plan.duration : null;
-             const interestRateValue = typeof plan.interestRate === 'number' ? plan.interestRate : null;
-             const interestRateDisplay = typeof interestRateValue === 'number' ? `${interestRateValue.toFixed(1)}%` : 'N/A';
-             const planType = plan.planType || 'General';
-             const isFixedDurationPlan = planType === 'Fixed Duration';
-             let totalPriceNumericModal = null, formattedTotalPriceWithInterestModal = null, calculatedMonthlyPaymentModal = null;
-             const basePriceModal = basePriceForCalculations;
-
-             if (typeof interestRateValue === 'number' && basePriceModal !== null) {
-                 totalPriceNumericModal = basePriceModal * (1 + (interestRateValue / 100));
-                 formattedTotalPriceWithInterestModal = formatModCur(totalPriceNumericModal);
-             } else if (interestRateValue === 0 && basePriceModal !== null) {
-                  totalPriceNumericModal = basePriceModal; formattedTotalPriceWithInterestModal = formatModCur(totalPriceNumericModal);
-             }
-             const numberOfInstallmentsModal = !isFixedDurationPlan && duration ? duration : 1;
-             if (!isFixedDurationPlan && duration && totalPriceNumericModal) {
-                 calculatedMonthlyPaymentModal = formatModCur(totalPriceNumericModal / duration);
-             }
-
-             return (
-                 <TouchableOpacity key={plan.id} style={[styles.bnplPlanOption, isSelected && styles.bnplPlanOptionSelected]} onPress={() => handlePlanSelection(plan)} activeOpacity={0.7}>
-                     <Text style={styles.bnplPlanNameModal}>{planName}</Text>
-                     <View style={styles.modalPlanDetailsContainer}>
+        const modalProceedDisabled = isProcessingCart || !selectedPaymentMethod || (selectedPaymentMethod === 'BNPL' && !selectedBnplPlan); const hasCodOption = product.codAvailable === true; const hasBnplOptionModal = hasLoadedBnplOption; const formatModCur = (value) => typeof value === 'number' ? `${CURRENCY_SYMBOL} ${value.toFixed(0)}` : null;
+        const renderModalPlanRow = (plan) => { /* ... (Modal plan row details) ... */
+            if (!plan?.id || basePriceForCalculations === null) return null; const isSelected = selectedBnplPlan?.id === plan.id; const planName = plan.planName || 'Unnamed Plan'; const duration = typeof plan.duration === 'number' ? plan.duration : null; const interestRateValue = typeof plan.interestRate === 'number' ? plan.interestRate : null; const interestRateDisplay = typeof interestRateValue === 'number' ? `${interestRateValue.toFixed(1)}%` : 'N/A'; const planType = plan.planType || 'General'; const isFixedDurationPlan = planType === 'Fixed Duration'; let totalPriceNumericModal = null, formattedTotalPriceWithInterestModal = null, calculatedMonthlyPaymentModal = null; const basePriceModal = basePriceForCalculations;
+            if (typeof interestRateValue === 'number' && basePriceModal !== null) { totalPriceNumericModal = basePriceModal * (1 + (interestRateValue / 100)); formattedTotalPriceWithInterestModal = formatModCur(totalPriceNumericModal); } else if (interestRateValue === 0 && basePriceModal !== null) { totalPriceNumericModal = basePriceModal; formattedTotalPriceWithInterestModal = formatModCur(totalPriceNumericModal); } const numberOfInstallmentsModal = !isFixedDurationPlan && duration ? duration : 1; if (!isFixedDurationPlan && duration && totalPriceNumericModal) { calculatedMonthlyPaymentModal = formatModCur(totalPriceNumericModal / duration); }
+            return ( <TouchableOpacity key={plan.id} style={[styles.bnplPlanOption, isSelected && styles.bnplPlanOptionSelected]} onPress={() => handlePlanSelection(plan)} activeOpacity={0.7}>
+                    <Text style={styles.bnplPlanNameModal}>{planName}</Text>
+                    <View style={styles.modalPlanDetailsContainer}>
                          <View style={styles.modalDetailRow}><MaterialIcons name="info-outline" size={13} color={BnplPlanDetailIconColor} style={styles.modalDetailIcon} /><Text style={styles.modalPlanDetailText}><Text style={styles.modalPlanDetailLabel}>Type: </Text><Text style={styles.modalPlanDetailValue}>{planType}</Text></Text></View>
                          {duration && <View style={styles.modalDetailRow}><MaterialIcons name="schedule" size={13} color={BnplPlanDetailIconColor} style={styles.modalDetailIcon} /><Text style={styles.modalPlanDetailText}><Text style={styles.modalPlanDetailLabel}>Duration: </Text><Text style={styles.modalPlanDetailValue}>{duration} {duration === 1 ? 'Month' : 'Months'}</Text>{isFixedDurationPlan ? <Text style={styles.modalPlanDetailValue}> (1 Payment)</Text> : <Text style={styles.modalPlanDetailValue}> / {numberOfInstallmentsModal} Inst.</Text>}</Text></View>}
                          {calculatedMonthlyPaymentModal && <View style={styles.modalDetailRow}><MaterialIcons name="calculate" size={13} color={BnplPlanDetailIconColor} style={styles.modalDetailIcon} /><Text style={styles.modalPlanDetailText}><Text style={styles.modalPlanDetailLabel}>Est. Monthly: </Text><Text style={styles.modalPlanDetailValue}>{calculatedMonthlyPaymentModal}</Text></Text></View>}
                          {interestRateValue !== null && <View style={styles.modalDetailRow}><MaterialIcons name="percent" size={13} color={BnplPlanDetailIconColor} style={styles.modalDetailIcon} /><Text style={styles.modalPlanDetailText}><Text style={styles.modalPlanDetailLabel}>Interest: </Text><Text style={styles.modalPlanDetailValue}>{interestRateDisplay}</Text></Text></View>}
                          {formattedTotalPriceWithInterestModal && <View style={styles.modalDetailRow}><MaterialIcons name="monetization-on" size={13} color={BnplPlanDetailIconColor} style={styles.modalDetailIcon} /><Text style={styles.modalPlanDetailText}><Text style={styles.modalPlanDetailLabel}>Total Price: </Text><Text style={styles.modalPlanDetailValue}>{formattedTotalPriceWithInterestModal}</Text></Text></View>}
-                     </View>
-                 </TouchableOpacity>
-             );
+                    </View>
+                </TouchableOpacity> );
         };
-
         const closeModal = () => !isProcessingCart && setIsPaymentModalVisible(false);
-
-        return (
-            <Modal visible={isPaymentModalVisible} transparent={true} animationType="slide" onRequestClose={closeModal}>
-                <Pressable style={styles.modalBackdrop} onPressOut={closeModal} />{/* Use Pressable for backdrop */}
+        return ( <Modal visible={isPaymentModalVisible} transparent={true} animationType="slide" onRequestClose={closeModal}>
+                <Pressable style={styles.modalBackdrop} onPressOut={closeModal} />
                 <View style={styles.modalContainer}>
                     <TouchableOpacity style={styles.modalCloseButton} onPress={closeModal} disabled={isProcessingCart}><MaterialIcons name="close" size={24} color={TextColorSecondary} /></TouchableOpacity>
                     <Text style={styles.modalTitle}>Select Payment Option</Text>
-                    <View style={styles.paymentOptionsRowContainer}>
-                        {hasCodOption && <Pressable style={({ pressed }) => [styles.paymentOptionButtonRow, selectedPaymentMethod === 'COD' && styles.paymentOptionSelected, pressed && !isProcessingCart && styles.buttonPressed]} onPress={() => { setSelectedPaymentMethod('COD'); setSelectedBnplPlan(null); }} disabled={isProcessingCart}><Text style={[styles.paymentOptionTextRow, selectedPaymentMethod === 'COD' && styles.paymentOptionTextSelected]}>Cash on Delivery</Text></Pressable>}
-                        {hasBnplOptionModal && <Pressable style={({ pressed }) => [styles.paymentOptionButtonRow, selectedPaymentMethod === 'BNPL' && styles.paymentOptionSelected, pressed && !isProcessingCart && styles.buttonPressed]} onPress={() => setSelectedPaymentMethod('BNPL')} disabled={isProcessingCart}><Text style={[styles.paymentOptionTextRow, selectedPaymentMethod === 'BNPL' && styles.paymentOptionTextSelected]}>Buy Now Pay Later</Text></Pressable>}
-                    </View>
+                    <View style={styles.paymentOptionsRowContainer}>{hasCodOption && <Pressable style={({ pressed }) => [styles.paymentOptionButtonRow, selectedPaymentMethod === 'COD' && styles.paymentOptionSelected, pressed && !isProcessingCart && styles.buttonPressed]} onPress={() => { setSelectedPaymentMethod('COD'); setSelectedBnplPlan(null); }} disabled={isProcessingCart}><Text style={[styles.paymentOptionTextRow, selectedPaymentMethod === 'COD' && styles.paymentOptionTextSelected]}>Cash on Delivery</Text></Pressable>}{hasBnplOptionModal && <Pressable style={({ pressed }) => [styles.paymentOptionButtonRow, selectedPaymentMethod === 'BNPL' && styles.paymentOptionSelected, pressed && !isProcessingCart && styles.buttonPressed]} onPress={() => setSelectedPaymentMethod('BNPL')} disabled={isProcessingCart}><Text style={[styles.paymentOptionTextRow, selectedPaymentMethod === 'BNPL' && styles.paymentOptionTextSelected]}>Buy Now Pay Later</Text></Pressable>}</View>
                     {!hasCodOption && !hasBnplOptionModal && <Text style={styles.noPaymentOptionsText}>No payment options available.</Text>}
-                    {selectedPaymentMethod === 'BNPL' && hasBnplOptionModal && (
-                        <View style={styles.bnplPlanSelectionContainer}>
-                            <Text style={styles.modalSubtitle}>Select Your Plan</Text>
-                            {isLoadingPlans ? <ActivityIndicator style={{marginVertical: 20}} size="small" color={AccentColor} /> : (
-                                <ScrollView style={styles.bnplPlanScrollView} nestedScrollEnabled={true}>
-                                    {Object.keys(bnplPlanGroups).length > 0 ? Object.entries(bnplPlanGroups).map(([groupTitle, plans]) => (
-                                        <View key={groupTitle} style={styles.modalPlanGroup}>
-                                            <Text style={styles.modalPlanGroupTitle}>{groupTitle}</Text>
-                                            {plans.map(renderModalPlanRow)}
-                                        </View>
-                                    )) : <Text style={styles.noPaymentOptionsText}>No BNPL plans found.</Text>}
-                                </ScrollView>
-                            )}
-                        </View>
-                    )}
+                    {selectedPaymentMethod === 'BNPL' && hasBnplOptionModal && ( <View style={styles.bnplPlanSelectionContainer}><Text style={styles.modalSubtitle}>Select Your Plan</Text>{isLoadingPlans ? <ActivityIndicator style={{marginVertical: 20}} size="small" color={AccentColor} /> : ( <ScrollView style={styles.bnplPlanScrollView} nestedScrollEnabled={true}>{Object.keys(bnplPlanGroups).length > 0 ? Object.entries(bnplPlanGroups).map(([groupTitle, plans]) => ( <View key={groupTitle} style={styles.modalPlanGroup}><Text style={styles.modalPlanGroupTitle}>{groupTitle}</Text>{plans.map(renderModalPlanRow)}</View> )) : <Text style={styles.noPaymentOptionsText}>No BNPL plans found.</Text>}</ScrollView> )}</View> )}
                     {(hasCodOption || hasBnplOptionModal) && <Pressable style={({ pressed }) => [styles.proceedButton, modalProceedDisabled && styles.proceedButtonDisabled, pressed && !modalProceedDisabled && styles.buttonPressed]} onPress={handleProceedWithPayment} disabled={modalProceedDisabled}>{isProcessingCart ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.proceedButtonText}>{actionType === 'addToCart' ? 'Confirm & Add to Cart' : 'Confirm & Proceed'}</Text>}</Pressable>}
                 </View>
-            </Modal>
-        );
+            </Modal> );
     };
     // --- End Render Functions ---
 
 
-    // --- Loading / Error States ---
-    if (isLoadingProduct) {
-        return (
-            <SafeAreaView style={styles.safeArea}><StatusBar barStyle="dark-content" backgroundColor={AppBackgroundColor} /><View style={styles.loadingContainer}><ActivityIndicator size="large" color={AccentColor} /><Text style={styles.errorText}>Loading Product Details...</Text></View></SafeAreaView>
-        );
+    // --- Loading / Error States --- (Remain the same)
+    if (isLoadingProduct) { /* ... */
+         return (<SafeAreaView style={styles.safeArea}><StatusBar barStyle="dark-content" backgroundColor={AppBackgroundColor} /><View style={styles.loadingContainer}><ActivityIndicator size="large" color={AccentColor} /><Text style={styles.errorText}>Loading Product Details...</Text></View></SafeAreaView>);
     }
-    if (!product) {
-        return (
-            <SafeAreaView style={styles.safeArea}><StatusBar barStyle="dark-content" backgroundColor={AppBackgroundColor} /><View style={styles.loadingContainer}><MaterialIcons name="error-outline" size={40} color={TextColorSecondary} /><Text style={styles.errorText}>Product details could not be loaded.</Text><TouchableOpacity onPress={() => navigation.goBack()} style={{marginTop: 20}}><Text style={{color: AccentColor}}>Go Back</Text></TouchableOpacity></View></SafeAreaView>
-        );
+    if (!product) { /* ... */
+         return (<SafeAreaView style={styles.safeArea}><StatusBar barStyle="dark-content" backgroundColor={AppBackgroundColor} /><View style={styles.loadingContainer}><MaterialIcons name="error-outline" size={40} color={TextColorSecondary} /><Text style={styles.errorText}>Product details could not be loaded.</Text><TouchableOpacity onPress={() => navigation.goBack()} style={{marginTop: 20}}><Text style={{color: AccentColor}}>Go Back</Text></TouchableOpacity></View></SafeAreaView>);
     }
+
 
     // --- Main Return ---
     return (
@@ -981,8 +747,14 @@ export default function ProductDetailsScreen() {
                     {/* Rating/Sold */}
                     <View style={styles.reviewSectionHeaderInline}>
                         <View style={styles.reviewOverallRating}>
-                            <MaterialIcons name="star" size={16} color={StarColor} style={{ marginRight: 4 }}/>
-                            <Text style={styles.reviewOverallRatingText}>{typeof averageRating === 'number' ? averageRating.toFixed(1) : '-'}</Text>
+                            {typeof averageRating === 'number' ? (
+                                <>
+                                    <MaterialIcons name="star" size={16} color={StarColor} style={{ marginRight: 4 }}/>
+                                    <Text style={styles.reviewOverallRatingText}>{averageRating.toFixed(1)}</Text>
+                                </>
+                            ) : (
+                                <Text style={styles.reviewOverallRatingText}>-</Text> // Show dash if no rating
+                            )}
                         </View>
                         <Text style={styles.soldCountText}>{displaySoldCount} sold</Text>
                     </View>
@@ -1033,7 +805,7 @@ export default function ProductDetailsScreen() {
 }
 
 // --- Styles ---
-// (Styles are identical to the previously provided full code)
+// Includes updates for review card layout
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: AppBackgroundColor },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: AppBackgroundColor },
@@ -1076,12 +848,53 @@ const styles = StyleSheet.create({
     bnplPlanDetailText: { fontSize: 13, color: BnplPlanDetailColor, lineHeight: 19, flexShrink: 1 },
     bnplPlanDetailValue: { fontWeight: '600', color: BnplPlanValueColor },
     reviewSectionWrapper: { marginBottom: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: LightBorderColor },
-    reviewCard: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-    reviewHeader: { flexDirection: 'column', alignItems: 'flex-start', marginBottom: 8 },
-    reviewHeaderRating: { flexDirection: 'row', marginBottom: 4 },
-    reviewerName: { fontSize: 15, fontWeight: '600', color: TextColorPrimary },
-    reviewDate: { fontSize: 13, color: TextColorSecondary, fontWeight: 'normal' },
-    reviewText: { fontSize: 14, color: TextColorSecondary, lineHeight: 21 },
+
+    // *** Styles for Review Card with Image ***
+    reviewCard: {
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F5F5F5',
+    },
+    reviewHeader: {
+        flexDirection: 'row', // Arrange image and text side-by-side
+        alignItems: 'center', // Align items vertically in the center of the row
+        marginBottom: 10,
+    },
+    reviewerImage: {
+        width: 40,
+        height: 40,
+        borderRadius: 20, // Make it circular
+        marginRight: 12,
+        backgroundColor: PlaceholderBgColor, // Background for loading/fallback
+    },
+    reviewHeaderTextContainer: {
+        flex: 1, // Allow text container to take remaining space
+        flexDirection: 'column',
+        justifyContent: 'center', // Vertically center rating and name/date
+    },
+    reviewHeaderRating: {
+        flexDirection: 'row',
+        marginBottom: 4,
+    },
+    reviewerName: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: TextColorPrimary,
+        flexShrink: 1, // Prevent long names from pushing things out
+    },
+    reviewDate: {
+        fontSize: 13,
+        color: TextColorSecondary,
+        fontWeight: 'normal',
+    },
+    reviewText: {
+        fontSize: 14,
+        color: TextColorSecondary,
+        lineHeight: 21,
+        paddingLeft: 52, // Indent comment text to align under name/rating (image width 40 + margin 12)
+    },
+    // *** End Styles for Review Card ***
+
     noReviewsText: { textAlign: 'center', color: TextColorSecondary, marginTop: 20, marginBottom: 20, fontStyle: 'italic' },
     seeMoreButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginTop: 10, borderTopWidth: 1, borderTopColor: LightBorderColor },
     seeMoreButtonText: { fontSize: 15, fontWeight: '500', color: AccentColor, marginRight: 5 },

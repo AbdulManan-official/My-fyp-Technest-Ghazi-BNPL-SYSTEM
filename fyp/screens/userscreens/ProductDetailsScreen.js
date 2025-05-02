@@ -19,7 +19,8 @@ import { db } from '../../firebaseConfig'; // Ensure this path is correct
 const AppBackgroundColor = '#FFFFFF';
 const TextColorPrimary = '#212121';
 const TextColorSecondary = '#666666';
-const AccentColor = '#D32F2F'; // Primary Red
+const AccentColor = '#FF0000';
+const AccentColor1 = '#D32F2F'; // Primary Red
 const AccentDarkerColor = '#B71C1C'; // Darker Red for Gradient/Hover
 const LightBorderColor = '#EEEEEE';
 const PlaceholderBgColor = '#F0F0F0';
@@ -1782,7 +1783,7 @@ export default function ProductDetailsScreen() {
                                 scrollEnabled={false} // Disable nested scrolling
                                 ListEmptyComponent={ // Show if data is empty AFTER loading
                                     <Text style={styles.noReviewsText}>
-                                        Be the first to review this product!
+                                        NO reviews yet!
                                     </Text>
                                 }
                             />
@@ -1852,7 +1853,7 @@ export default function ProductDetailsScreen() {
                     disabled={isProcessingCart} // Disable if processing
                 >
                     <LinearGradient
-                        colors={[AccentColor, AccentDarkerColor]} // Example gradient
+                        colors={[AccentColor, AccentColor]} // Example gradient
                         style={styles.buyButtonGradient} // Style applied to the gradient view
                         start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
                     >
@@ -1897,7 +1898,7 @@ const styles = StyleSheet.create({
     soldCountText: { fontSize: 14, color: TextColorSecondary, },
     priceActionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, minHeight: 30 },
     priceRow: { flexDirection: 'row', alignItems: 'baseline', flexShrink: 1, marginRight: 10 },
-    finalPrice: { fontSize: 20, fontWeight: 'bold', color: AccentColor },
+    finalPrice: { fontSize: 20, fontWeight: 'bold', color: AccentColor1 },
     originalPrice: { fontSize: 14, color: StrikethroughColor, textDecorationLine: 'line-through', marginLeft: 8 },
     noPriceText: { fontSize: 16, color: TextColorSecondary, fontStyle: 'italic' },
     rightActionButtonsGroup: { flexDirection: 'row', alignItems: 'center' },

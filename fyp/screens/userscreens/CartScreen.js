@@ -61,19 +61,18 @@ export default function CartScreen() {
                 const data = docSnap.data(); const itemsArray = Array.isArray(data?.items) ? data.items : [];
                 let itemIndex = 0; // Counter for fallback key generation if needed
                 const validatedItems = itemsArray.map(item => {
-                     // *** REFINED cartItemId generation ***
-                    // Prefer existing cartItemId, otherwise generate a more robust fallback
                     const generatedFallbackId = `${item.productId || 'unknown'}_${item.paymentMethod || 'unk'}_${item.bnplPlan?.id || 'NA'}_${itemIndex++}`;
                     const finalCartItemId = item.cartItemId || generatedFallbackId;
+                    const validatedImage = (typeof item.image === 'string' && item.image) ? item.image : PLACEHOLDER_IMAGE_URL;
 
                     return {
                         ...item,
-                        cartItemId: finalCartItemId, // Use the final determined ID
+                        cartItemId: finalCartItemId,
                         quantity: typeof item.quantity === 'number' && item.quantity > 0 ? item.quantity : 1,
                         priceAtAddition: typeof item.priceAtAddition === 'number' ? item.priceAtAddition : 0,
                         productId: item.productId || 'unknown',
                         productName: item.productName || 'Unknown Product',
-                        image: item.image || PLACEHOLDER_IMAGE_URL,
+                        image: validatedImage,
                         bnplPlan: item.paymentMethod === 'BNPL' && item.bnplPlan ? {
                             id: item.bnplPlan.id || null,
                             name: item.bnplPlan.name || item.bnplPlan.planName || 'Installment Plan',
@@ -93,37 +92,60 @@ export default function CartScreen() {
     }, [user]);
 
     // --- Firestore Update Functions ---
-    const removeItem = async (itemToRemove) => {
-        // Ensure we use the correct cartItemId for removal
+
+    // *** MODIFIED removeItem function ***
+    const removeItem = (itemToRemove) => { // No longer async directly, confirmation handles async logic
         if (!user || !itemToRemove || !itemToRemove.cartItemId) {
             Alert.alert("Error", "Could not remove item (Missing ID).");
             return;
         }
-        const cartDocRef = doc(db, CARTS_COLLECTION, user.uid);
-        try {
-            const currentCartSnap = await getDoc(cartDocRef);
-            if (currentCartSnap.exists()) {
-                const currentItems = currentCartSnap.data().items || [];
-                 // Find the exact object based on the UNIQUE cartItemId
-                const itemObjectToRemove = currentItems.find(item => item.cartItemId === itemToRemove.cartItemId);
 
-                if (itemObjectToRemove) {
-                    await updateDoc(cartDocRef, {
-                        items: arrayRemove(itemObjectToRemove),
-                        lastUpdated: serverTimestamp()
-                    });
-                    console.log(`Item removed: ${itemToRemove.cartItemId}`);
-                     // No need to update local state here, onSnapshot will handle it
-                } else {
-                     // This case means the item might already be removed or the ID is wrong
-                     console.warn(`Item with cartItemId ${itemToRemove.cartItemId} not found in Firestore for removal.`);
-                     // Force local state update just in case onSnapshot missed it
-                     setCartItems(prev => prev.filter(i => i.cartItemId !== itemToRemove.cartItemId));
+        // *** Show Confirmation Alert FIRST ***
+        Alert.alert(
+            "Remove Item?", // Title
+            `Remove "${itemToRemove.productName || 'this item'}" from your cart?`, // Message using item's name
+            [
+                {
+                    text: "Cancel", // Cancel button
+                    style: "cancel"
+                },
+                {
+                    text: "Remove", // Confirmation button
+                    onPress: async () => { // Make the onPress handler async
+                        // *** Put the Firestore removal logic inside the confirmation onPress ***
+                        const cartDocRef = doc(db, CARTS_COLLECTION, user.uid);
+                        try {
+                            const currentCartSnap = await getDoc(cartDocRef);
+                            if (currentCartSnap.exists()) {
+                                const currentItems = currentCartSnap.data().items || [];
+                                // Find the exact object based on the UNIQUE cartItemId
+                                const itemObjectToRemove = currentItems.find(item => item.cartItemId === itemToRemove.cartItemId);
+
+                                if (itemObjectToRemove) {
+                                    await updateDoc(cartDocRef, {
+                                        items: arrayRemove(itemObjectToRemove),
+                                        lastUpdated: serverTimestamp()
+                                    });
+                                    console.log(`Item removed after confirmation: ${itemToRemove.cartItemId}`);
+                                    // onSnapshot will handle the UI update
+                                } else {
+                                    // This case means the item might have been removed between alert display and confirmation
+                                    console.warn(`Item with cartItemId ${itemToRemove.cartItemId} not found in Firestore for removal (might be already removed).`);
+                                    // Keep original fallback, though less likely needed now
+                                    setCartItems(prev => prev.filter(i => i.cartItemId !== itemToRemove.cartItemId));
+                                }
+                            } else {
+                                console.warn("Cart document doesn't exist while trying to remove after confirmation.");
+                            }
+                        } catch (err) {
+                            console.error("Error removing item after confirmation:", err);
+                            Alert.alert("Error", "Could not remove item.");
+                        }
+                    },
+                    style: "destructive" // Style for the remove button
                 }
-            } else {
-                 console.warn("Cart document doesn't exist while trying to remove.");
-            }
-        } catch (err) { console.error("Error removing item:", err); Alert.alert("Error", "Could not remove item."); }
+            ]
+        );
     };
 
 
@@ -135,7 +157,7 @@ export default function CartScreen() {
             if (!currentCartSnap.exists()) { console.error("Cart not found for update."); return; }
 
             const currentItems = currentCartSnap.data().items || [];
-            const itemIndex = currentItems.findIndex(item => item.cartItemId === cartItemId); // Use unique cartItemId
+            const itemIndex = currentItems.findIndex(item => item.cartItemId === cartItemId);
             if (itemIndex === -1) { Alert.alert("Error", "Item not found in cart for update."); return; }
 
             const currentItem = currentItems[itemIndex];
@@ -143,15 +165,24 @@ export default function CartScreen() {
             let newQuantity = action === 'increase' ? currentQuantity + 1 : currentQuantity - 1;
 
             if (newQuantity < 1) {
-                Alert.alert( "Remove Item?", `Remove "${currentItem.productName || 'this item'}" from your cart?`,
-                    [ { text: "Cancel", style: "cancel" }, { text: "Remove", onPress: () => removeItem(currentItem), style: "destructive" } ] );
+                // *** Use the SAME Alert structure here ***
+                Alert.alert(
+                    "Remove Item?", // Title
+                    `Remove "${currentItem.productName || 'this item'}" from your cart?`, // Message
+                    [
+                        { text: "Cancel", style: "cancel" },
+                        // Note: onPress here calls the modified removeItem function, which will show the alert AGAIN.
+                        // To avoid double alert, we call the *actual* removal logic directly.
+                        // Let's create a helper for the core removal logic.
+                        { text: "Remove", onPress: () => executeRemoval(currentItem), style: "destructive" } // Call helper directly
+                    ]
+                 );
                 return;
             }
 
             // Create the updated items array
             const updatedItemsArray = currentItems.map((item, index) => {
                 if (index === itemIndex) {
-                    // Only update quantity, keep other fields including cartItemId
                     return { ...item, quantity: newQuantity };
                 }
                 return item;
@@ -162,9 +193,45 @@ export default function CartScreen() {
                 lastUpdated: serverTimestamp()
             });
             console.log(`Quantity updated for ${cartItemId} to ${newQuantity}.`);
-             // No need to update local state here, onSnapshot will handle it
+             // onSnapshot handles state update
 
         } catch (err) { console.error("Error updating quantity:", err); Alert.alert("Error", "Could not update quantity."); }
+    };
+
+    // *** NEW Helper function for the core Firestore removal logic ***
+    // This avoids calling removeItem from updateQuantity which would cause nested alerts.
+    const executeRemoval = async (itemToRemove) => {
+        if (!user || !itemToRemove || !itemToRemove.cartItemId) {
+             // Avoid alert here as it's called from within other functions usually
+            console.error("executeRemoval called with invalid parameters.");
+            return;
+        }
+        const cartDocRef = doc(db, CARTS_COLLECTION, user.uid);
+        try {
+            const currentCartSnap = await getDoc(cartDocRef);
+            if (currentCartSnap.exists()) {
+                const currentItems = currentCartSnap.data().items || [];
+                const itemObjectToRemove = currentItems.find(item => item.cartItemId === itemToRemove.cartItemId);
+
+                if (itemObjectToRemove) {
+                    await updateDoc(cartDocRef, {
+                        items: arrayRemove(itemObjectToRemove),
+                        lastUpdated: serverTimestamp()
+                    });
+                    console.log(`Item removed via executeRemoval: ${itemToRemove.cartItemId}`);
+                } else {
+                    console.warn(`Item with cartItemId ${itemToRemove.cartItemId} not found in Firestore for executeRemoval.`);
+                    // Force local state update as a fallback
+                    setCartItems(prev => prev.filter(i => i.cartItemId !== itemToRemove.cartItemId));
+                }
+            } else {
+                console.warn("Cart document doesn't exist during executeRemoval.");
+            }
+        } catch (err) {
+            console.error("Error during executeRemoval:", err);
+            // Optionally show an alert here if needed, but be mindful of context
+            Alert.alert("Error", "Failed to remove item.");
+        }
     };
 
 
@@ -196,9 +263,7 @@ export default function CartScreen() {
             return;
         }
 
-        // Prepare items for CheckoutScreen (ensure data is consistent)
         const itemsForCheckout = cartItems.map(item => {
-            // Double-check bnplPlan structure before passing
              const planDetails = item.paymentMethod === 'BNPL' && item.bnplPlan ? {
                     id: item.bnplPlan.id,
                     name: item.bnplPlan.name,
@@ -210,19 +275,17 @@ export default function CartScreen() {
 
              if (item.paymentMethod === 'BNPL' && !planDetails?.id) {
                  console.warn(`Missing BNPL Plan ID for cart item ${item.cartItemId} during checkout prep.`);
-                 // Optionally handle this case, e.g., show an error or default plan?
-                 // For now, it will pass null as bnplPlan
              }
 
             return {
                 id: item.productId,
-                cartItemId: item.cartItemId, // Pass the unique cart ID
+                cartItemId: item.cartItemId,
                 name: item.productName,
                 image: item.image,
                 quantity: item.quantity,
                 price: item.priceAtAddition,
                 paymentMethod: item.paymentMethod,
-                bnplPlan: planDetails, // Pass the verified/structured plan
+                bnplPlan: planDetails,
             };
         });
 
@@ -244,12 +307,12 @@ export default function CartScreen() {
 
     // --- Render Item Function for FlatList ---
     const renderCartItem = ({ item, index }) => {
-        const imageUri = item.image || PLACEHOLDER_IMAGE_URL;
+        const imageUri = (typeof item.image === 'string' && item.image) ? item.image : PLACEHOLDER_IMAGE_URL;
         const itemPricePerUnit = item.priceAtAddition || 0;
         const itemQuantity = item.quantity || 1;
         const itemTotalPrice = itemPricePerUnit * itemQuantity;
         const isBnpl = item.paymentMethod === 'BNPL';
-        const bnplPlan = item.bnplPlan; // Use the already validated bnplPlan from state
+        const bnplPlan = item.bnplPlan;
 
         const formatInterest = (rate) => (typeof rate === 'number' ? `${rate.toFixed(1)}%` : 'N/A');
         const formatDuration = (dur) => (typeof dur === 'number' ? `${dur} Month${dur === 1 ? '' : 's'}` : 'N/A');
@@ -265,7 +328,7 @@ export default function CartScreen() {
         return (
              <TouchableOpacity onPress={() => handleProductPress(item)} activeOpacity={0.8}>
                 <View style={[styles.cartItem, isLastItem && styles.lastCartItem]}>
-                    <Image source={{ uri: imageUri }} style={styles.productImage} />
+                    <Image source={{ uri: imageUri }} style={styles.productImage} onError={(e) => console.warn(`Failed to load image: ${imageUri}`, e.nativeEvent.error)} />
                     <View style={styles.details}>
                         <Text style={styles.productName} numberOfLines={2}>{item.productName}</Text>
 
@@ -273,69 +336,36 @@ export default function CartScreen() {
                             <View style={localStyles.bnplDetailsContainer}>
                                 <View style={[localStyles.badgeBase, localStyles.bnplBadge]}>
                                     <MaterialIcons name="schedule" size={12} color={BNPL_BADGE_TEXT} />
-                                    <Text style={localStyles.badgeText}>
-                                        {`Installments${bnplPlan.name ? ` (${bnplPlan.name})` : ''}`}
-                                    </Text>
+                                    <Text style={localStyles.badgeText}>{`Installments${bnplPlan.name ? ` (${bnplPlan.name})` : ''}`}</Text>
                                 </View>
                                 <View style={localStyles.bnplPlanInfo}>
                                     {bnplPlan.planType && bnplPlan.planType !== 'Unknown' && (<View style={localStyles.detailRow}><MaterialIcons name="info-outline" size={14} color={BNPL_DETAIL_ICON_COLOR} style={localStyles.detailIcon} /><Text style={localStyles.detailText}>Type: <Text style={localStyles.detailValue}>{bnplPlan.planType}</Text></Text></View> )}
                                     {bnplPlan.duration && (<View style={localStyles.detailRow}><MaterialIcons name="timer" size={14} color={BNPL_DETAIL_ICON_COLOR} style={localStyles.detailIcon} /><Text style={localStyles.detailText}>Duration: <Text style={localStyles.detailValue}>{formatDuration(bnplPlan.duration)}</Text></Text></View> )}
                                     {(bnplPlan.interestRate !== null) && ( <View style={localStyles.detailRow}><MaterialIcons name="percent" size={14} color={BNPL_DETAIL_ICON_COLOR} style={localStyles.detailIcon} /><Text style={localStyles.detailText}>Interest: <Text style={localStyles.detailValue}>{formatInterest(bnplPlan.interestRate)}</Text></Text></View> )}
                                      {bnplPlan.planType === 'Fixed Duration' ? (
-                                         <View style={localStyles.detailRow}>
-                                             <MaterialIcons name="receipt-long" size={14} color={BNPL_DETAIL_ICON_COLOR} style={localStyles.detailIcon} />
-                                             <Text style={localStyles.detailText}>Payment: <Text style={localStyles.detailValue}>One-time Payment</Text></Text>
-                                         </View>
+                                         <View style={localStyles.detailRow}><MaterialIcons name="receipt-long" size={14} color={BNPL_DETAIL_ICON_COLOR} style={localStyles.detailIcon} /><Text style={localStyles.detailText}>Payment: <Text style={localStyles.detailValue}>One-time Payment</Text></Text></View>
                                      ) : formattedTotalMonthly(totalMonthlyPayment) ? (
-                                         <View style={localStyles.detailRow}>
-                                             <MaterialIcons name="payments" size={14} color={BNPL_DETAIL_ICON_COLOR} style={localStyles.detailIcon} />
-                                             <Text style={localStyles.detailText}>Total Monthly: <Text style={localStyles.detailValue}>{formattedTotalMonthly(totalMonthlyPayment)}</Text></Text>
-                                         </View>
+                                         <View style={localStyles.detailRow}><MaterialIcons name="payments" size={14} color={BNPL_DETAIL_ICON_COLOR} style={localStyles.detailIcon} /><Text style={localStyles.detailText}>Total Monthly: <Text style={localStyles.detailValue}>{formattedTotalMonthly(totalMonthlyPayment)}</Text></Text></View>
                                      ) : null}
                                 </View>
                             </View>
                         ) : item.paymentMethod === 'COD' ? (
-                             <View style={[localStyles.badgeBase, localStyles.codBadge]}>
-                                <MaterialIcons name="local-shipping" size={12} color={COD_BADGE_TEXT} />
-                                <Text style={[localStyles.badgeText, { color: COD_BADGE_TEXT }]}>COD</Text>
-                            </View>
+                             <View style={[localStyles.badgeBase, localStyles.codBadge]}><MaterialIcons name="local-shipping" size={12} color={COD_BADGE_TEXT} /><Text style={[localStyles.badgeText, { color: COD_BADGE_TEXT }]}>COD</Text></View>
                         ) : (
-                             <View style={localStyles.badgeBase}>
-                                 <MaterialIcons name="help-outline" size={12} color={SECONDARY_TEXT_COLOR_ORIGINAL} />
-                                 <Text style={[localStyles.badgeText, { color: SECONDARY_TEXT_COLOR_ORIGINAL }]}>Unknown Payment</Text>
-                             </View>
+                             <View style={localStyles.badgeBase}><MaterialIcons name="help-outline" size={12} color={SECONDARY_TEXT_COLOR_ORIGINAL} /><Text style={[localStyles.badgeText, { color: SECONDARY_TEXT_COLOR_ORIGINAL }]}>Unknown Payment</Text></View>
                         )}
 
-                        <Text style={styles.productPrice}>
-                            {`${CURRENCY_SYMBOL} ${itemTotalPrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-                        </Text>
-                         <Text style={localStyles.unitPriceText}>
-                              {`(${CURRENCY_SYMBOL} ${itemPricePerUnit.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} each ${isBnpl ? 'incl. plan' : ''})`}
-                         </Text>
+                        <Text style={styles.productPrice}>{`${CURRENCY_SYMBOL} ${itemTotalPrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}</Text>
+                         <Text style={localStyles.unitPriceText}>{`(${CURRENCY_SYMBOL} ${itemPricePerUnit.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} each ${isBnpl ? 'incl. plan' : ''})`}</Text>
 
                         <View style={styles.quantityContainer}>
-                            <TouchableOpacity
-                                onPress={() => updateQuantity(item.cartItemId, 'decrease')} // Use unique cartItemId
-                                style={styles.quantityButton}
-                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 5 }}
-                            >
-                                <Ionicons name="remove-circle-outline" size={26} color={ERROR_COLOR} />
-                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => updateQuantity(item.cartItemId, 'decrease')} style={styles.quantityButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 5 }}><Ionicons name="remove-circle-outline" size={26} color={ERROR_COLOR} /></TouchableOpacity>
                             <Text style={styles.quantityText}>{itemQuantity}</Text>
-                             <TouchableOpacity
-                                onPress={() => updateQuantity(item.cartItemId, 'increase')} // Use unique cartItemId
-                                style={styles.quantityButton}
-                                hitSlop={{ top: 10, bottom: 10, left: 5, right: 10 }}
-                            >
-                                <Ionicons name="add-circle-outline" size={26} color={ACCENT_COLOR_ADD} />
-                            </TouchableOpacity>
+                             <TouchableOpacity onPress={() => updateQuantity(item.cartItemId, 'increase')} style={styles.quantityButton} hitSlop={{ top: 10, bottom: 10, left: 5, right: 10 }}><Ionicons name="add-circle-outline" size={26} color={ACCENT_COLOR_ADD} /></TouchableOpacity>
                         </View>
                     </View>
-                     <TouchableOpacity
-                         onPress={() => removeItem(item)} // Pass the full item with cartItemId
-                         style={styles.removeButton}
-                         hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                    >
+                     {/* This TouchableOpacity now calls the modified removeItem which shows the alert */}
+                     <TouchableOpacity onPress={() => removeItem(item)} style={styles.removeButton} hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}>
                         <Ionicons name="trash-outline" size={24} color={SECONDARY_TEXT_COLOR} />
                     </TouchableOpacity>
                 </View>
@@ -351,18 +381,12 @@ export default function CartScreen() {
     return (
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.container}>
-                {/* Header */}
-                <View style={styles.headerContainer}>
-                    <Text style={styles.header}>My Cart</Text>
-                </View>
-
-                {/* Cart List or Empty Message */}
+                <View style={styles.headerContainer}><Text style={styles.header}>My Cart</Text></View>
                 <View style={styles.listContainer}>
                     {cartItems.length > 0 ? (
                         <FlatList
                             data={cartItems}
                             renderItem={renderCartItem}
-                            // *** Ensure keyExtractor uses the validated cartItemId ***
                             keyExtractor={(item) => item.cartItemId}
                             contentContainerStyle={styles.listContentContainer}
                             showsVerticalScrollIndicator={false}
@@ -373,29 +397,17 @@ export default function CartScreen() {
                              <Ionicons name="cart-outline" size={60} color={SECONDARY_TEXT_COLOR} />
                             <Text style={styles.emptyCartText}>Your cart is empty</Text>
                             <Text style={localStyles.emptyCartSubText}>Looks like you haven't added anything yet.</Text>
-                            <TouchableOpacity style={localStyles.shopNowButton} onPress={() => navigation.navigate('Home')}>
-                                 <Text style={localStyles.shopNowButtonText}>Start Shopping</Text>
-                             </TouchableOpacity>
+                            <TouchableOpacity style={localStyles.shopNowButton} onPress={() => navigation.navigate('Home')}><Text style={localStyles.shopNowButtonText}>Start Shopping</Text></TouchableOpacity>
                         </View>
                     )}
                 </View>
-
-                {/* Footer: Total and Checkout Button */}
                 {cartItems.length > 0 && (
                     <View style={styles.totalContainer}>
                          <View style={localStyles.totalRow}>
                              <Text style={localStyles.totalLabelText}>Total</Text>
-                             <Text style={localStyles.totalValueText}>
-                                 {`${CURRENCY_SYMBOL} ${totalPrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}
-                             </Text>
+                             <Text style={localStyles.totalValueText}>{`${CURRENCY_SYMBOL} ${totalPrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}</Text>
                          </View>
-                        <TouchableOpacity
-                          style={styles.checkoutButton}
-                          onPress={handleCheckout}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.checkoutText}>{`Checkout (${cartItems.length})`}</Text>
-                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.checkoutButton} onPress={handleCheckout} activeOpacity={0.8}><Text style={styles.checkoutText}>{`Checkout (${cartItems.length})`}</Text></TouchableOpacity>
                     </View>
                 )}
             </View>
@@ -405,161 +417,34 @@ export default function CartScreen() {
 
 // --- Styles (Keep unchanged) ---
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: HEADER_COLOR,
-    },
-    container: {
-        flex: 1,
-        backgroundColor: BACKGROUND_COLOR,
-        borderTopLeftRadius: Platform.OS === 'ios' ? 20 : 0,
-        borderTopRightRadius: Platform.OS === 'ios' ? 20 : 0,
-        overflow: 'hidden',
-    },
-    headerContainer: {
-        paddingBottom: 15,
-        paddingTop: Platform.OS === 'ios' ? 10 : 15,
-        alignItems: 'center',
-        backgroundColor: HEADER_COLOR,borderBottomLeftRadius: 15, borderBottomRightRadius: 15, 
-    },
-    header: {
-        fontSize: 20,
-        fontWeight: '600',
-        color: '#FFFFFF',
-    },
-    listContainer: {
-        flex: 1,
-    },
-    listContentContainer: {
-        paddingHorizontal: 10,
-        paddingTop: 10,
-        paddingBottom: 180,
-    },
-    separator: {
-        height: 1,
-        backgroundColor: BORDER_COLOR,
-        marginHorizontal: 0,
-    },
-    cartItem: {
-        flexDirection: 'row',
-        paddingVertical: 15,
-        paddingHorizontal: 5,
-        alignItems: 'center',
-        backgroundColor: CARD_BACKGROUND_COLOR,
-        borderBottomLeftRadius: 20,
-        borderBottomRightRadius: 20,
-    },
-    lastCartItem: {
-       // No specific style needed here anymore
-    },
-    productImage: {
-        width: 75,
-        height: 75,
-        borderRadius: 8,
-        marginRight: 12,
-        backgroundColor: '#F0F0F0',
-        borderWidth: 1,
-        borderColor: BORDER_COLOR,
-    },
-    details: {
-        flex: 1,
-        justifyContent: 'center',
-        marginRight: 5,
-    },
-    productName: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: PRIMARY_TEXT_COLOR,
-        marginBottom: 5,
-    },
-    productPrice: {
-        fontSize: 15,
-        fontWeight: 'bold',
-        color: PRICE_COLOR,
-        marginTop: 8,
-        marginBottom: 4,
-    },
-    quantityContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: 10,
-    },
-    quantityButton: {
-        padding: 6,
-    },
-    quantityText: {
-        fontSize: 16,
-        fontWeight: '600',
-        marginHorizontal: 12,
-        minWidth: 25,
-        textAlign: 'center',
-        color: PRIMARY_TEXT_COLOR,
-    },
-    removeButton: {
-        padding: 10,
-        marginLeft: 8,
-    },
-    totalContainer: {
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: 0,
-        paddingHorizontal: 20,
-        paddingTop: 20,
-        paddingBottom: Platform.OS === 'ios' ? 30 : 20,
-        backgroundColor: CARD_BACKGROUND_COLOR,
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-        elevation: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -3 },
-        shadowOpacity: 0.15,
-        shadowRadius: 6,
-    },
-    checkoutButton: {
-        backgroundColor: ACCENT_COLOR_CHECKOUT,
-        paddingVertical: 15,
-        paddingHorizontal: 40,
-        borderRadius: 10,
-        alignSelf: 'center',
-        marginTop: 20,
-    },
-    checkoutText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
-    emptyCartText: {
-        textAlign: 'center',
-        fontSize: 18,
-        fontWeight: '600',
-        color: PRIMARY_TEXT_COLOR,
-        marginTop: 25,
-    },
+    safeArea: { flex: 1, backgroundColor: HEADER_COLOR, },
+    container: { flex: 1, backgroundColor: BACKGROUND_COLOR, borderTopLeftRadius: Platform.OS === 'ios' ? 20 : 0, borderTopRightRadius: Platform.OS === 'ios' ? 20 : 0, overflow: 'hidden', },
+    headerContainer: { paddingBottom: 15, paddingTop: Platform.OS === 'ios' ? 10 : 15, alignItems: 'center', backgroundColor: HEADER_COLOR,borderBottomLeftRadius: 15, borderBottomRightRadius: 15, },
+    header: { fontSize: 20, fontWeight: '600', color: '#FFFFFF', },
+    listContainer: { flex: 1, },
+    listContentContainer: { paddingHorizontal: 10, paddingTop: 10, paddingBottom: 180, },
+    separator: { height: 1, backgroundColor: BORDER_COLOR, marginHorizontal: 0, },
+    cartItem: { flexDirection: 'row', paddingVertical: 15, paddingHorizontal: 5, alignItems: 'center', backgroundColor: CARD_BACKGROUND_COLOR, borderBottomLeftRadius: 20, borderBottomRightRadius: 20, },
+    lastCartItem: { /* No specific style needed here anymore */ },
+    productImage: { width: 75, height: 75, borderRadius: 8, marginRight: 12, backgroundColor: '#F0F0F0', borderWidth: 1, borderColor: BORDER_COLOR, },
+    details: { flex: 1, justifyContent: 'center', marginRight: 5, },
+    productName: { fontSize: 15, fontWeight: '600', color: PRIMARY_TEXT_COLOR, marginBottom: 5, },
+    productPrice: { fontSize: 15, fontWeight: 'bold', color: PRICE_COLOR, marginTop: 8, marginBottom: 4, },
+    quantityContainer: { flexDirection: 'row', alignItems: 'center', marginTop: 10, },
+    quantityButton: { padding: 6, },
+    quantityText: { fontSize: 16, fontWeight: '600', marginHorizontal: 12, minWidth: 25, textAlign: 'center', color: PRIMARY_TEXT_COLOR, },
+    removeButton: { padding: 10, marginLeft: 8, },
+    totalContainer: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 20, paddingTop: 20, paddingBottom: Platform.OS === 'ios' ? 30 : 20, backgroundColor: CARD_BACKGROUND_COLOR, borderTopLeftRadius: 20, borderTopRightRadius: 20, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: -3 }, shadowOpacity: 0.15, shadowRadius: 6, },
+    checkoutButton: { backgroundColor: ACCENT_COLOR_CHECKOUT, paddingVertical: 15, paddingHorizontal: 40, borderRadius: 10, alignSelf: 'center', marginTop: 20, },
+    checkoutText: { color: 'white', fontSize: 16, fontWeight: 'bold', },
+    emptyCartText: { textAlign: 'center', fontSize: 18, fontWeight: '600', color: PRIMARY_TEXT_COLOR, marginTop: 25, },
 });
-
 const localStyles = StyleSheet.create({
-    centered: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 30,
-    },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 30, },
     loadingText: { marginTop: 15, fontSize: 16, color: SECONDARY_TEXT_COLOR, },
     errorText: { marginTop: 15, fontSize: 16, color: ERROR_COLOR, textAlign: 'center', },
-    emptyCartSubText: {
-        fontSize: 14,
-        color: SECONDARY_TEXT_COLOR,
-        textAlign: 'center',
-        marginTop: 8,
-        marginBottom: 30,
-    },
-    shopNowButton: {
-        backgroundColor: ACCENT_COLOR_CHECKOUT,
-        paddingVertical: 14,
-        paddingHorizontal: 40,
-        borderRadius: 10,
-    },
+    emptyCartSubText: { fontSize: 14, color: SECONDARY_TEXT_COLOR, textAlign: 'center', marginTop: 8, marginBottom: 30, },
+    shopNowButton: { backgroundColor: ACCENT_COLOR_CHECKOUT, paddingVertical: 14, paddingHorizontal: 40, borderRadius: 10, },
     shopNowButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold', },
     badgeBase: { flexDirection: 'row', alignItems: 'center', borderRadius: 10, paddingVertical: 4, paddingHorizontal: 8, marginTop: 6, marginBottom: 4, alignSelf: 'flex-start', },
     bnplBadge: { backgroundColor: BNPL_BADGE_BG, },
@@ -573,20 +458,7 @@ const localStyles = StyleSheet.create({
     detailText: { fontSize: 12, color: BNPL_DETAIL_TEXT_COLOR, },
     detailValue: { fontWeight: '600', color: PRIMARY_TEXT_COLOR_ORIGINAL, marginLeft: 4, },
     unitPriceText: { fontSize: 12, color: SECONDARY_TEXT_COLOR, marginTop: 2, marginBottom: 6, },
-    totalRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        width: '100%',
-    },
-    totalLabelText: {
-        fontSize: 18,
-        color: PRIMARY_TEXT_COLOR,
-        fontWeight: '600',
-    },
-    totalValueText: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: PRICE_COLOR,
-    },
+    totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%', },
+    totalLabelText: { fontSize: 18, color: PRIMARY_TEXT_COLOR, fontWeight: '600', },
+    totalValueText: { fontSize: 18, fontWeight: 'bold', color: PRICE_COLOR, },
 });

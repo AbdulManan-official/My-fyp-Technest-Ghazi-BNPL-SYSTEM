@@ -5,13 +5,15 @@ import {
     Alert, Animated, Platform, SafeAreaView, ActivityIndicator
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
-import { MaterialIcons, Feather } from '@expo/vector-icons';
+// Import Ionicons for the cart icon
+import { MaterialIcons, Feather, Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getAuth } from 'firebase/auth';
 import {
     collection, query, where, getDocs, limit, orderBy, documentId,
-    doc, setDoc, updateDoc, arrayUnion, getDoc, serverTimestamp
+    doc, setDoc, updateDoc, arrayUnion, getDoc, serverTimestamp,
+    onSnapshot // Import onSnapshot for real-time cart count
 } from 'firebase/firestore';
 import { db } from '../../firebaseConfig'; // Ensure this path is correct
 
@@ -32,7 +34,11 @@ const BnplPlanNameColor = TextColorPrimary;
 const BnplPlanDetailColor = TextColorSecondary;
 const BnplPlanDetailIconColor = '#757575';
 const BnplPlanValueColor = TextColorPrimary;
-const ChatIconColor = '#616161';
+// Remove ChatIconColor as it's replaced
+// const ChatIconColor = '#616161'; // REMOVED
+const CartIconColor = '#616161'; // Color for the new Cart Icon
+const CartBadgeBackgroundColor = AccentColor; // Use AccentColor for badge
+const CartBadgeTextColor = '#FFFFFF';
 const BnplBadgeBg = '#FFF3E0';
 const BnplBadgeText = '#E65100';
 const CodBadgeBg = '#E3F2FD';
@@ -49,14 +55,13 @@ const PopupBgColor = '#333333';
 const PopupTextColor = '#FFFFFF';
 
 // --- Asset Placeholders ---
-// !! IMPORTANT: Make sure these paths are correct in your project !!
 const placeholderImage = require('../../assets/p3.jpg');
-const defaultUserProfileImage = 'https://www.w3schools.com/w3images/avatar2.png'; // <-- Make sure this exists!
+const defaultUserProfileImage = 'https://www.w3schools.com/w3images/avatar2.png';
 
 // --- Dimensions & Layout ---
 const { width: screenWidth } = Dimensions.get('window');
 const GALLERY_HEIGHT = screenWidth * 0.9;
-const MAX_INITIAL_REVIEWS = 3; // Number of reviews to show initially
+const MAX_INITIAL_REVIEWS = 3;
 const RELATED_PRODUCTS_LIMIT = 6;
 const CURRENCY_SYMBOL = 'RS';
 const GRID_PADDING_HORIZONTAL = 15;
@@ -64,7 +69,11 @@ const CARD_MARGIN_HORIZONTAL = 4;
 const NUM_COLUMNS = 2;
 const relatedCardWidth = (screenWidth - (GRID_PADDING_HORIZONTAL * 2) - (CARD_MARGIN_HORIZONTAL * NUM_COLUMNS * 2)) / NUM_COLUMNS;
 
+// --- Firestore Constants ---
+const CARTS_COLLECTION = 'Carts'; // Added for consistency
+
 // --- Helper Function for Date Formatting ---
+// ... (keep formatDate function as is) ...
 const formatDate = (date) => {
     if (!date || !(date instanceof Date)) {
         return null;
@@ -80,7 +89,6 @@ const formatDate = (date) => {
         console.error("Error formatting date:", e);
         return date.toISOString().split('T')[0]; // Fallback to ISO date part
     }
-    // For relative time ("2 weeks ago"), consider using a library like `date-fns`
 };
 
 // --- Main Component ---
@@ -88,6 +96,8 @@ export default function ProductDetailsScreen() {
     // --- Navigation & Route ---
     const route = useRoute();
     const navigation = useNavigation();
+    const auth = getAuth(); // Get auth instance
+    const user = auth.currentUser; // Get current user
 
     // --- State Variables ---
     const [product, setProduct] = useState(null);
@@ -102,13 +112,14 @@ export default function ProductDetailsScreen() {
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [selectedBnplPlan, setSelectedBnplPlan] = useState(null);
     const [actionType, setActionType] = useState(null); // 'addToCart' or 'buyNow'
-    const [isProcessingCart, setIsProcessingCart] = useState(false); // Generic processing flag for cart/buy actions
+    const [isProcessingCart, setIsProcessingCart] = useState(false);
     const [showAddedToCartPopup, setShowAddedToCartPopup] = useState(false);
     const popupOpacity = useRef(new Animated.Value(0)).current;
-
-    // State for Fetched Reviews (including user data)
     const [fetchedReviews, setFetchedReviews] = useState([]);
     const [isLoadingReviews, setIsLoadingReviews] = useState(true);
+
+    // *** ADDED State for Cart Item Count ***
+    const [cartItemCount, setCartItemCount] = useState(0);
     // --- End State Variables ---
 
     // --- Refs ---
@@ -120,6 +131,7 @@ export default function ProductDetailsScreen() {
     // --- Effects ---
 
     // Effect 1: Load Core Product Details & Plans
+    // ... (keep this useEffect as is) ...
     useEffect(() => {
         const initialProductFromRoute = route.params?.product ?? null;
         const productIdFromRoute = route.params?.productId ?? null;
@@ -262,10 +274,10 @@ export default function ProductDetailsScreen() {
             }
             // You could potentially cancel ongoing fetches here if needed, e.g., using AbortController
         };
-    }, [route.params?.product, route.params?.productId]); // Re-run ONLY if product/productId in route params changes
+    }, [route.params?.product, route.params?.productId]);
 
-
-    // Effect 2: Fetch Related Products (depends on product category and ID)
+    // Effect 2: Fetch Related Products
+    // ... (keep this useEffect as is) ...
     useEffect(() => {
         // Don't fetch if product isn't loaded, doesn't have an ID or category
         if (!product || !product.id || !product.category || isLoadingProduct) {
@@ -332,10 +344,10 @@ export default function ProductDetailsScreen() {
 
         fetchRelated();
 
-    }, [product?.id, product?.category, isLoadingProduct]); // Re-run if product ID, category changes, or product finishes loading
+    }, [product?.id, product?.category, isLoadingProduct]);
 
-
-    // Effect 3: Fetch Reviews for the Current Product & Associated User Data
+    // Effect 3: Fetch Reviews
+    // ... (keep this useEffect as is) ...
     useEffect(() => {
         // Don't fetch if we don't have a valid product ID
         if (!product?.id) {
@@ -466,10 +478,52 @@ export default function ProductDetailsScreen() {
 
         fetchReviewsAndUsers(); // Execute the async function
 
-    }, [product?.id]); // Dependency: Re-run this effect ONLY when the product ID changes
+    }, [product?.id]);
+
+    // *** ADDED Effect 4: Listen for Cart Updates ***
+    useEffect(() => {
+        if (user) {
+            const cartDocRef = doc(db, CARTS_COLLECTION, user.uid);
+            console.log(`Setting up cart listener for user: ${user.uid}`);
+
+            const unsubscribe = onSnapshot(cartDocRef, (docSnap) => {
+                let count = 0;
+                if (docSnap.exists()) {
+                    const items = docSnap.data()?.items;
+                    if (Array.isArray(items)) {
+                        // Calculate total quantity of all items
+                        count = items.reduce((sum, item) => {
+                            // Use quantity if it's a positive number, otherwise default to 1 (or 0 if preferred)
+                            const quantity = (typeof item.quantity === 'number' && item.quantity > 0) ? item.quantity : 1;
+                            return sum + quantity;
+                        }, 0);
+                    }
+                }
+                console.log(`Cart listener update: Item count set to ${count}`);
+                setCartItemCount(count);
+            }, (error) => {
+                console.error("Error listening to cart updates:", error);
+                // Optionally handle the error, e.g., set count to 0 or show a message
+                setCartItemCount(0);
+            });
+
+            // Cleanup function: Unsubscribe when the component unmounts or user changes
+            return () => {
+                console.log("Unsubscribing from cart listener.");
+                unsubscribe();
+            };
+        } else {
+            // User is logged out, reset count
+            console.log("User logged out, resetting cart count.");
+            setCartItemCount(0);
+            // No need to return an unsubscribe function as none was created
+            return undefined;
+        }
+    }, [user]); // Dependency on user: Re-run if user logs in/out
     // --- End Effects ---
 
     // --- Memos ---
+    // ... (keep all existing useMemo hooks as they are) ...
     // Memoize gallery items based on product media/image
     const galleryItems = useMemo(() => {
         if (!product || (!product.media && !product.image)) {
@@ -589,6 +643,7 @@ export default function ProductDetailsScreen() {
     // --- End Memos ---
 
     // --- Handlers ---
+    // ... (keep toggleWishlist, shareProduct, onViewableItemsChanged, handlePlanSelection, openPaymentModal) ...
     const toggleWishlist = () => {
         // Placeholder: Implement actual wishlist logic (e.g., update Firestore)
         setIsWishlisted(!isWishlisted);
@@ -621,14 +676,6 @@ export default function ProductDetailsScreen() {
     const onViewableItemsChanged = useRef(({ viewableItems }) => {
         if (viewableItems && viewableItems.length > 0 && viewableItems[0].index != null) {
             setActiveIndex(viewableItems[0].index);
-            // Pause other videos if one becomes viewable (optional)
-            // const currentVideoId = viewableItems[0].item.id;
-            // Object.keys(videoRefs.current).forEach(videoId => {
-            //     const videoRef = videoRefs.current[videoId];
-            //     if (videoRef && videoId !== currentVideoId) {
-            //         videoRef.pauseAsync();
-            //     }
-            // });
         }
     }).current;
     const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 50 }).current;
@@ -668,8 +715,8 @@ export default function ProductDetailsScreen() {
         console.log(`Payment modal opened for action: ${type}`);
     };
 
-    // Firestore Cart Logic (Handles adding/updating items in Firestore)
-    const updateFirestoreCart = async (cartItemDetails) => {
+      // Firestore Cart Logic (Handles adding/updating items in Firestore)
+      const updateFirestoreCart = async (cartItemDetails) => {
         const auth = getAuth();
         const user = auth.currentUser;
         if (!user) {
@@ -677,20 +724,19 @@ export default function ProductDetailsScreen() {
             return false; // Indicate failure
         }
 
-        // Validate essential cart item details
+        // Validate essential cart item details (Keep this validation)
         if (!cartItemDetails || !cartItemDetails.productId || typeof cartItemDetails.priceAtAddition !== 'number') {
             console.error("Invalid cart item data:", cartItemDetails);
             Alert.alert("Error", "Cannot add item to cart due to missing details.");
             return false;
         }
-        // Validate BNPL details if method is BNPL
         if (cartItemDetails.paymentMethod === 'BNPL' && (!cartItemDetails.bnplPlan || !cartItemDetails.bnplPlan.id)) {
             console.error("Missing BNPL plan details for BNPL cart item:", cartItemDetails);
             Alert.alert("Error", "Please select a valid BNPL plan.");
             return false;
         }
 
-        const cartDocRef = doc(db, "Carts", user.uid); // Document ID is user's UID
+        const cartDocRef = doc(db, CARTS_COLLECTION, user.uid); // Use constant
         console.log(`Attempting to update cart for user: ${user.uid}. Item: ${cartItemDetails.productId}, Method: ${cartItemDetails.paymentMethod}`);
 
         try {
@@ -698,6 +744,7 @@ export default function ProductDetailsScreen() {
 
             if (cartSnap.exists()) {
                 // --- Cart Exists: Update items array ---
+                console.log("Cart exists, attempting to update items.");
                 const cartData = cartSnap.data();
                 const items = cartData.items || [];
                 let itemUpdated = false;
@@ -709,9 +756,8 @@ export default function ProductDetailsScreen() {
                         item.productId === cartItemDetails.productId && item.paymentMethod === 'COD'
                     );
                     if (existingCodItemIndex > -1) {
-                        // Increment quantity for existing COD item
                         updatedItems = items.map((item, index) =>
-                            index === existingCodItemIndex ? { ...item, quantity: (item.quantity || 0) + 1 } : item
+                            index === existingCodItemIndex ? { ...item, quantity: (item.quantity || 1) + 1 } : item
                         );
                         itemUpdated = true;
                         console.log("Increased quantity for existing COD item.");
@@ -721,67 +767,75 @@ export default function ProductDetailsScreen() {
                     const exactBnplItemIndex = items.findIndex(item =>
                         item.productId === cartItemDetails.productId &&
                         item.paymentMethod === 'BNPL' &&
-                        item.bnplPlan?.id === planIdToAdd // Match specific plan
+                        item.bnplPlan?.id === planIdToAdd
                     );
                     if (exactBnplItemIndex > -1) {
-                        // Increment quantity for existing BNPL item with the SAME plan
                         updatedItems = items.map((item, index) =>
-                            index === exactBnplItemIndex ? { ...item, quantity: (item.quantity || 0) + 1 } : item
+                            index === exactBnplItemIndex ? { ...item, quantity: (item.quantity || 1) + 1 } : item
                         );
                         itemUpdated = true;
                         console.log("Increased quantity for existing BNPL item with same plan.");
                     } else {
-                         // Check if the product exists with ANY other BNPL plan
                          const anyOtherBnplItemExists = items.some(item =>
                              item.productId === cartItemDetails.productId && item.paymentMethod === 'BNPL'
                          );
                          if (anyOtherBnplItemExists) {
-                             // Prevent adding the same product with a different plan
                              Alert.alert(
                                  "Plan Conflict",
                                  `"${cartItemDetails.productName}" is already in your cart with a different installment plan. Please remove the existing item or adjust its plan.`
                              );
-                             return false; // Indicate failure due to conflict
+                             return false;
                          }
-                         // If no conflict, proceed to add as a new BNPL item (handled below)
                     }
                 }
 
-                // If item wasn't updated (it's new or BNPL without conflict), add it to the array
                 if (!itemUpdated) {
-                    updatedItems = [...items, cartItemDetails]; // Add the new item object
+                    // *** Add `addedAt` using client time when adding a NEW item to an EXISTING cart ***
+                    // You can choose serverTimestamp here if needed via arrayUnion if structure allows,
+                    // but client time is simpler and often sufficient.
+                    const newItem = { ...cartItemDetails, addedAt: new Date() }; // Using client time
+                    updatedItems = [...items, newItem];
                     console.log("Adding new item to existing cart.");
                 }
 
-                // Update Firestore document
+                // Update Firestore document using updateDoc
                 await updateDoc(cartDocRef, {
                     items: updatedItems,
-                    lastUpdated: serverTimestamp()
+                    lastUpdated: serverTimestamp() // Okay for top-level update
                 });
 
             } else {
                 // --- Cart Doesn't Exist: Create new cart ---
                 console.log("Creating new cart for user and adding first item.");
-                const initialCartItem = { ...cartItemDetails, addedAt: serverTimestamp() }; // Use server timestamp for first add
+
+                // *** FIX: Construct the item for the array *without* serverTimestamp() ***
+                // The cartItemDetails object passed in should NOT contain serverTimestamp() itself.
+                const itemForArray = {
+                     ...cartItemDetails,
+                     addedAt: new Date() // Use client timestamp for the first item's add time
+                };
+
                 await setDoc(cartDocRef, {
                     userId: user.uid,
-                    items: [initialCartItem], // Start with the new item
-                    createdAt: serverTimestamp(),
-                    lastUpdated: serverTimestamp()
+                    items: [itemForArray],           // Use the item prepared for the array
+                    createdAt: serverTimestamp(),   // OKAY: serverTimestamp() at top level
+                    lastUpdated: serverTimestamp()  // OKAY: serverTimestamp() at top level
                 });
             }
 
-            console.log("Cart update successful.");
+            console.log("Cart update/creation successful.");
             return true; // Indicate success
 
         } catch (error) {
             console.error("Firestore error updating/creating cart:", error);
-            Alert.alert("Cart Error", "Could not update your cart. Please check your connection and try again.");
+            // Provide a more specific error message if possible
+            Alert.alert("Cart Error", `Could not update your cart. ${error.message}`);
             return false; // Indicate failure
         }
     };
 
-    // Handler for showing the "Added to Cart" popup animation
+    // ... (keep triggerAddedToCartPopup, proceedDirectlyWithCOD_AddToCart, handleAddToCart, handleBuyNow) ...
+        // Handler for showing the "Added to Cart" popup animation
     const triggerAddedToCartPopup = () => {
         if (popupTimeoutRef.current) { clearTimeout(popupTimeoutRef.current); } // Clear existing timeout
         popupOpacity.setValue(0); // Reset opacity
@@ -933,14 +987,17 @@ export default function ProductDetailsScreen() {
         }
     };
 
-    // Placeholder for Chat button action
-    const handleChat = () => {
-        // Implement navigation or linking to your chat screen/service
-        console.log("Chat button pressed - Implement navigation/linking");
-        // Example: navigation.navigate('ChatSupport', { productId: product.id });
-        Alert.alert("Chat Feature", "Chat functionality is not yet implemented.");
+    // *** REMOVE handleChat function ***
+    // const handleChat = () => { ... }; // REMOVED
+
+    // *** ADDED handler for Cart Icon press ***
+    const handleGoToCart = () => {
+        console.log("Cart icon pressed - Navigating to CartScreen and requesting header hide");
+        // Pass a parameter to tell CartScreen to hide its header
+        navigation.navigate('CartScreen', { hideHeader: true });
     };
 
+    // ... (keep handleSeeMoreReviews, handleSeeLessReviews, handleProceedWithPayment) ...
     // Handlers for toggling review visibility
     const handleSeeMoreReviews = () => setShowAllReviews(true);
     const handleSeeLessReviews = () => setShowAllReviews(false);
@@ -1081,10 +1138,8 @@ export default function ProductDetailsScreen() {
     };
     // --- End Handlers ---
 
-
     // --- Render Functions ---
-
-    // Renders individual items in the top product gallery (Image or Video)
+    // ... (keep renderGalleryItem, renderTextPagination, renderPriceSection, renderBnplPlansSection, renderReviewCard, renderRelatedProductCard, renderRelatedProductsSection, renderPaymentModal) ...
     const renderGalleryItem = ({ item }) => {
         if (item.isPlaceholder || !item.url) {
             return <Image source={placeholderImage} style={styles.galleryItemImage} resizeMode="contain" />;
@@ -1528,10 +1583,6 @@ export default function ProductDetailsScreen() {
         const closeModal = () => {
             if (!isProcessingCart) {
                 setIsPaymentModalVisible(false);
-                // Optionally reset selections when closing manually
-                // setSelectedPaymentMethod(null);
-                // setSelectedBnplPlan(null);
-                // setActionType(null); // Keep action type if needed? Maybe reset here.
             }
         };
 
@@ -1650,10 +1701,9 @@ export default function ProductDetailsScreen() {
     };
     // --- End Render Functions ---
 
-
     // --- Loading / Error States ---
-    // State 1: Initial Product Loading
-    if (isLoadingProduct) {
+    // ... (keep loading/error states as is) ...
+     if (isLoadingProduct) {
         return (
             <SafeAreaView style={styles.safeArea}>
                 <StatusBar barStyle="dark-content" backgroundColor={AppBackgroundColor} />
@@ -1700,7 +1750,8 @@ export default function ProductDetailsScreen() {
                 keyboardShouldPersistTaps="handled" // Example for potential future input fields
             >
                 {/* Section 1: Product Gallery */}
-                <View style={styles.galleryWrapper}>
+                {/* ... (keep gallery section as is) ... */}
+                 <View style={styles.galleryWrapper}>
                     <FlatList
                         ref={flatListRef}
                         data={galleryItems}
@@ -1722,7 +1773,8 @@ export default function ProductDetailsScreen() {
                     </View>
                 </View>
 
-                {/* Section 2: Core Product Info (Name, Rating, Price, Actions) */}
+                {/* Section 2: Core Product Info */}
+                {/* ... (keep core info section as is) ... */}
                 <View style={styles.contentContainer}>
                     {/* Product Name */}
                     <Text style={styles.productName}>{product.name}</Text>
@@ -1769,6 +1821,7 @@ export default function ProductDetailsScreen() {
                     {renderBnplPlansSection()}
 
                     {/* Section 5: Reviews */}
+                    {/* ... (keep reviews section as is) ... */}
                     <View style={styles.reviewSectionWrapper}>
                         <Text style={styles.sectionTitle}>Reviews ({allReviews.length})</Text>
 
@@ -1809,35 +1862,45 @@ export default function ProductDetailsScreen() {
                     {/* End Reviews Section */}
                 </View>
 
-                {/* Section 6: Related Products (Conditional Render) */}
+                {/* Section 6: Related Products */}
                 {renderRelatedProductsSection()}
 
-                {/* Add padding at the bottom of the scroll view to ensure content isn't hidden by the button bar */}
+                {/* Bottom Padding */}
                 <View style={{height: 20}} />
 
             </ScrollView>
 
-            {/* Fixed Bottom Button Bar */}
+            {/* Fixed Bottom Button Bar *** MODIFIED *** */}
             <View style={styles.buttonContainer}>
-                {/* Chat Button */}
+                {/* Cart Icon Button (Replaces Chat) */}
                 <TouchableOpacity
-                    style={[styles.bottomButtonBase, styles.chatButton, isProcessingCart && styles.buttonDisabledGeneric]}
-                    onPress={handleChat}
+                    style={[styles.bottomButtonBase, styles.cartIconButton]} // Use new style
+                    onPress={handleGoToCart}
                     activeOpacity={0.7}
-                    disabled={isProcessingCart} // Disable if any cart/buy action is processing
+                    disabled={isProcessingCart} // Disable if other actions are processing
                 >
-                    <MaterialIcons name="support-agent" size={22} color={ChatIconColor} style={{ marginBottom: 2 }} />
-                    <Text style={[styles.buttonText, styles.chatButtonText]}>Chat</Text>
+                    {/* Container for Icon and Badge */}
+                    <View style={styles.cartIconContainer}>
+                        <Ionicons name="cart-outline" size={26} color={CartIconColor} />
+                        {/* Cart Badge - Renders only if count > 0 */}
+                        {cartItemCount > 0 && (
+                            <View style={styles.cartBadge}>
+                                <Text style={styles.cartBadgeText}>{cartItemCount}</Text>
+                            </View>
+                        )}
+                    </View>
+                    {/* Optional: Add Text below icon if desired
+                    <Text style={styles.cartIconText}>Cart</Text>
+                    */}
                 </TouchableOpacity>
 
-                {/* Add to Cart Button */}
+                {/* Add to Cart Button (Keep as is) */}
                 <TouchableOpacity
                     style={[styles.bottomButtonBase, styles.cartButton, isProcessingCart && styles.buttonDisabledGeneric]}
                     onPress={handleAddToCart}
                     activeOpacity={0.7}
-                    disabled={isProcessingCart} // Disable if processing
+                    disabled={isProcessingCart}
                 >
-                    {/* Show loader specifically if the actionType is 'addToCart' */}
                     {isProcessingCart && actionType === 'addToCart' ? (
                         <ActivityIndicator size="small" color={AccentColor} />
                     ) : (
@@ -1845,19 +1908,18 @@ export default function ProductDetailsScreen() {
                     )}
                 </TouchableOpacity>
 
-                {/* Buy Now Button */}
+                {/* Buy Now Button (Keep as is) */}
                 <TouchableOpacity
-                    style={[styles.buyButtonContainer, isProcessingCart && styles.buttonDisabledGeneric]} // Use container for gradient & shadow
+                    style={[styles.buyButtonContainer, isProcessingCart && styles.buttonDisabledGeneric]}
                     onPress={handleBuyNow}
-                    activeOpacity={0.8} // Opacity on the container
-                    disabled={isProcessingCart} // Disable if processing
+                    activeOpacity={0.8}
+                    disabled={isProcessingCart}
                 >
                     <LinearGradient
-                        colors={[AccentColor, AccentColor]} // Example gradient
-                        style={styles.buyButtonGradient} // Style applied to the gradient view
+                        colors={[AccentColor, AccentColor]}
+                        style={styles.buyButtonGradient}
                         start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
                     >
-                         {/* Show loader specifically if the actionType is 'buyNow' */}
                         {isProcessingCart && actionType === 'buyNow' ? (
                             <ActivityIndicator size="small" color="#FFFFFF" />
                         ) : (
@@ -1867,7 +1929,7 @@ export default function ProductDetailsScreen() {
                 </TouchableOpacity>
             </View>
 
-            {/* Payment Modal (Rendered conditionally by its own logic) */}
+            {/* Payment Modal */}
             {renderPaymentModal()}
 
         </SafeAreaView>
@@ -1880,11 +1942,11 @@ const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: AppBackgroundColor },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: AppBackgroundColor },
     errorText: { fontSize: 16, color: TextColorSecondary, textAlign: 'center', marginTop: 10 },
-    scrollContainer: { paddingBottom: 100, backgroundColor: AppBackgroundColor }, // Ensure padding for button bar
+    scrollContainer: { paddingBottom: 100, backgroundColor: AppBackgroundColor },
     // Gallery Styles
     galleryWrapper: { backgroundColor: AppBackgroundColor, position: 'relative' },
     galleryFlatList: { width: screenWidth, height: GALLERY_HEIGHT },
-    galleryItemImage: { width: screenWidth, height: GALLERY_HEIGHT, backgroundColor: PlaceholderBgColor }, // BG for loading/transparent images
+    galleryItemImage: { width: screenWidth, height: GALLERY_HEIGHT, backgroundColor: PlaceholderBgColor },
     galleryItemVideo: { width: screenWidth, height: GALLERY_HEIGHT, backgroundColor: '#000' },
     galleryOverlayContainer: { position: 'absolute', bottom: 15, right: 15 },
     paginationTextContainer: { backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12, paddingVertical: 4, paddingHorizontal: 10 },
@@ -1892,8 +1954,8 @@ const styles = StyleSheet.create({
     // Content Styles
     contentContainer: { paddingHorizontal: 20, paddingTop: 20 },
     productName: { fontSize: 24, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 8, lineHeight: 30 },
-    reviewSectionHeaderInline: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }, // Allow wrap if needed
-    reviewOverallRating: { flexDirection: 'row', alignItems: 'center', marginRight: 0, }, // Remove margin, handle spacing with separator
+    reviewSectionHeaderInline: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' },
+    reviewOverallRating: { flexDirection: 'row', alignItems: 'center', marginRight: 0, },
     reviewOverallRatingText: { fontSize: 14, fontWeight: 'bold', color: TextColorPrimary, marginLeft: 4, },
     soldCountText: { fontSize: 14, color: TextColorSecondary, },
     priceActionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, minHeight: 30 },
@@ -1902,7 +1964,7 @@ const styles = StyleSheet.create({
     originalPrice: { fontSize: 14, color: StrikethroughColor, textDecorationLine: 'line-through', marginLeft: 8 },
     noPriceText: { fontSize: 16, color: TextColorSecondary, fontStyle: 'italic' },
     rightActionButtonsGroup: { flexDirection: 'row', alignItems: 'center' },
-    iconButton: { padding: 5 }, // Add padding for easier tapping
+    iconButton: { padding: 5 },
     sectionTitle: { fontSize: 18, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 12, marginTop: 15 },
     descriptionText: { fontSize: 15, color: TextColorSecondary, lineHeight: 24, marginBottom: 25 },
     // BNPL Section Styles
@@ -1923,18 +1985,18 @@ const styles = StyleSheet.create({
     // Review Section Styles
     reviewSectionWrapper: { marginBottom: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: LightBorderColor },
     reviewCard: { paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F5F5F5' },
-    reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, }, // Row for image + info
+    reviewHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, },
     reviewerImage: { width: 40, height: 40, borderRadius: 20, marginRight: 12, backgroundColor: PlaceholderBgColor },
     reviewerInfo: { flex: 1, justifyContent: 'center' },
     reviewerName: { fontSize: 14, fontWeight: '600', color: TextColorPrimary, marginBottom: 2 },
     reviewDate: { fontSize: 12, color: TextColorSecondary },
-    reviewRatingStars: { flexDirection: 'row', marginBottom: 8, marginLeft: 52 }, // Indent stars (image width + margin)
-    reviewText: { fontSize: 14, color: TextColorPrimary, lineHeight: 20, marginLeft: 52 }, // Indent text
+    reviewRatingStars: { flexDirection: 'row', marginBottom: 8, marginLeft: 52 },
+    reviewText: { fontSize: 14, color: TextColorPrimary, lineHeight: 20, marginLeft: 52 },
     noReviewsText: { textAlign: 'center', color: TextColorSecondary, marginTop: 20, marginBottom: 20, fontStyle: 'italic' },
     seeMoreButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginTop: 10, borderTopWidth: 1, borderTopColor: LightBorderColor },
     seeMoreButtonText: { fontSize: 15, fontWeight: '500', color: AccentColor, marginRight: 5 },
     // Related Products Styles
-    relatedProductsContainer: { marginTop: 20, paddingTop: 20, paddingBottom: 0, borderTopWidth: 1, borderTopColor: '#E0E0E0', backgroundColor: RelatedSectionBgColor, }, // Remove bottom padding here
+    relatedProductsContainer: { marginTop: 20, paddingTop: 20, paddingBottom: 0, borderTopWidth: 1, borderTopColor: '#E0E0E0', backgroundColor: RelatedSectionBgColor, },
     relatedProductsTitle: { fontSize: 18, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 15, paddingHorizontal: GRID_PADDING_HORIZONTAL, },
     relatedLoadingContainer: { minHeight: 280, justifyContent: 'center', alignItems: 'center', marginVertical: 20, backgroundColor: RelatedSectionBgColor, paddingHorizontal: GRID_PADDING_HORIZONTAL, },
     relatedLoadingText: { marginTop: 10, fontSize: 14, color: TextColorSecondary, },
@@ -1960,29 +2022,112 @@ const styles = StyleSheet.create({
     relatedCardCodText: { fontSize: 11, color: CodBadgeText, marginLeft: 4, fontWeight: '600', },
     relatedCardBadgePlaceholder: { height: 24, width: '80%', }, // Placeholder if no badge
     relatedProductsBottomPadding: { height: 15, backgroundColor: RelatedSectionBgColor }, // Padding inside the related section BG
-    // Bottom Button Bar Styles
+
+    // --- Bottom Button Bar Styles (MODIFIED) ---
     buttonContainer: {
         position: 'absolute', bottom: 0, left: 0, right: 0,
         flexDirection: 'row', backgroundColor: AppBackgroundColor,
         paddingVertical: 8, paddingHorizontal: 8,
-        paddingBottom: Platform.OS === 'ios' ? 30 : 12, // Adjust padding for safe area bottom inset
+        paddingBottom: Platform.OS === 'ios' ? 30 : 12,
         borderTopWidth: 1, borderTopColor: LightBorderColor,
-        alignItems: 'stretch', // Ensure buttons fill height potentially
+        alignItems: 'stretch', // Ensure buttons fill height
     },
-    bottomButtonBase: { borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginHorizontal: 4, overflow: 'hidden', height: 50, // Fixed height for buttons
-     },
-    chatButton: { flex: 0.6, flexDirection: 'column', backgroundColor: '#FAFAFA', borderWidth: 1, borderColor: '#E0E0E0', paddingVertical: 4, // Adjust padding if needed
-     },
-    chatButtonText: { color: ChatIconColor, fontSize: 11, fontWeight: '600', marginTop: 2, },
-    cartButton: { flex: 1, flexDirection: 'row', backgroundColor: AppBackgroundColor, borderWidth: 1.5, borderColor: AccentColor, },
-    cartButtonText: { color: AccentColor, fontSize: 16, fontWeight: 'bold', },
-    buyButtonContainer: { flex: 1, borderRadius: 10, marginHorizontal: 4, // Use container for shadow/gradient
-         shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.20, shadowRadius: 3.84, elevation: 5, },
-    buyButtonGradient: { flex: 1, borderRadius: 10, alignItems: 'center', justifyContent: 'center', height: 50, // Ensure gradient fills container
-     },
-    buyButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold', },
-    buttonText: { textAlign: 'center', },
-    buttonDisabledGeneric: { opacity: 0.6, }, // Generic disabled style for all buttons
+    bottomButtonBase: {
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginHorizontal: 4,
+        overflow: 'hidden',
+        height: 50, // Fixed height for buttons
+    },
+    // NEW STYLE for the Cart Icon Button
+    cartIconButton: {
+        flex: 0.6, // Takes similar space as old chat button
+        backgroundColor: '#FAFAFA',
+        borderWidth: 1,
+        borderColor: '#E0E0E0',
+        // Removed paddingVertical from here, handled by cartIconContainer
+    },
+    // NEW STYLE for the container inside the cart button (for badge positioning)
+    cartIconContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative', // Needed for absolute positioning of the badge
+        width: '100%',
+        height: '100%',
+    },
+    // NEW STYLE for the Cart Badge
+    cartBadge: {
+        position: 'absolute',
+        top: 5, // Adjust position as needed
+        right: 8, // Adjust position as needed
+        backgroundColor: CartBadgeBackgroundColor,
+        borderRadius: 9, // Make it circular
+        minWidth: 18, // Ensure minimum size for single digit
+        height: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 5, // Add some padding for multi-digit numbers
+    },
+    // NEW STYLE for the text inside the badge
+    cartBadgeText: {
+        color: CartBadgeTextColor,
+        fontSize: 10,
+        fontWeight: 'bold',
+        textAlign: 'center',
+        lineHeight: 16, // Adjust line height for vertical centering if needed
+    },
+    // Optional: Style for text below cart icon if you add it
+    // cartIconText: {
+    //     color: CartIconColor,
+    //     fontSize: 11,
+    //     fontWeight: '600',
+    //     marginTop: 2,
+    // },
+    // END NEW STYLES for Cart Icon Button
+
+    cartButton: { // Keep Add to Cart button style
+        flex: 1,
+        flexDirection: 'row',
+        backgroundColor: AppBackgroundColor,
+        borderWidth: 1.5,
+        borderColor: AccentColor,
+    },
+    cartButtonText: { // Keep Add to Cart text style
+        color: AccentColor,
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    buyButtonContainer: { // Keep Buy Now container style
+        flex: 1,
+        borderRadius: 10,
+        marginHorizontal: 4,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.20,
+        shadowRadius: 3.84,
+        elevation: 5,
+    },
+    buyButtonGradient: { // Keep Buy Now gradient style
+        flex: 1,
+        borderRadius: 10,
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 50,
+    },
+    buyButtonText: { // Keep Buy Now text style
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: 'bold',
+    },
+    buttonText: { // Keep generic button text style
+        textAlign: 'center',
+    },
+    buttonDisabledGeneric: { // Keep disabled style
+        opacity: 0.6,
+    },
+    // --- End Bottom Button Bar Styles ---
+
     // Modal Styles
     modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0, 0, 0, 0.5)', },
     modalContainer: {

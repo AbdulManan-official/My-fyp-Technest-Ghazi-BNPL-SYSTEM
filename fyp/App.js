@@ -101,7 +101,7 @@ export default function App() {
           <Stack.Screen
             name="CartScreen"
             component={CartScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Your Cart' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'My Cart' })}
           />
           <Stack.Screen
             name="CheckoutScreen" // This screen might also need Stripe

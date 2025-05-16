@@ -11,7 +11,7 @@ import {
     ActivityIndicator,
     ScrollView,
     Alert,
-    RefreshControl
+    RefreshControl,Platform
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -314,7 +314,7 @@ const HomeScreen = () => {
 
             {/* Header */}
             <View style={styles.header}>
-                 <Image source={require('../../assets/cod.png')} style={styles.logo} />
+                 <Image source={require('../../assets/logoh.png')} style={styles.logo} />
                  <TouchableOpacity onPress={() => setIsDrawerOpen(true)}>
                     <View style={styles.profileIconContainer}>
                         {/* Show loader only during initial profile load/check */}
@@ -371,8 +371,8 @@ const HomeScreen = () => {
 // --- Styles --- (No changes needed in styles)
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: '#F5F5F5' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FF0000', paddingVertical: 10, paddingHorizontal: 15, height: 60, borderBottomLeftRadius: 15, borderBottomRightRadius: 15, },
-    logo: { width: 100, height: 35, resizeMode: 'contain' },
+    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FF0000', paddingVertical: 10, paddingHorizontal: 15, height: 63, borderBottomLeftRadius: 15, borderBottomRightRadius: 15, },
+    logo: { width: 70, height: 55, resizeMode: 'contain' },
     profileIconContainer: { width: 50, height: 50, borderRadius: 40, borderWidth: 1, borderColor: 'white', justifyContent: 'center', alignItems: 'center', backgroundColor: '#D32F2F', overflow: 'hidden', },
     profileImageStyle: { width: '100%', height: '100%', borderRadius: 20, },
     drawerOverlay: { backgroundColor: 'rgba(0, 0, 0, 0.3)', zIndex: 10, },

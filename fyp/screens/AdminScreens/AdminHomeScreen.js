@@ -313,7 +313,7 @@ export default function AdminHomeScreen({ navigation }) {
 
             {/* Header */}
             <View style={styles.headerBar}>
-                 <Image source={require('../../assets/pic2.jpg')} style={styles.logo} />
+                 <Image source={require('../../assets/logoh.png')} style={styles.logo} />
                 <TouchableOpacity onPress={() => setIsDrawerOpen(true)}>
                      <View style={styles.profileIconContainer}>
                         {loadingProfile ? ( <ActivityIndicator size="small" color="white" /> )
@@ -428,8 +428,8 @@ export default function AdminHomeScreen({ navigation }) {
 // --- Styles ---
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: '#F5F5F5', },
-    headerBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: REFRESH_CONTROL_COLOR, paddingVertical: 10, paddingHorizontal: 15, borderBottomLeftRadius: 15, borderBottomRightRadius: 15, paddingTop: Platform.OS === 'ios' ? 40 : 10, },
-    logo: { width: 90, height: 30, resizeMode: 'contain', },
+    headerBar:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FF0000', paddingVertical: 10, paddingHorizontal: 15, height: 63, borderBottomLeftRadius: 15, borderBottomRightRadius: 15, },
+    logo: { width: 70, height: 55, resizeMode: 'contain', },
     profileIconContainer: { width: 50, height: 50, borderRadius: 25, borderWidth: 1, borderColor: 'white', justifyContent: 'center', alignItems: 'center', backgroundColor: '#D32F2F', overflow: 'hidden', }, // Slightly darker red for contrast
     profileImageStyle: { width: '100%', height: '100%', borderRadius: 25, },
     drawerOverlay: { position: 'absolute', top: 0, bottom: 0, right: 0, left: 0, zIndex: 10, backgroundColor: 'rgba(0, 0, 0, 0.3)', },

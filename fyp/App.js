@@ -1,21 +1,21 @@
-// App.js - Integrated with StripeWrapper
+// App.js
 
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { TouchableOpacity, StatusBar, Platform } from 'react-native'; // Added Platform
+import { TouchableOpacity, StatusBar, Platform, View, Text, Image, StyleSheet } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 
 // --- Import the Stripe Wrapper ---
-import StripeWrapper from './Components/StripeWrapper'; // *** ADJUST PATH AS NEEDED ***
+import StripeWrapper from './Components/StripeWrapper';
 
-// --- Import Screens ---
+// --- Import Screens (ensure all your screen imports are here) ---
+// ... (All your screen imports remain the same)
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
-import BottomTabNavigation from './screens/userscreens/BottomTabNavigation'; // User Screens
-import AdminDashboardNavigation from './screens/AdminScreens/AdminDashboardNavigation'; // Admin Screens
-import HomeScreen from './screens/userscreens/HomeScreen';
+import BottomTabNavigation from './screens/userscreens/BottomTabNavigation';
+import AdminDashboardNavigation from './screens/AdminScreens/AdminDashboardNavigation';
 import ProductDetailsScreen from './screens/userscreens/ProductDetailsScreen';
 import CheckoutScreen from './screens/userscreens/CheckoutScreen';
 import CartScreen from './screens/userscreens/CartScreen';
@@ -27,7 +27,7 @@ import SupportChatScreen from './screens/userscreens/SupportChatScreen';
 import AboutUsScreen from './screens/userscreens/AboutUsScreen';
 import WishlistScreen from './screens/userscreens/WishlistScreen';
 import MyOrders from './screens/userscreens/MyOrders';
-import UserBNPLSchedules from './screens/userscreens/UserBNPLSchedules'; // Screen that uses Stripe
+import UserBNPLSchedules from './screens/userscreens/UserBNPLSchedules';
 import UserOrderDetailScreen from './screens/userscreens/UserOrderDetailScreen';
 import OrderConfirmationScreen from './screens/userscreens/OrderConfirmationScreen';
 import AddressEditScreen from './screens/userscreens/AddressEditScreen';
@@ -43,38 +43,51 @@ import BNPLPlansScreen from './screens/AdminScreens/BNPLPlansScreen';
 import UserSchedulesProgressDetails from './screens/AdminScreens/UserSchedulesProgressDetails';
 import UserVerificationDetailScreen from './screens/AdminScreens/UserVerificationDetailScreen';
 import SchedulesDetailScreen from './screens/userscreens/SchedulesDetailScreen';
+
+
 const Stack = createStackNavigator();
 
-// Your Existing Custom Header Component (Keep as is)
-const CustomHeader = ({ navigation, title }) => ({
+const placeholderAvatarUri = 'https://via.placeholder.com/40'; // Global placeholder
+
+// CustomHeader Component (Remains the same, capable of showing title and avatar)
+const CustomHeader = ({ navigation, title, avatarUrl }) => ({
   headerShown: true,
-  headerStyle: { backgroundColor: '#FF0000' }, // Use your AccentColor if defined globally
-  headerTitleStyle: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  headerStyle: { backgroundColor: '#FF0000', elevation: 0, shadowOpacity: 0, borderBottomWidth: 0 },
+  headerTintColor: 'white',
   headerLeft: () => (
     navigation.canGoBack() ? (
-      <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginLeft: 10, padding: 5 }}>
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.customHeaderLeftButton}>
         <MaterialIcons name="arrow-back" size={28} color="white" />
       </TouchableOpacity>
     ) : null
   ),
-  headerTitle: title,
-  headerTitleAlign: 'center', // Optional: Center title
+  headerTitleAlign: 'left',
+  headerTitle: () => (
+    <View style={styles.customHeaderTitleContainer}>
+      {avatarUrl && typeof avatarUrl === 'string' && avatarUrl.trim() !== '' ? (
+        <Image
+          source={{ uri: avatarUrl }}
+          style={styles.customHeaderAvatar}
+          defaultSource={{ uri: placeholderAvatarUri }}
+        />
+      ) : null}
+      <Text style={styles.customHeaderTitleText} numberOfLines={1}>
+        {title || 'Screen'}
+      </Text>
+    </View>
+  ),
 });
 
 export default function App() {
   return (
-    // Wrap the entire NavigationContainer with StripeWrapper
-    
     <StripeWrapper>
       <NavigationContainer>
-        {/* Use a consistent status bar color */}
         <StatusBar backgroundColor="#CC0000" barStyle="light-content" />
         <Stack.Navigator
           initialRouteName="Login"
-          // Default to no header, enable specifically using options={CustomHeader(...)}
           screenOptions={{ headerShown: false }}
         >
-          {/* Auth Screens */}
+          {/* ... (Other screens remain the same) ... */}
           <Stack.Screen name="Login" component={LoginScreen} />
           <Stack.Screen name="Signup" component={SignupScreen} />
           <Stack.Screen
@@ -83,16 +96,9 @@ export default function App() {
             options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password' })}
           />
 
-          {/* Main User Area (via Bottom Tabs) */}
           <Stack.Screen name="BottomTabs" component={BottomTabNavigation} />
-
-          {/* Main Admin Area (via Admin Tabs) */}
           <Stack.Screen name="AdminDashboardTabs" component={AdminDashboardNavigation} />
 
-          {/* Standalone Screens reachable from various places */}
-          {/* Product Flow */}
-          {/* HomeScreen might be part of BottomTabs, remove if so */}
-          {/* <Stack.Screen name="Home" component={HomeScreen} /> */}
           <Stack.Screen
             name="ProductDetails"
             component={ProductDetailsScreen}
@@ -104,7 +110,7 @@ export default function App() {
             options={({ navigation }) => CustomHeader({ navigation, title: 'My Cart' })}
           />
           <Stack.Screen
-            name="CheckoutScreen" // This screen might also need Stripe
+            name="CheckoutScreen"
             component={CheckoutScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout' })}
           />
@@ -113,8 +119,6 @@ export default function App() {
             component={OrderConfirmationScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Order Confirmation' })}
           />
-
-          {/* User Account/Info Screens */}
           <Stack.Screen
             name="UserProfileScreen"
             component={UserProfileScreen}
@@ -135,11 +139,22 @@ export default function App() {
             component={RulesRegulationScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Rules & Regulations' })}
           />
+
+          {/* --- MODIFIED SupportChatScreen options --- */}
+          {/* It will now use CustomHeader but SupportChatScreen.js will update title/avatar */}
           <Stack.Screen
             name="SupportChatScreen"
             component={SupportChatScreen}
-            options={{ headerShown: false }} // Chat usually full screen
+            options={({ navigation }) => CustomHeader({
+              navigation,
+              title: 'Support', // Default title
+              avatarUrl: null    // Default/no avatar, screen will update
+                                  // or use placeholderAvatarUri if you want one initially
+                                  // avatarUrl: placeholderAvatarUri
+            })}
           />
+          {/* --- END OF MODIFICATION --- */}
+
           <Stack.Screen
             name="AboutUsScreen"
             component={AboutUsScreen}
@@ -155,28 +170,31 @@ export default function App() {
             component={AddressEditScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Edit Delivery Address' })}
           />
-
-
-          {/* User Orders & Schedules */}
           <Stack.Screen
-            name="MyOrders" // Likely accessed from User Profile or Bottom Tabs
+            name="MyOrders"
             component={MyOrders}
-            options={{ headerShown: false }} // Assuming header is handled within MyOrders or Tabs
+            options={{ headerShown: false }}
           />
           <Stack.Screen
-            name="UserOrderDetailScreen" // Detail view for a specific user order
+            name="UserOrderDetailScreen"
             component={UserOrderDetailScreen}
-            options={({ route, navigation }) => CustomHeader({ navigation, title: `Order #${route.params?.order?.orderNumber || route.params?.orderId?.substring(0,6) || 'Details'}` })} // Dynamic title
+            options={({ route, navigation }) => CustomHeader({ navigation, title: `Order #${route.params?.order?.orderNumber || route.params?.orderId?.substring(0,6) || 'Details'}` })}
           />
            <Stack.Screen
-            name="UserBNPLSchedules" // The screen using Stripe
+            name="UserBNPLSchedules"
             component={UserBNPLSchedules}
-            // Decide if this needs the standard header or not
-            options={{ headerShown: false }} // Assuming header is handled within MyOrders or Tabs
+            options={{ headerShown: false }}
           />
-
-
-          {/* Admin Screens */}
+          <Stack.Screen
+            name="SchedulesDetailScreen"
+            component={SchedulesDetailScreen}
+            options={({ route, navigation }) => CustomHeader({
+              navigation,
+              title: route.params?.schedule?.orderNumber
+                     ? `Schedule #${route.params.schedule.orderNumber}`
+                     : 'Schedule Details'
+            })}
+          />
           <Stack.Screen
             name="AdminMessageScreen"
             component={AdminMessageScreen}
@@ -185,29 +203,33 @@ export default function App() {
           <Stack.Screen
             name="MessageDetailScreen"
             component={MessageDetailScreen}
-            options={{ headerShown: false }} // Chat usually full screen
+            options={({ route, navigation }) => CustomHeader({
+              navigation,
+              title: route.params?.recipientName || 'Chat Details',
+              avatarUrl: route.params?.recipientAvatar
+            })}
           />
           <Stack.Screen
-            name="AdminDetailOrderScreen" // Admin's Order Detail view
+            name="AdminDetailOrderScreen"
             component={AdminDetailOrderScreen}
-            options={({ route, navigation }) => CustomHeader({ navigation, title: `Order #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}` })} // Dynamic Title
+            options={({ route, navigation }) => CustomHeader({ navigation, title: `Order #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}` })}
           />
            <Stack.Screen
-            name="UserSchedulesProgressDetails" // Admin's Schedule Detail view
+            name="UserSchedulesProgressDetails"
             component={UserSchedulesProgressDetails}
-            options={({ route, navigation }) => CustomHeader({ navigation, title: `Schedule #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}` })} // Dynamic Title
+            options={({ route, navigation }) => CustomHeader({ navigation, title: `Schedule #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}` })}
           />
           <Stack.Screen
             name="UsersScreen"
             component={UsersScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Users Management' })}
           />
-          <Stack.Screen // Keep or remove this old verification detail?
+          <Stack.Screen
             name="UserDetail"
             component={UserDetailScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'User Verification Request' })}
           />
-          <Stack.Screen // New user verification detail screen
+          <Stack.Screen
             name="UserVerificationDetail"
             component={UserVerificationDetailScreen}
             options={({ route, navigation }) => CustomHeader({ navigation, title: route.params?.user?.name || 'User Details' })}
@@ -232,19 +254,32 @@ export default function App() {
             component={BNPLPlansScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Manage BNPL Plans' })}
           />
-           <Stack.Screen
-            name="SchedulesDetailScreen"
-            component={SchedulesDetailScreen}
-            options={({ route, navigation }) => CustomHeader({
-              navigation,
-              // Use 'schedule' from route params now
-              title: route.params?.schedule?.orderNumber
-                     ? `Schedule #${route.params.schedule.orderNumber}`
-                     : 'Schedule Details'
-          })}          />
-
         </Stack.Navigator>
       </NavigationContainer>
-    </StripeWrapper> // *** Close the StripeWrapper ***
+    </StripeWrapper>
   );
 }
+
+// Styles for CustomHeader (ensure these are correct)
+const styles = StyleSheet.create({
+  customHeaderLeftButton: {
+    paddingHorizontal: Platform.OS === 'ios' ? 10 : 15,
+    paddingVertical: 5,
+  },
+  customHeaderTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  customHeaderAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+    backgroundColor: '#E0E0E0',
+  },
+  customHeaderTitleText: {
+    color: 'white',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+});

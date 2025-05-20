@@ -1,9 +1,24 @@
 import React from 'react';
 import { View, Text, Image, StyleSheet, ScrollView } from 'react-native';
-import Icon from 'react-native-vector-icons/FontAwesome';
+import Icon from 'react-native-vector-icons/FontAwesome'; // Assuming you still use FontAwesome here
+
+// No need to define defaultProfileImage here anymore
 
 const UserDetailScreen = ({ route }) => {
-  const { user } = route.params;
+  // The user object received from UsersScreen will have user.profileImage
+  // already set to either the actual image or the default image.
+  const user = route.params?.user || { // Fallback for safety, though UsersScreen should always pass a user
+    name: 'Unknown User',
+    profileImage: 'https://www.w3schools.com/w3images/avatar2.png', // A hardcoded fallback if user is entirely missing
+    verificationStatus: 'No Status',
+    address: 'No Address Provided',
+    email: 'No Email Provided',
+    phone: 'No Phone Provided',
+  };
+
+  // console.log('UserDetailScreen received user:', JSON.stringify(user, null, 2));
+  // console.log('UserDetailScreen using profileImage:', user.profileImage);
+
 
   return (
     <ScrollView style={styles.container}>
@@ -11,8 +26,13 @@ const UserDetailScreen = ({ route }) => {
       <View style={styles.profileBackground}>
         {/* Profile Info */}
         <Image
-          source={{ uri: user.profileImage || 'https://via.placeholder.com/120' }}
+          source={{ uri: user.profileImage }} // Directly use the profileImage from props
           style={styles.profileImage}
+          onError={(e) => {
+            console.warn('UserDetailScreen Image loading error:', e.nativeEvent.error, 'URI:', user.profileImage);
+            // You could set a state here to show an *even more basic* local fallback
+            // if user.profileImage (even the default one) fails to load.
+          }}
         />
         <Text style={styles.name}>{user.name}</Text>
         <Text
@@ -64,7 +84,7 @@ const styles = StyleSheet.create({
     height: 110,
     borderRadius: 55,
     marginBottom: 10,
-    backgroundColor: '#eee',
+    // NO backgroundColor here to allow transparent placeholders or actual images to show correctly
   },
   name: {
     fontSize: 22,

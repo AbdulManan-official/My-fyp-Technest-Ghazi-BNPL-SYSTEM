@@ -22,7 +22,7 @@
       },
        "googleServicesFile": "./google-services.json",
       "windowSoftInputMode": "adjustResize",
-      "softwareKeyboardLayoutMode": "pan",
+      "softwareKeyboardLayoutMode": "adjustResize",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"

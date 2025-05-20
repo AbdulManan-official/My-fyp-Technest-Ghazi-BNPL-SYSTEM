@@ -208,6 +208,8 @@ export default function AdminDashboardNavigation() {
               marginBottom: 3,
             },
             headerShown: false,
+                    tabBarHideOnKeyboard: true,
+
           })}
         >
           <Tab.Screen name="Home" component={AdminHomeScreen} />

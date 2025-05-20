@@ -160,7 +160,7 @@ const UserVerificationScreen = () => { // Removed navigation prop, using hook in
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F5F5' },
   gradientBackground: {
-    paddingTop: Platform.OS === 'ios' ? 60 : 30,
+    paddingTop: Platform.OS === 'ios' ? 50 : 20,
     paddingBottom: 20,
     alignItems: 'center',
     borderBottomLeftRadius: 20,

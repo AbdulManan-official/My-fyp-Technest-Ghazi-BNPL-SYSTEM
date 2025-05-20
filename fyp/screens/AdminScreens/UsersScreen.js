@@ -4,91 +4,124 @@ import {
   Platform, Image, RefreshControl, Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
-import { collection, onSnapshot } from "firebase/firestore";
+// Import getDocs for one-time fetching
+import { collection, onSnapshot, getDocs } from "firebase/firestore";
 import { db } from '../../firebaseConfig';
 
 const { width, height } = Dimensions.get('window');
+const defaultProfileImage = 'https://www.w3schools.com/w3images/avatar2.png';
 
 const UsersScreen = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('All');
   const [loading, setLoading] = useState(true);
   const [users, setUsers] = useState([]);
-  const [refreshing, setRefreshing] = useState(false); // State for pull-to-refresh
+  const [refreshing, setRefreshing] = useState(false);
 
+  // Real-time listener for updates
   useEffect(() => {
-    setLoading(true);
+    // setLoading(true); // Not strictly needed here as initial state is true
+                      // and onRefresh will handle its own spinner.
     const unsubscribe = onSnapshot(collection(db, "Users"), (snapshot) => {
-      const usersList = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      const usersList = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          profileImage: (typeof data.profileImage === 'string' && data.profileImage.trim() !== '') ? data.profileImage : null,
+        };
+      });
       setUsers(usersList);
-      setLoading(false);
-      setRefreshing(false); // Stop refresh indicator when data arrives
+      setLoading(false);     // For initial load
+      // Important: Also stop refreshing spinner if a snapshot comes in while refreshing
+      // This handles cases where a real-time update occurs during a manual refresh.
+      setRefreshing(false);
     }, (error) => {
-        console.error("Error fetching users: ", error);
-        Alert.alert("Error", "Could not fetch users.");
+        console.error("Error fetching users with onSnapshot: ", error);
+        Alert.alert("Error", "Could not fetch users in real-time.");
         setLoading(false);
-        setRefreshing(false); // Stop refresh indicator on error
+        setRefreshing(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, []); // Empty dependency array: runs once on mount, cleans up on unmount
 
   const filteredUsers = useMemo(() => {
+    // ... (your existing filter logic - seems fine)
     const trimmedQuery = searchQuery?.trim()?.toLowerCase() ?? '';
-    const filtered = users.filter(user => {
+    return users.filter(user => {
       const userNameLower = user?.name?.toLowerCase() ?? '';
       const matchesSearch = !trimmedQuery || userNameLower.includes(trimmedQuery);
 
-      if (filter === 'All') return matchesSearch;
-      if (filter === 'Verified') return matchesSearch && user.verificationStatus === 'Verified';
+      if (!matchesSearch) return false;
+
+      if (filter === 'All') return true;
+      if (filter === 'Verified') return user.verificationStatus === 'Verified';
       if (filter === 'Unverified') {
-        const unverifiedStatuses = ['Pending', 'Not Applied', 'Rejected', null, undefined];
-        return matchesSearch && unverifiedStatuses.includes(user.verificationStatus);
+        const unverifiedStatuses = ['Pending', 'Not Applied', 'Rejected', null, undefined, ''];
+        return unverifiedStatuses.includes(user.verificationStatus);
       }
       return false;
     });
-    return filtered;
   }, [searchQuery, filter, users]);
 
-
-  // Function called when user pulls down the list
-  const onRefresh = useCallback(() => {
+  // Modified onRefresh to actively fetch data
+  const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    // The onSnapshot listener will automatically fetch latest data
-    // and setRefreshing(false) when it arrives.
-  }, []);
+    try {
+      const querySnapshot = await getDocs(collection(db, "Users")); // Use getDocs for one-time fetch
+      const usersList = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...data,
+          profileImage: (typeof data.profileImage === 'string' && data.profileImage.trim() !== '') ? data.profileImage : null,
+        };
+      });
+      setUsers(usersList); // Update users state
+      // Note: setLoading(false) is not needed here; this is for refresh, not initial load.
+      // The onSnapshot listener will also receive these updates if they are new,
+      // and its setRefreshing(false) will also run, which is fine.
+    } catch (error) {
+      console.error("Error refreshing users: ", error);
+      Alert.alert("Error", "Could not refresh users.");
+    } finally {
+      // Always ensure refreshing is set to false after the attempt
+      setRefreshing(false);
+    }
+  }, []); // db could be a dependency if it could change, but usually it's stable.
 
-
-  const renderUserItem = useCallback(({ item }) => (
-    <TouchableOpacity
-      onPress={() => navigation.navigate('UserDetail', { user: item })}
-      style={styles.userItem}
-      activeOpacity={0.7}
-    >
-      <Image
-        source={{ uri: item.profileImage || 'https://via.placeholder.com/50' }}
-        style={styles.profileImage}
-      />
-      <View style={styles.userInfo}>
-        <Text style={styles.userName} numberOfLines={1}>{item.name || 'Unnamed User'}</Text>
-        <Text style={[
-            styles.status,
-            item.verificationStatus === 'Verified' ? styles.verified : styles.unverified
-          ]}
-        >
-          {item.verificationStatus || 'Not Applied'}
-        </Text>
-      </View>
-       <Icon name="chevron-right" size={22} color="#B0BEC5" style={styles.chevronIcon}/>
-    </TouchableOpacity>
-  ), [navigation]);
-
+  const renderUserItem = useCallback(({ item }) => {
+    // ... (your existing renderUserItem - seems fine)
+    const imageUriForList = item.profileImage || defaultProfileImage;
+    return (
+      <TouchableOpacity
+        onPress={() => {
+          const userForDetailScreen = { ...item, profileImage: imageUriForList };
+          navigation.navigate('UserDetail', { user: userForDetailScreen });
+        }}
+        style={styles.userItem}
+        activeOpacity={0.7}
+      >
+        <Image
+          source={{ uri: imageUriForList }}
+          style={styles.profileImage}
+          onError={(e) => console.warn(`List Image load error for URI: ${imageUriForList} (User: ${item.name || item.id})`, e.nativeEvent.error)}
+        />
+        <View style={styles.userInfo}>
+          <Text style={styles.userName} numberOfLines={1}>{item.name || 'Unnamed User'}</Text>
+          <Text style={[styles.status, item.verificationStatus === 'Verified' ? styles.verified : styles.unverified]}>
+            {item.verificationStatus || 'Not Applied'}
+          </Text>
+        </View>
+         <Icon name="chevron-right" size={22} color="#B0BEC5" style={styles.chevronIcon}/>
+      </TouchableOpacity>
+    );
+  }, [navigation]);
 
   const renderListEmptyComponent = () => {
-      if (loading && !refreshing) { // Don't show empty component during initial load if not refreshing
+    // ... (your existing renderListEmptyComponent - seems fine)
+      if (loading && !refreshing) {
           return null;
       }
       if (filteredUsers.length === 0) {
@@ -96,14 +129,22 @@ const UsersScreen = ({ navigation }) => {
               return (
                   <View style={styles.emptyListContainer}>
                       <Icon name="account-search-outline" size={40} color="#ccc" />
-                      <Text style={styles.emptyListText}>No users match your criteria.</Text>
+                      <Text style={styles.emptyListText}>No users match your search or filter.</Text>
                   </View>
               );
-          } else {
+          } else if (users.length === 0) {
               return (
                   <View style={styles.emptyListContainer}>
                       <Icon name="account-group-outline" size={40} color="#ccc" />
-                      <Text style={styles.emptyListText}>No users found.</Text>
+                      <Text style={styles.emptyListText}>No users found in the system.</Text>
+                       <Text style={styles.emptyListSubText}>Pull down to refresh or add new users.</Text>
+                  </View>
+              );
+          } else {
+             return (
+                  <View style={styles.emptyListContainer}>
+                      <Icon name="account-multiple-outline" size={40} color="#ccc" />
+                      <Text style={styles.emptyListText}>No users to display with current criteria.</Text>
                   </View>
               );
           }
@@ -111,12 +152,11 @@ const UsersScreen = ({ navigation }) => {
       return null;
   };
 
-
   return (
     <View style={styles.container}>
       {/* --- HEADER --- */}
+      {/* ... (your existing header - seems fine) ... */}
       <View style={styles.headerContainer}>
-        {/* Search Bar */}
         <View style={styles.searchBar}>
            <Icon name="magnify" size={22} color="#FF0000" style={styles.searchIcon} />
            <TextInput
@@ -133,31 +173,21 @@ const UsersScreen = ({ navigation }) => {
              </TouchableOpacity>
            )}
         </View>
-
-        {/* Filter Buttons */}
         <View style={styles.filterContainer}>
-           {['All', 'Verified', 'Unverified'].map(item => (
+           {['All', 'Verified', 'Unverified'].map(filterItem => (
              <TouchableOpacity
-               key={item}
-               style={[
-                   styles.filterButton,
-                   filter === item && styles.activeFilter
-               ]}
-               onPress={() => setFilter(item)}
+               key={filterItem}
+               style={[ styles.filterButton, filter === filterItem && styles.activeFilter ]}
+               onPress={() => setFilter(filterItem)}
              >
-               <Text style={[
-                   styles.filterText,
-                   filter === item && styles.activeFilterText
-               ]}>{item}</Text>
+               <Text style={[ styles.filterText, filter === filterItem && styles.activeFilterText ]}>{filterItem}</Text>
              </TouchableOpacity>
            ))}
         </View>
       </View>
-      {/* --- END HEADER --- */}
-
 
       {/* --- LOADING / LIST DISPLAY --- */}
-      {loading && users.length === 0 && !refreshing ? ( // Show loader only on initial load when not refreshing
+      {loading && users.length === 0 && !refreshing ? (
         <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color="#FF0000" />
           <Text style={styles.loadingText}>Loading Users...</Text>
@@ -170,16 +200,14 @@ const UsersScreen = ({ navigation }) => {
           renderItem={renderUserItem}
           ListEmptyComponent={renderListEmptyComponent}
           showsVerticalScrollIndicator={false}
-          // This part enables pull-to-refresh
           refreshControl={
             <RefreshControl
-              refreshing={refreshing} // Controls the spinner visibility
-              onRefresh={onRefresh}   // Function to call when pulled down
-              colors={["#FF0000"]}  // Android spinner color
-              tintColor={"#FF0000"} // iOS spinner color
+              refreshing={refreshing}
+              onRefresh={onRefresh} // This now calls the modified onRefresh
+              colors={["#FF0000"]}
+              tintColor={"#FF0000"}
             />
           }
-          // Optional Performance Props
           removeClippedSubviews={Platform.OS === 'android'}
           initialNumToRender={10}
           maxToRenderPerBatch={5}
@@ -190,18 +218,20 @@ const UsersScreen = ({ navigation }) => {
   );
 };
 
-// --- STYLES ---
+// ... (your existing styles - seem fine)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F5', paddingTop:1,
+    backgroundColor: '#F5F5F5',
+    paddingTop: 1,
   },
   headerContainer: {
     backgroundColor: '#FF0000',
     paddingTop: Platform.OS === 'ios' ? 50 : 20,
     paddingBottom: 5,
-    paddingHorizontal: 15, borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20
+    paddingHorizontal: 15,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
   searchBar: {
     flexDirection: 'row',
@@ -223,6 +253,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     color: '#333',
+    paddingVertical: 0,
   },
   clearSearchButton: {
       padding: 5,
@@ -232,7 +263,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingBottom: 2,
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'space-around',
   },
   filterButton: {
     paddingVertical: 5,
@@ -241,10 +272,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF0000',
     borderWidth: 1,
     borderColor: '#FFFFFF',
-    marginRight: 10,
+    marginRight: 8,
     marginBottom: 10,
     justifyContent: 'center',
     alignItems: 'center',
+    minWidth: width / 3.8, // Make buttons somewhat equal width
+    textAlign: 'center',
   },
   filterText: {
     fontSize: 14,
@@ -272,7 +305,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
       paddingBottom: 20,
-      paddingHorizontal: 0,
       flexGrow: 1,
   },
   userItem: {
@@ -289,7 +321,6 @@ const styles = StyleSheet.create({
     height: 50,
     borderRadius: 25,
     marginRight: 15,
-    backgroundColor: '#E0E0E0',
   },
   userInfo: {
     flex: 1,
@@ -319,8 +350,9 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 30,
-    marginTop: height * 0.05, // Use imported height
+    paddingHorizontal: 30,
+    paddingVertical: 20,
+    marginTop: height * 0.05,
   },
   emptyListText: {
     fontSize: 17,
@@ -328,6 +360,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 15,
     fontWeight: '500',
+  },
+  emptyListSubText: {
+      fontSize: 14,
+      color: "#888",
+      textAlign: "center",
+      marginTop: 8,
   },
 });
 

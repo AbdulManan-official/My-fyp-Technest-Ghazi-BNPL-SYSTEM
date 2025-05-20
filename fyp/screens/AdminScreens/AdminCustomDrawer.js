@@ -8,95 +8,66 @@ import {
     Animated,
     Image,
     Alert,
-    ActivityIndicator
+    ActivityIndicator,
+    Platform // Added Platform
 } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { PanGestureHandler, State } from 'react-native-gesture-handler';
 
-// --- Start: Firebase & AsyncStorage Imports ---
 import { getAuth, signOut, onAuthStateChanged } from 'firebase/auth';
-// Import query and limit from firestore
 import { getFirestore, collection, query, limit, getDocs, doc, getDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// --- End: Firebase & AsyncStorage Imports ---
 
 const { width, height } = Dimensions.get('window');
 
-// --- Start: Define Cache Keys (Generic for THE Admin) ---
-const ADMIN_PROFILE_IMAGE_KEY = 'adminDrawerProfileImage'; // Generic key
-const ADMIN_NAME_KEY = 'adminDrawerName';           // Generic key
-const ADMIN_EMAIL_KEY = 'adminDrawerEmail';          // Generic key
+const ADMIN_PROFILE_IMAGE_KEY = 'adminDrawerProfileImage';
+const ADMIN_NAME_KEY = 'adminDrawerName';
+const ADMIN_EMAIL_KEY = 'adminDrawerEmail';
 const defaultProfileImageUri = 'https://www.w3schools.com/w3images/avatar2.png';
-// --- End: Define Cache Keys ---
-
 
 const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
     const translateX = useRef(new Animated.Value(width)).current;
-
-    // --- Start: State for Admin Data and Loading ---
     const [adminData, setAdminData] = useState({
         profileImage: defaultProfileImageUri,
         name: 'Admin',
         email: 'Loading...'
     });
     const [isLoading, setIsLoading] = useState(true);
-    // --- End: State for Admin Data and Loading ---
-
-    // --- Start: Firebase Initialization ---
     const auth = getAuth();
     const db = getFirestore();
-    // --- End: Firebase Initialization ---
 
-
-    // --- Start: useEffect for Auth State Changes and Data Fetching ---
     useEffect(() => {
-        // Function to fetch THE admin document data
+        // ... (your existing useEffect for fetching admin data - unchanged)
         const fetchAdminData = async () => {
             setIsLoading(true);
-
             try {
-                // Try loading from GENERIC cache first
                 const cachedProfile = await AsyncStorage.getItem(ADMIN_PROFILE_IMAGE_KEY);
                 const cachedName = await AsyncStorage.getItem(ADMIN_NAME_KEY);
                 const cachedEmail = await AsyncStorage.getItem(ADMIN_EMAIL_KEY);
-
                 let dataFromCache = false;
                 if (cachedProfile && cachedName && cachedEmail) {
                     setAdminData({ profileImage: cachedProfile, name: cachedName, email: cachedEmail });
                     dataFromCache = true;
-                    setIsLoading(false); // Show cached data immediately
+                    setIsLoading(false);
                 }
-
-                // Query the 'Admin' collection, limit to 1 document
-                console.log("Fetching admin document from Firestore...");
                 const adminQuery = query(collection(db, "Admin"), limit(1));
                 const querySnapshot = await getDocs(adminQuery);
-
                 if (!querySnapshot.empty) {
-                    const adminDoc = querySnapshot.docs[0]; // Get the first document
+                    const adminDoc = querySnapshot.docs[0];
                     const data = adminDoc.data();
-                    console.log("Admin document found:", adminDoc.id, data);
-
-                    // Extract data using the fields from your structure
                     const imageUrl = data.profileImage?.trim() ? data.profileImage : defaultProfileImageUri;
-                    const name = data.name || "Admin User"; // Use 'name' field
-                    const email = data.email || "No Email Provided"; // Use 'email' field
-
-                    // Update state if fetched data is different from cache or if no cache existed
+                    const name = data.name || "Admin User";
+                    const email = data.email || "No Email Provided";
                     if (!dataFromCache || imageUrl !== cachedProfile || name !== cachedName || email !== cachedEmail) {
                         setAdminData({ profileImage: imageUrl, name: name, email: email });
-                        // Update GENERIC cache with latest data
                         await AsyncStorage.setItem(ADMIN_PROFILE_IMAGE_KEY, imageUrl);
                         await AsyncStorage.setItem(ADMIN_NAME_KEY, name);
                         await AsyncStorage.setItem(ADMIN_EMAIL_KEY, email);
-                        console.log("Admin cache updated.");
                     }
                 } else {
-                    console.warn("No documents found in the 'Admin' collection. Using defaults.");
-                     if (!dataFromCache) { // Only set defaults if nothing was loaded from cache
+                     if (!dataFromCache) {
                         setAdminData({ profileImage: defaultProfileImageUri, name: "Admin", email: "Not Configured" });
                      }
-                    // Clear generic cache if no admin doc is configured in Firestore
                     await AsyncStorage.removeItem(ADMIN_PROFILE_IMAGE_KEY);
                     await AsyncStorage.removeItem(ADMIN_NAME_KEY);
                     await AsyncStorage.removeItem(ADMIN_EMAIL_KEY);
@@ -110,27 +81,18 @@ const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
                 setIsLoading(false);
             }
         };
-
-        // Listen for Auth state changes
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
-                // If a user is logged in (assumed to be an admin), fetch the admin data
                 fetchAdminData();
             } else {
-                // Admin is signed out, clear displayed admin data
                 setAdminData({ profileImage: defaultProfileImageUri, name: 'Admin', email: '' });
                 setIsLoading(false);
-                // Cache clearing happens explicitly on logout action
             }
         });
-
-        return () => unsubscribe(); // Cleanup listener
-
-    }, [auth, db]); // Dependencies
-    // --- End: useEffect for Auth State Changes ---
+        return () => unsubscribe();
+    }, [auth, db]);
 
 
-    // Animation and Close logic (no changes)
     useEffect(() => {
         Animated.timing(translateX, { toValue: 0, duration: 300, useNativeDriver: true }).start();
     }, [translateX]);
@@ -138,33 +100,33 @@ const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
     const closeDrawerWithAnimation = (callback) => {
         Animated.timing(translateX, { toValue: width, duration: 300, useNativeDriver: true })
             .start(() => {
-                closeDrawer();
-                if (callback && typeof callback === 'function') callback();
+                if (closeDrawer && typeof closeDrawer === 'function') {
+                    closeDrawer();
+                }
+                if (callback && typeof callback === 'function') {
+                    callback();
+                }
             });
     };
 
-    // --- Start: Updated handleLogout ---
     const handleLogout = () => {
+        // ... (your existing handleLogout - unchanged)
         Alert.alert(
             "Logout Confirmation",
-            "Do you want to proceed with logout?", // Simplified message
+            "Do you want to proceed with logout?",
             [
                 { text: "Cancel", style: "cancel" },
                 {
                     text: "Yes, Logout", onPress: async () => {
                         try {
                             await signOut(auth);
-                            // Clear GENERIC admin cache upon logout
                             await AsyncStorage.removeItem(ADMIN_PROFILE_IMAGE_KEY);
                             await AsyncStorage.removeItem(ADMIN_NAME_KEY);
                             await AsyncStorage.removeItem(ADMIN_EMAIL_KEY);
-                            console.log("Generic Admin cache cleared on logout.");
-
                             closeDrawerWithAnimation(() => navigation.replace('Login'));
                         } catch (error) {
                             console.error("Logout Error:", error);
-                            Alert.alert("Logout Failed", "An error occurred.");
-                            // Still attempt navigation even on error
+                            Alert.alert("Logout Failed", "An error occurred: " + error.message);
                             closeDrawerWithAnimation(() => navigation.replace('Login'));
                         }
                     }
@@ -172,59 +134,103 @@ const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
             ]
         );
     };
-    // --- End: Updated handleLogout ---
+
+    const handleProfilePress = () => {
+        navigation.navigate('AdminProfileScreen');
+        // DO NOT CALL closeDrawerWithAnimation()
+    };
+
+    const handleGenericItemPress = (route) => {
+        navigation.navigate(route);
+        // DO NOT CALL closeDrawerWithAnimation()
+    };
+
+    // This is the crucial part for stopping event propagation
+    // when interacting with the drawer content.
+    const onDrawerContentPress = (e) => {
+        // This function is called when the PanGestureHandler's child (Animated.View) is pressed.
+        // We don't want this press to propagate to the overlay if it's on an actual item.
+        // However, simply having TouchableOpacity items inside should typically handle this.
+        // If items are still being "clicked through", this is where we'd stop it.
+        // For now, we'll rely on the TouchableOpacity of the items themselves.
+        // If that fails, we might need e.stopPropagation() here IF this handler was on the
+        // Animated.View and if we could detect if the target was an item or empty space.
+        // But that's complex.
+    };
 
 
-    // --- JSX (Main structure remains similar, only Profile Section updated) ---
     return (
         <TouchableOpacity
             style={styles.overlay}
-            activeOpacity={1}
-            onPress={() => closeDrawerWithAnimation()}
+            activeOpacity={1} // Make sure it's fully opaque to catch taps
+            onPress={() => {
+                // This onPress is for the overlay itself.
+                // It should ONLY fire if the tap was NOT on the drawer content.
+                // If a drawer item (TouchableOpacity) is pressed, its onPress should fire,
+                // and the event should ideally not bubble up to this overlay's onPress.
+                closeDrawerWithAnimation();
+            }}
         >
+            {/*
+                The PanGestureHandler wraps the drawer.
+                The Animated.View is the drawer itself.
+                We need to make sure that taps on the *contents* of Animated.View
+                do not also trigger the overlay's onPress.
+            */}
             <PanGestureHandler
                 onHandlerStateChange={({ nativeEvent }) => {
-                     // Swipe LEFT to close (more common for right drawer):
-                     if (nativeEvent.state === State.END && nativeEvent.translationX < -50) {
-                       closeDrawerWithAnimation();
-                     }
+                    if (nativeEvent.state === State.END && nativeEvent.translationX < -50) {
+                        closeDrawerWithAnimation();
+                    }
                 }}>
-                <Animated.View style={[styles.drawerContainer, { transform: [{ translateX }] }]}>
+                <Animated.View
+                    style={[styles.drawerContainer, { transform: [{ translateX }] }]}
+                    // By NOT adding onStartShouldSetResponderCapture here,
+                    // we allow child TouchableOpacity components to handle their own presses.
+                    // If a tap occurs on this Animated.View but NOT on a child TouchableOpacity,
+                    // the event MIGHT bubble to the parent overlay's onPress.
+                    // This is often desired for "tap outside to close" on the actual drawer area.
+                    // BUT, if the overlay fills the screen, this becomes tricky.
 
+                    // A common pattern is to have the overlay be a separate, sibling view
+                    // that is only visible when the drawer is open.
+                    // And the drawer itself handles its own gestures.
+                    // However, let's try to make your current structure work.
+
+                    // Add a "dummy" onPress to the Animated.View itself.
+                    // This can sometimes help in "consuming" a press event that isn't handled
+                    // by any of its children, preventing it from reaching the main overlay.
+                    // This is a bit of a hack.
+                    onTouchEnd={(e) => {
+                        // This will fire if a touch ends on the drawer container itself,
+                        // not necessarily on an item.
+                        // We don't want to do anything here that closes the drawer,
+                        // as that's the job of the close button or the main overlay.
+                        // The goal is to see if this helps "block" the event from
+                        // reaching the main overlay if the touch was on the drawer.
+                        // e.stopPropagation(); // THIS MIGHT BE TOO AGGRESSIVE AND BREAK OVERLAY TAP
+                    }}
+                >
                     <TouchableOpacity style={styles.closeIcon} onPress={() => closeDrawerWithAnimation()}>
                         <Icon name="times-circle" size={28} color="#FF0000" />
                     </TouchableOpacity>
 
-                    {/* Updated Profile Section using adminData state */}
                     <TouchableOpacity
                         style={styles.profileSection}
-                        onPress={() => closeDrawerWithAnimation(() => navigation.navigate('AdminProfileScreen'))}
+                        onPress={handleProfilePress} // Uses specific handler
                     >
-                        {isLoading ? (
-                            <ActivityIndicator size="large" color="#FF0000" style={styles.profileImage} />
-                        ) : (
-                            <Image
-                                source={{ uri: adminData.profileImage || defaultProfileImageUri }}
-                                style={styles.profileImage}
-                            />
-                        )}
+                        {isLoading ? ( /* ... loading UI ... */ <ActivityIndicator size="large" color="#FF0000" style={styles.profileImage} />)
+                        : ( <Image source={{ uri: adminData.profileImage || defaultProfileImageUri }} style={styles.profileImage} /> )}
                         <View style={styles.profileInfo}>
-                            {isLoading && !adminData.name ? (
-                                 <Text style={styles.heading}>Loading...</Text>
-                            ) : (
-                                <Text style={styles.heading} numberOfLines={1}>{adminData.name}</Text>
-                            )}
-                             {isLoading && !adminData.email ? (
-                                 <Text style={styles.subHeading}> </Text>
-                             ) : (
-                                <Text style={styles.subHeading} numberOfLines={1}>{adminData.email}</Text>
-                             )}
+                            {isLoading && !adminData.name ? ( <Text style={styles.heading}>Loading...</Text> )
+                            : ( <Text style={styles.heading} numberOfLines={1}>{adminData.name}</Text> )}
+                            {isLoading && !adminData.email ? ( <Text style={styles.subHeading}> </Text> )
+                            : ( <Text style={styles.subHeading} numberOfLines={1}>{adminData.email}</Text> )}
                         </View>
                     </TouchableOpacity>
 
                     <View style={styles.divider} />
 
-                    {/* Drawer items remain the same */}
                     {[
                         { name: 'user', label: 'Profile', route: 'AdminProfileScreen' },
                         { name: 'list', label: 'Categories', route: 'AdminCategoryScreen' },
@@ -236,12 +242,10 @@ const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
                             key={index}
                             icon={item.name}
                             label={item.label}
-                            onPress={() => closeDrawerWithAnimation(() => navigation.navigate(item.route))}
+                            onPress={() => handleGenericItemPress(item.route)} // Use generic handler
                         />
                     ))}
 
-
-                    {/* Logout Button */}
                     <TouchableOpacity style={styles.drawerItem} onPress={handleLogout}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <Icon name="sign-out" size={22} color="#FF0000" />
@@ -249,14 +253,13 @@ const AdminCustomDrawer = ({ navigation, closeDrawer }) => {
                         </View>
                     </TouchableOpacity>
                     <View style={styles.divider} />
-
                 </Animated.View>
             </PanGestureHandler>
         </TouchableOpacity>
     );
 };
 
-// Drawer Item Component (no changes)
+// DrawerItem component remains the same. Its TouchableOpacity should handle its own press.
 const DrawerItem = ({ icon, label, onPress }) => (
     <TouchableOpacity style={styles.drawerItem} onPress={onPress}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -266,7 +269,7 @@ const DrawerItem = ({ icon, label, onPress }) => (
     </TouchableOpacity>
 );
 
-// Styles (no changes needed from previous version)
+// Styles remain the same
 const styles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)' },
     drawerContainer: { position: 'absolute', top: 0, right: 0, width: width * 0.75, height: '100%', backgroundColor: '#FFF', paddingTop: 40, paddingBottom: 20, paddingHorizontal: 15, shadowColor: '#000', shadowOffset: { width: -4, height: 0 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 8, borderTopLeftRadius: 15, borderBottomLeftRadius: 15, },

@@ -13,7 +13,7 @@ import { getAuth } from 'firebase/auth';
 import {
     collection, query, where, getDocs, limit, orderBy, documentId,
     doc, setDoc, updateDoc, arrayUnion, getDoc, serverTimestamp,
-    onSnapshot // Import onSnapshot for real-time cart count
+    onSnapshot , increment // Import onSnapshot for real-time cart count
 } from 'firebase/firestore';
 import { db } from '../../firebaseConfig'; // Ensure this path is correct
 
@@ -520,6 +520,30 @@ export default function ProductDetailsScreen() {
             return undefined;
         }
     }, [user]); // Dependency on user: Re-run if user logs in/out
+    useEffect(() => {
+        // Ensure the product is fully loaded, has an ID, and we are not in the loading state.
+        // This prevents multiple increments or increments on failed loads.
+        if (product && product.id && !isLoadingProduct) {
+            const incrementProductView = async () => {
+                const productRef = doc(db, 'Products', product.id);
+                try {
+                    // Atomically increment the viewCount field.
+                    // If 'viewCount' doesn't exist, Firestore creates it and sets it to 1.
+                    await updateDoc(productRef, {
+                        viewCount: increment(1)
+                        // Optionally, update a lastViewedAt timestamp:
+                        // lastViewedAt: serverTimestamp()
+                    });
+                    console.log(`View count incremented for product ID: ${product.id}`);
+                } catch (error) {
+                    console.error("Error incrementing product view count:", error);
+                    // This is often a non-critical error, so just logging might be sufficient.
+                }
+            };
+
+            incrementProductView();
+        }
+    }, [product, isLoadingProduct]);
     // --- End Effects ---
 
     // --- Memos ---

@@ -1,3 +1,6 @@
+// SearchScreen.js
+// (CORRECTED - Render helpers correctly scoped, includes all features)
+
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
     View,
@@ -22,55 +25,55 @@ import { useNavigation } from "@react-navigation/native";
 import { collection, query, getDocs, limit, orderBy, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebaseConfig';
 
+import { calculateTopTrendingFromList } from '../../Components/trendingProductsUtil';
+
 const { width, height } = Dimensions.get("window");
 const CARD_MARGIN = 5;
 const GRID_PADDING = 10;
 const NUM_COLUMNS = 2;
 
-// Firestore Collections
 const PRODUCTS_COLLECTION = 'Products';
 const BNPL_PLANS_COLLECTION = 'BNPL_plans';
 const CATEGORIES_COLLECTION = 'Category';
 
-// Placeholder Image
 const placeholderImage = require('../../assets/p3.jpg');
-
-// Currency Symbol
 const CURRENCY_SYMBOL = 'RS';
 
-// Default 'All' category object
 const allCategoryObject = { id: "All", name: "All" };
+const trendingCategoryObject = { id: "Trending", name: "Trending" };
 
 export default function SearchScreen() {
-    const navigation = useNavigation();
+    const navigation = useNavigation(); // useNavigation hook at the top level of the component
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState(allCategoryObject.id);
-    const [allProducts, setAllProducts] = useState([]);
-    // ** State to hold ALL categories fetched from DB (for name lookup) **
-    const [allFetchedCategories, setAllFetchedCategories] = useState([allCategoryObject]);
-    // ** State to hold ONLY categories with products, for DISPLAYING buttons **
-    const [displayCategories, setDisplayCategories] = useState([allCategoryObject]);
+    const [allProductsMasterList, setAllProductsMasterList] = useState([]);
+    
+    const [allFetchedCategories, setAllFetchedCategories] = useState([]);
+    const [displayCategories, setDisplayCategories] = useState([allCategoryObject, trendingCategoryObject]); 
+
+    const [trendingProductList, setTrendingProductList] = useState([]);
+
     const [loadingProducts, setLoadingProducts] = useState(true);
     const [loadingCategories, setLoadingCategories] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState(null);
 
-    // --- Fetch ALL Categories Initially ---
     const fetchAllCategories = useCallback(async () => {
-        // Only set loading true on initial mount
-        // setLoadingCategories(true);
+        console.log("[SearchScreen] Fetching all categories...");
+        setLoadingCategories(true);
         try {
-            const querySnapshot = await getDocs(collection(db, CATEGORIES_COLLECTION));
+            const q = query(collection(db, CATEGORIES_COLLECTION), orderBy("categoryName"));
+            const querySnapshot = await getDocs(q);
             const categoriesData = querySnapshot.docs.map(doc => ({
                 id: doc.id,
                 name: doc.data().categoryName || `Unnamed (${doc.id.substring(0,4)})`
-            })).sort((a,b) => a.name.localeCompare(b.name));
-            setAllFetchedCategories([allCategoryObject, ...categoriesData]); // Store ALL possibilities
-        } catch (error) {
-            console.error("Error fetching categories: ", error);
-            setAllFetchedCategories([allCategoryObject]); // Fallback
+            }));
+            setAllFetchedCategories(categoriesData);
+        } catch (fetchCategoriesError) {
+            console.error("[SearchScreen] Error fetching categories: ", fetchCategoriesError);
+            setError("Could not load category filters.");
+            setAllFetchedCategories([]);
         } finally {
-             // Indicate categories are fetched (or fetch failed)
             setLoadingCategories(false);
         }
     }, []);
@@ -79,150 +82,91 @@ export default function SearchScreen() {
         fetchAllCategories();
     }, [fetchAllCategories]);
 
-    // --- Fetch Products and Determine ACTIVE Display Categories ---
-    const fetchProductsAndDetermineDisplayCategories = useCallback(async (isRefreshing = false) => {
+    const fetchProductsAndRelatedData = useCallback(async (isRefreshing = false) => {
         if (!isRefreshing) { setLoadingProducts(true); }
+        else { console.log("[SearchScreen] Product refresh triggered."); }
         setError(null);
-        console.log('Fetching products...');
+        
         try {
             const productsRef = collection(db, PRODUCTS_COLLECTION);
-            const q = query(productsRef, orderBy('createdAt', 'desc'), limit(100)); // Fetch more to find categories
+            const q = query(productsRef, orderBy('createdAt', 'desc'), limit(150)); 
             const productSnapshot = await getDocs(q);
-            console.log(`Fetched ${productSnapshot.docs.length} product documents.`);
-
-            const activeCategoryIds = new Set(); // Track category IDs present in products
-
-            // Process Products (including BNPL) & Collect Active Category IDs
+            const activeCategoryIdsInProducts = new Set();
             const processedProducts = await Promise.all(
                  productSnapshot.docs.map(async (docSnapshot) => {
                     const data = docSnapshot.data();
-                    const categoryId = data.category; // *** Assumes this field holds the Category ID ***
-
-                    // Add category ID to the Set if it exists and is valid
-                    if (categoryId && typeof categoryId === 'string' && categoryId !== 'Uncategorized') {
-                        activeCategoryIds.add(categoryId);
+                    const categoryId = data.category; 
+                    if (categoryId && typeof categoryId === 'string' && categoryId.toLowerCase() !== 'uncategorized') {
+                        activeCategoryIdsInProducts.add(categoryId);
                     }
-                    // ... (rest of product processing logic remains the same) ...
                      const productBase = {
-                        id: docSnapshot.id,
-                        name: data.name || 'Unnamed Product',
-                        originalPrice: data.originalPrice,
-                        discountedPrice: data.discountedPrice,
-                        image: data.media?.images?.[0] || data.image || null,
-                        description: data.description || '',
-                        paymentOption: data.paymentOption || { COD: false, BNPL: false },
-                        BNPLPlanIDs: Array.isArray(data.BNPLPlans) ? data.BNPLPlans.filter(id => typeof id === 'string' && id.trim() !== '') : [],
-                        media: data.media,
-                        category: categoryId || 'Uncategorized',
-                        createdAt: data.createdAt,
-                        bnplAvailable: data.paymentOption?.BNPL === true,
-                        codAvailable: data.paymentOption?.COD === true,
-                        ...data
+                        id: docSnapshot.id, name: data.name || 'Unnamed Product', originalPrice: data.originalPrice, discountedPrice: data.discountedPrice, image: data.media?.images?.[0] || data.image || null, description: data.description || '', paymentOption: data.paymentOption || { COD: false, BNPL: false }, BNPLPlanIDs: Array.isArray(data.BNPLPlans) ? data.BNPLPlans.filter(id => typeof id === 'string' && id.trim() !== '') : (Array.isArray(data.BNPLPlanIDs) ? data.BNPLPlanIDs.filter(id => typeof id === 'string' && id.trim() !== '') : []), media: data.media, category: categoryId || 'Uncategorized', createdAt: data.createdAt, salesCount: data.salesCount || 0, viewCount: data.viewCount || 0, reviewCount: data.reviewCount || 0, totalRatingSum: data.totalRatingSum || 0, bnplAvailable: data.paymentOption?.BNPL === true, codAvailable: data.paymentOption?.COD === true, ...data
                     };
                     if (productBase.bnplAvailable && productBase.BNPLPlanIDs.length > 0) {
                          try {
-                            const planPromises = productBase.BNPLPlanIDs.map(planId => {
-                                if (!planId) return Promise.resolve(null);
-                                const planRef = doc(db, BNPL_PLANS_COLLECTION, planId.trim());
-                                return getDoc(planRef);
-                            });
+                            const planPromises = productBase.BNPLPlanIDs.map(planId => { if (!planId) return Promise.resolve(null); const planRef = doc(db, BNPL_PLANS_COLLECTION, planId.trim()); return getDoc(planRef); });
                             const planSnapshots = await Promise.all(planPromises);
-                            const detailedPlans = planSnapshots
-                                .map(snap => snap?.exists() ? { id: snap.id, ...snap.data() } : null)
-                                .filter(plan => plan !== null);
+                            const detailedPlans = planSnapshots.map(snap => snap?.exists() ? { id: snap.id, ...snap.data() } : null).filter(plan => plan !== null);
                             return { ...productBase, BNPLPlans: detailedPlans, BNPLPlanIDs: undefined };
-                         } catch (planError) {
-                            console.error(`Error fetching BNPL plans for product ${productBase.id}:`, planError);
-                            return { ...productBase, BNPLPlans: [], BNPLPlanIDs: undefined };
-                         }
+                         } catch (planError) { console.error(`Error fetching BNPL plans for product ${productBase.id}:`, planError); return { ...productBase, BNPLPlans: [], BNPLPlanIDs: undefined }; }
                     }
                     return { ...productBase, BNPLPlans: [], BNPLPlanIDs: undefined };
                 })
             );
 
-            setAllProducts(processedProducts); // Set products state
+            setAllProductsMasterList(processedProducts);
+            const topTrending = calculateTopTrendingFromList(processedProducts);
+            setTrendingProductList(topTrending);
 
-            // --- Filter All Fetched Categories based on Active IDs ---
-            console.log("All fetched categories:", allFetchedCategories);
-            console.log("Active category IDs from products:", activeCategoryIds);
-
-            // Filter the *complete* list of categories (allFetchedCategories)
-            // Keep only 'All' and those whose ID is present in the activeCategoryIds Set
-            const activeDisplayCategories = allFetchedCategories.filter(category =>
-                category.id === 'All' || activeCategoryIds.has(category.id)
+            const activeDisplayCategoriesFromProducts = allFetchedCategories.filter(category =>
+                activeCategoryIdsInProducts.has(category.id)
             );
-
-            setDisplayCategories(activeDisplayCategories); // Set the categories to actually display
-            console.log("Final categories to display:", activeDisplayCategories);
-
-             // Reset selected category if the currently selected one is no longer active
-            if (selectedCategory !== 'All' && !activeCategoryIds.has(selectedCategory)) {
-                console.log(`Selected category ${selectedCategory} no longer has products, resetting to 'All'.`);
+            setDisplayCategories([ allCategoryObject, trendingCategoryObject, ...activeDisplayCategoriesFromProducts ]);
+            
+            if (selectedCategory !== 'All' && selectedCategory !== 'Trending' && !activeCategoryIdsInProducts.has(selectedCategory)) {
                 setSelectedCategory('All');
             }
-
         } catch (err) {
-            console.error("Error fetching products: ", err);
-            setError("Failed to load products. Please pull down to refresh.");
-            setAllProducts([]);
-            setDisplayCategories([allCategoryObject]); // Reset display categories on error
+            console.error("[SearchScreen] Error fetching products: ", err);
+            setError("Failed to load products. Please try again.");
+            setAllProductsMasterList([]); setTrendingProductList([]);
+            if(allFetchedCategories.length === 0) { setDisplayCategories([allCategoryObject, trendingCategoryObject]); }
         } finally {
-            setLoadingProducts(false);
-            setRefreshing(false);
-            // We know category list generation is also done here
+            setLoadingProducts(false); setRefreshing(false);
         }
-    // *** Depend on allFetchedCategories being ready ***
     }, [refreshing, allFetchedCategories]);
 
     useEffect(() => {
-        // Only run the combined fetch *after* the initial category list has been fetched
-        if (!loadingCategories) {
-            fetchProductsAndDetermineDisplayCategories();
-        }
-    // *** Trigger this effect when categories OR the fetch function changes ***
-    }, [loadingCategories, fetchProductsAndDetermineDisplayCategories]);
+        if (!loadingCategories) { fetchProductsAndRelatedData(); }
+    }, [loadingCategories, fetchProductsAndRelatedData]);
 
-    // --- Memoized Filtering Logic (Compares Category ID) ---
     const filteredProducts = useMemo(() => {
         const trimmedQuery = searchQuery?.trim()?.toLowerCase() ?? '';
-
-        return allProducts.filter(product => {
+        let sourceProductList = [];
+        if (selectedCategory === trendingCategoryObject.id) { sourceProductList = trendingProductList; }
+        else if (selectedCategory === allCategoryObject.id) { sourceProductList = allProductsMasterList; }
+        else { sourceProductList = allProductsMasterList.filter(product => product.category === selectedCategory); }
+        if (!trimmedQuery) { return sourceProductList; }
+        return sourceProductList.filter(product => {
             const productNameLower = product?.name?.toLowerCase() ?? '';
             const productDescLower = product?.description?.toLowerCase() ?? '';
-            // *** Assumes product.category holds the Category ID ***
-            const productCategoryId = product?.category;
-
-            const matchesSearch = !trimmedQuery ||
-                productNameLower.includes(trimmedQuery) ||
-                productDescLower.includes(trimmedQuery);
-
-            // Compare product's category ID with the selected category ID state
-            const matchesCategory = selectedCategory === 'All' ||
-                                   productCategoryId === selectedCategory;
-
-            return matchesSearch && matchesCategory;
+            return productNameLower.includes(trimmedQuery) || productDescLower.includes(trimmedQuery);
         });
-    }, [allProducts, searchQuery, selectedCategory]); // Remove categories dependency
+    }, [allProductsMasterList, trendingProductList, searchQuery, selectedCategory]);
 
-
-    // --- Pull to refresh ---
     const onRefresh = useCallback(async () => {
-        console.log("Refreshing data...");
-        setRefreshing(true); // This triggers the fetchProductsAndDetermineDisplayCategories useEffect
-        // Consider if fetchAllCategories needs to be called on refresh
-        // If categories change rarely, maybe not. If they change often, call it.
-        // await fetchAllCategories();
-    }, []); // Removed dependencies, refresh state handles trigger
+        console.log("[SearchScreen] Refresh initiated...");
+        setRefreshing(true);
+        await fetchAllCategories(); 
+    }, [fetchAllCategories]);
 
-    // --- Event Handlers ---
     const onSearchInputChange = (text) => { setSearchQuery(text); };
     const clearSearch = () => { setSearchQuery(''); };
     const onFilterCategoryChange = (categoryId) => { setSelectedCategory(categoryId); };
 
-    // --- Render Product Card (Keep unchanged) ---
+    // --- RENDER HELPER FUNCTIONS ARE NOW INSIDE THE COMPONENT ---
     const renderProductCard = ({ item }) => {
-        // ... (renderProductCard code remains the same) ...
-         const hasDiscount = typeof item.discountedPrice === 'number' && typeof item.originalPrice === 'number' && item.discountedPrice < item.originalPrice;
+        const hasDiscount = typeof item.discountedPrice === 'number' && typeof item.originalPrice === 'number' && item.discountedPrice < item.originalPrice;
         const displayOriginalPrice = typeof item.originalPrice === 'number' ? `${CURRENCY_SYMBOL} ${item.originalPrice.toFixed(0)}` : null;
         const displayDiscountedPrice = typeof item.discountedPrice === 'number' ? `${CURRENCY_SYMBOL} ${item.discountedPrice.toFixed(0)}` : null;
         const showBnplBadge = item.bnplAvailable === true;
@@ -240,7 +184,7 @@ export default function SearchScreen() {
                     {hasDiscount && displayOriginalPrice && (<Text style={[styles.productPrice, styles.strikethroughPrice]}>{displayOriginalPrice}</Text>)}
                     {finalPriceString ? (<Text style={styles.discountedPrice}>{finalPriceString}</Text>) : (<View style={{ height: 20 }} />)}
                 </View>
-                 {item.description ? (<Text style={styles.productDescription} numberOfLines={2} ellipsizeMode="tail">{item.description}</Text>) : <View style={{height: 28}}/> }
+                 {item.description ? (<Text style={styles.productDescription} numberOfLines={2} ellipsizeMode="tail">{item.description}</Text>) : <View style={{height: styles.productDescription.fontSize * 2 * 1.2 || 28}}/> }
                 {showBnplBadge ? (<View style={styles.bnplBadge}><MaterialIcons name="schedule" size={14} color="#1565C0" /><Text style={styles.bnplText}>BNPL Available</Text></View>)
                  : showCodBadge ? (<View style={styles.codBadge}><MaterialIcons name="local-shipping" size={14} color="#EF6C00" /><Text style={styles.codText}>COD Available</Text></View>)
                  : (<View style={{ height: 24 }} />)}
@@ -248,52 +192,39 @@ export default function SearchScreen() {
         );
     };
 
-    // --- Render Loading/Empty/Error States ---
     const renderListEmptyComponent = () => {
-        if (loadingProducts && allProducts.length === 0) return null;
-        if (!loadingProducts && error && allProducts.length === 0) return null;
-        if (!loadingProducts && filteredProducts.length === 0) {
-             if (searchQuery.trim() || selectedCategory !== 'All') {
-                 return (
-                     <View style={styles.emptyListContainer}>
-                         <Icon name="magnify-close" size={40} color="#ccc" />
-                         <Text style={styles.emptyListText}>No products match your criteria.</Text>
-                     </View>
-                 );
-             } else if (allProducts.length === 0) {
-                  return (
-                     <View style={styles.emptyListContainer}>
-                         <Icon name="package-variant-closed" size={40} color="#ccc" />
-                         <Text style={styles.emptyListText}>No products available yet.</Text>
-                     </View>
-                  );
+        if (loadingProducts || loadingCategories) return null;
+        if (error && filteredProducts.length === 0) { 
+            // If there's a general error and no products are shown for the current filter, show error.
+            // The main error display below FlatList will handle more general fetch errors.
+            // This specific one is for "no results due to error for this filter".
+            return ( <View style={styles.emptyListContainer}><Icon name="alert-circle-outline" size={40} color="#ccc" /><Text style={styles.emptyListText}>{error}</Text></View> );
+        }
+        if (filteredProducts.length === 0) {
+             if (searchQuery.trim() || (selectedCategory !== 'All' && selectedCategory !== 'Trending')) {
+                 return ( <View style={styles.emptyListContainer}><Icon name="magnify-close" size={40} color="#ccc" /><Text style={styles.emptyListText}>No products match your criteria.</Text></View> );
+            } else if (selectedCategory === 'Trending' && trendingProductList.length === 0){
+                return ( <View style={styles.emptyListContainer}><Icon name="chart-line-variant" size={40} color="#ccc" /><Text style={styles.emptyListText}>No trending products right now.</Text></View> );
+            } else if (allProductsMasterList.length === 0) { // True only if DB is empty
+                  return ( <View style={styles.emptyListContainer}><Icon name="package-variant-closed" size={40} color="#ccc" /><Text style={styles.emptyListText}>No products available yet.</Text></View> );
              }
         }
         return null;
     };
 
-    // --- Render Category Filters ---
     const renderCategoryFilters = () => {
-        // Show loader if categories OR initial products are still loading
-        if ((loadingCategories && allFetchedCategories.length <= 1) || (loadingProducts && allProducts.length === 0)) {
-             return <ActivityIndicator size="small" color="#FFFFFF" style={{ marginTop: 15, alignSelf: 'center' }} />;
+        if (loadingCategories || (loadingProducts && allProductsMasterList.length === 0)) {
+             return <ActivityIndicator size="small" color="#FFFFFF" style={styles.categoryLoader} />;
         }
-        // Use displayCategories (which only contains active categories)
-        if (displayCategories.length > 1) {
+        if (displayCategories.length > 0) {
              return (
                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-                     {displayCategories.map(category => ( // Map over displayCategories
+                     {displayCategories.map(category => (
                          <TouchableOpacity
                              key={category.id}
-                             style={[
-                                 styles.filterButton,
-                                 selectedCategory === category.id && styles.activeFilter
-                             ]}
+                             style={[ styles.filterButton, selectedCategory === category.id && styles.activeFilter ]}
                              onPress={() => onFilterCategoryChange(category.id)} >
-                             <Text style={[
-                                 styles.filterText,
-                                 selectedCategory === category.id && styles.activeFilterText
-                             ]}>
+                             <Text style={[ styles.filterText, selectedCategory === category.id && styles.activeFilterText ]}>
                                  {category.name}
                              </Text>
                          </TouchableOpacity>
@@ -301,15 +232,14 @@ export default function SearchScreen() {
                  </ScrollView>
              );
         }
-        return null;
+        return <View style={styles.categoryLoader}><Text style={styles.categoryErrorText}>Filters unavailable</Text></View>;
     };
-
+    // --- END RENDER HELPER FUNCTIONS ---
 
     return (
         <SafeAreaView style={styles.safeArea}>
              <StatusBar barStyle="light-content" backgroundColor="#FF0000" />
             <View style={styles.container}>
-                {/* Header */}
                 <View style={styles.headerContainer}>
                     <View style={styles.searchBar}>
                         <Icon name="magnify" size={22} color="#FF0000" style={styles.searchIcon} />
@@ -327,18 +257,15 @@ export default function SearchScreen() {
                             </TouchableOpacity>
                         )}
                     </View>
-                    {/* Render Category Filters */}
                     {renderCategoryFilters()}
                 </View>
 
-                {/* Product List Area */}
-                {/* Show main loader only if products are loading AND categories haven't finished loading yet */}
-                {(loadingProducts || loadingCategories) && allProducts.length === 0 ? (
+                {(loadingProducts && allProductsMasterList.length === 0 && !error) ? ( 
                      <View style={styles.loaderContainer}>
                         <ActivityIndicator size="large" color="#FF0000" />
-                        <Text style={styles.loadingText}>Loading...</Text>
+                        <Text style={styles.loadingText}>Loading Products...</Text>
                     </View>
-                ) : error && allProducts.length === 0 ? (
+                ) : error && filteredProducts.length === 0 && allProductsMasterList.length === 0 ? ( // Show general error if master list is also empty
                     <View style={styles.loaderContainer}>
                          <Icon name="alert-circle-outline" size={40} color="#888" />
                         <Text style={styles.errorText}>{error}</Text>
@@ -349,11 +276,11 @@ export default function SearchScreen() {
                 ) : (
                     <FlatList
                         data={filteredProducts}
-                        renderItem={renderProductCard}
+                        renderItem={renderProductCard} // This is now correctly scoped
                         keyExtractor={(item) => item.id}
                         numColumns={NUM_COLUMNS}
                         contentContainerStyle={styles.listContent}
-                        ListEmptyComponent={renderListEmptyComponent}
+                        ListEmptyComponent={renderListEmptyComponent} // Correctly scoped
                         showsVerticalScrollIndicator={false}
                         refreshControl={
                             <RefreshControl
@@ -374,7 +301,6 @@ export default function SearchScreen() {
     );
 }
 
-// --- Styles (Keep unchanged) ---
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: '#FF0000' },
     container: { flex: 1, backgroundColor: "#F5F5F5" },
@@ -411,30 +337,32 @@ const styles = StyleSheet.create({
     },
     filterScroll: {
         marginTop: 15,
-        paddingBottom: 2,
+        paddingBottom: 2, 
+        minHeight: 38,
     },
     filterButton: {
-        paddingVertical: 6, // Adjusted padding from reference
-        paddingHorizontal: 16,
+        paddingVertical: 7, 
+        paddingHorizontal: 18, 
         borderRadius: 20,
-        backgroundColor: '#FF0000', // Inactive background (red)
-        borderWidth: 1,
-        borderColor: '#FFFFFF', // Inactive border (white)
+        backgroundColor: '#FF0000', 
+        borderWidth: 1.5, 
+        borderColor: '#FFFFFF', 
         marginRight: 10,
         justifyContent: 'center',
         alignItems: 'center',
+        height: 36, 
     },
     filterText: {
-        fontSize: 14,
-        color: '#FFFFFF', // Inactive text (white)
+        fontSize: 13, 
+        color: '#FFFFFF', 
         fontWeight: '500',
     },
     activeFilter: {
-        backgroundColor: '#000000', // Active background (black)
-        borderColor: '#000000', // Active border (black)
+        backgroundColor: '#000000', 
+        borderColor: '#000000', 
     },
     activeFilterText: {
-        color: '#FFFFFF', // Active text (white)
+        color: '#FFFFFF', 
         fontWeight: 'bold',
     },
     loaderContainer: {
@@ -458,19 +386,20 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     },
     emptyListContainer: {
-        // Keep styling for empty message display within FlatList
         alignItems: "center",
-        paddingTop: height * 0.1,
+        paddingTop: height * 0.15, 
         paddingHorizontal: 30,
-        flexGrow: 1, // Ensure it can take space if list is short
-        justifyContent:'center', // Center vertically too if list container allows
+        flexGrow: 1, 
+        justifyContent:'center',
     },
-    noProductsText: { fontSize: 16, color: '#888', textAlign: 'center', marginTop: 15 },
+    emptyListText: { 
+        fontSize: 16, color: '#888', textAlign: 'center', marginTop: 15 
+    },
     listContent: {
-        paddingHorizontal: GRID_PADDING - CARD_MARGIN,
+        paddingHorizontal: GRID_PADDING - CARD_MARGIN, 
         paddingTop: 10,
         paddingBottom: 20,
-        flexGrow: 1, // Important for ListEmptyComponent positioning
+        flexGrow: 1, 
     },
     productCard: {
         backgroundColor: '#fff',
@@ -479,29 +408,29 @@ const styles = StyleSheet.create({
         width: (width - (GRID_PADDING * 2) - (CARD_MARGIN * NUM_COLUMNS * 2)) / NUM_COLUMNS,
         alignItems: 'center',
         padding: 10,
-        paddingBottom: 8,
+        paddingBottom: 8, 
         elevation: 3,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.20,
         shadowRadius: 1.41,
-        minHeight: 290,
+        minHeight: 290, 
         justifyContent: 'space-between',
     },
     productImage: {
         width: '100%',
-        height: 120,
+        height: 120, 
         borderRadius: 6,
-        marginBottom: 10,
+        marginBottom: 10, 
         backgroundColor: '#F8F8F8'
     },
     productName: {
-        fontSize: 14,
+        fontSize: 14, 
         fontWeight: '600',
         color: '#333',
         textAlign: 'center',
-        minHeight: 18,
-        marginBottom: 6,
+        minHeight: 18, 
+        marginBottom: 6, 
         paddingHorizontal: 2,
         width: '100%',
     },
@@ -509,72 +438,57 @@ const styles = StyleSheet.create({
         flexDirection: 'column',
         alignItems: 'center',
         marginTop: 4,
-        minHeight: 35,
-        marginBottom: 8,
+        minHeight: 35, 
+        marginBottom: 8, 
         justifyContent: 'center',
         width: '100%',
     },
     productPrice: {
-        fontSize: 13,
-        color: '#999',
-        fontWeight: 'normal',
+        fontSize: 13, 
+        color: '#999', 
+        fontWeight: 'normal', 
     },
     strikethroughPrice: {
-        textDecorationLine: 'line-through',
-        marginBottom: 2,
+        textDecorationLine: 'line-through', 
+        marginBottom: 2, 
     },
     discountedPrice: {
-        fontSize: 15,
-        color: '#E53935',
-        fontWeight: 'bold',
+        fontSize: 15, 
+        color: '#E53935', 
+        fontWeight: 'bold', 
     },
     productDescription: {
-        fontSize: 11,
-        color: '#666',
+        fontSize: 11, 
+        color: '#666', 
         textAlign: 'center',
-        marginTop: 4,
-        marginBottom: 8,
-        paddingHorizontal: 5,
-        minHeight: 28,
-        width: '95%',
-        lineHeight: 14,
-        flexGrow: 1,
-        flexShrink: 1,
+        marginTop: 4, 
+        marginBottom: 8, 
+        paddingHorizontal: 5, 
+        minHeight: 28, 
+        width: '95%', 
+        lineHeight: 14, 
     },
     bnplBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#E3F2FD',
-        borderRadius: 10,
-        paddingVertical: 4,
-        paddingHorizontal: 8,
-        marginBottom: 4,
-        alignSelf: 'center',
-        height: 24,
-        flexShrink: 0,
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#E3F2FD', borderRadius: 10,
+        paddingVertical: 4, paddingHorizontal: 8, marginBottom: 4, alignSelf: 'center',
+        height: 24, flexShrink: 0, 
     },
-    bnplText: {
-        fontSize: 11,
-        color: '#1565C0',
-        marginLeft: 4,
-        fontWeight: '600',
-    },
+    bnplText: { fontSize: 11, color: '#1565C0', marginLeft: 4, fontWeight: '600', },
     codBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#FFF3E0',
-        borderRadius: 10,
-        paddingVertical: 4,
-        paddingHorizontal: 8,
-        marginBottom: 4,
-        alignSelf: 'center',
-        height: 24,
-        flexShrink: 0,
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF3E0', borderRadius: 10,
+        paddingVertical: 4, paddingHorizontal: 8, marginBottom: 4, alignSelf: 'center',
+        height: 24, flexShrink: 0, 
     },
-    codText: {
-        fontSize: 11,
-        color: '#EF6C00',
-        marginLeft: 4,
-        fontWeight: '600',
+    codText: { fontSize: 11, color: '#EF6C00', marginLeft: 4, fontWeight: '600', },
+    categoryLoader: { 
+        marginTop: 15,
+        alignSelf: 'center',
+        height: 36, 
+        justifyContent: 'center',
+    },
+    categoryErrorText: {
+        color: '#FFFFFF',
+        fontSize: 13,
+        fontStyle: 'italic',
     },
 });

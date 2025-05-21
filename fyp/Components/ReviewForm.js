@@ -1,4 +1,4 @@
-// ./../../Components/ReviewForm.js (Complete & Final - Writes to 'Reviews' Collection including userId and productId)
+// ./../../Components/ReviewForm.js (CORRECTED onReviewSubmitSuccess call)
 
 import React, { useState } from 'react';
 import {
@@ -19,7 +19,7 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 
 // --- Constants ---
 const ORDERS_COLLECTION = 'orders';
-const REVIEWS_COLLECTION = 'Reviews'; // Collection where reviews are stored
+const REVIEWS_COLLECTION = 'Reviews';
 const ACTION_RED = '#FF0000';
 const STAR_SELECTED_COLOR = '#FFC107';
 const STAR_UNSELECTED_COLOR = '#BDBDBD';
@@ -29,17 +29,8 @@ const INPUT_BACKGROUND_COLOR = '#FFFFFF';
 const ERROR_COLOR = '#D32F2F';
 const PRIMARY_TEXT_COLOR = '#333';
 
-/**
- * ReviewForm Component
- *
- * Props:
- * - orderId (string): ID of the order document.
- * - reviewerId (string): ID of the user submitting the review (will be stored as userId).
- * - productId (string): ID of the specific product being reviewed.
- * - onReviewSubmitSuccess (function): Callback(productId) executed on successful submission.
- */
 const ReviewForm = ({ orderId, reviewerId, productId, onReviewSubmitSuccess }) => {
-    const [rating, setRating] = useState(0);
+    const [rating, setRating] = useState(0); // This 'rating' state holds the star value
     const [comment, setComment] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState(null);
@@ -58,7 +49,6 @@ const ReviewForm = ({ orderId, reviewerId, productId, onReviewSubmitSuccess }) =
         Keyboard.dismiss();
         setError(null);
 
-        // --- Validation ---
         if (!orderId || !reviewerId || !productId) {
             console.error("ReviewForm handleSubmit Error: Missing required prop (orderId, reviewerId, or productId).");
             Alert.alert('Submission Error', 'Cannot submit review due to missing information. Please contact support if this persists.');
@@ -74,58 +64,48 @@ const ReviewForm = ({ orderId, reviewerId, productId, onReviewSubmitSuccess }) =
             return;
         }
 
-        // --- Submission Start ---
         setSubmitting(true);
 
         try {
-            // --- Create Review Document in 'Reviews' Collection ---
             const reviewCollectionRef = collection(db, REVIEWS_COLLECTION);
             const reviewData = {
-                // <<< Storing IDs >>>
-                productId: productId,    // The specific product being reviewed
-                userId: reviewerId,     // The ID of the user submitting the review
-                // <<< Other Review Data >>>
-                orderId: orderId,       // Link back to the original order
-                rating: rating,         // User's star rating
-                reviewText: comment.trim(), // User's comment
-                timestamp: serverTimestamp(), // Time of submission
+                productId: productId,
+                userId: reviewerId,
+                orderId: orderId,
+                rating: rating, // Save the selected rating to the review document
+                reviewText: comment.trim(),
+                timestamp: serverTimestamp(),
             };
 
-            // Add the document
             const newReviewDocRef = await addDoc(reviewCollectionRef, reviewData);
             console.log(`Review document added to '${REVIEWS_COLLECTION}' successfully with ID: ${newReviewDocRef.id}`);
 
-            // --- Update the Original Order Document ---
             const orderDocRef = doc(db, ORDERS_COLLECTION, orderId);
             await updateDoc(orderDocRef, {
-                reviewSubmitted: true, // General flag indicating *a* review was submitted for this order
+                reviewSubmitted: true,
             });
             console.log(`Order document ${orderId} updated successfully with reviewSubmitted=true.`);
 
-            // --- Signal Success ---
             if (onReviewSubmitSuccess && typeof onReviewSubmitSuccess === 'function') {
-                onReviewSubmitSuccess(productId); // Pass back the ID of the product that was reviewed
+                // --- THIS IS THE CRITICAL CHANGE ---
+                onReviewSubmitSuccess(productId, rating); // Pass back productId AND the numeric 'rating'
+                // --- END CRITICAL CHANGE ---
             }
 
         } catch (err) {
-            // --- Error Handling ---
             console.error('Error submitting review to Firestore:', err);
             setError('Failed to submit review. Please check your internet connection and try again.');
             Alert.alert(
                 'Submission Failed',
                 'We couldn\'t save your review right now. Please try again later.'
             );
-
         } finally {
-            // --- Submission End ---
-            setSubmitting(false); // Hide loader
+            setSubmitting(false);
         }
     };
 
-    // --- Render UI ---
     return (
         <View style={styles.container}>
-            {/* Stars */}
             <View style={styles.starsRow}>
                 {[1, 2, 3, 4, 5].map((starValue) => (
                     <TouchableOpacity
@@ -143,7 +123,6 @@ const ReviewForm = ({ orderId, reviewerId, productId, onReviewSubmitSuccess }) =
                 ))}
             </View>
 
-            {/* Comment Input */}
             <TextInput
                 label="Share your thoughts..."
                 value={comment}
@@ -159,12 +138,10 @@ const ReviewForm = ({ orderId, reviewerId, productId, onReviewSubmitSuccess }) =
                 maxLength={500}
             />
 
-            {/* Error Display */}
             {error && (
                  <Text style={styles.errorText}>{error}</Text>
             )}
 
-            {/* Submit Button */}
             <TouchableOpacity
                 onPress={handleSubmit}
                 disabled={submitting}

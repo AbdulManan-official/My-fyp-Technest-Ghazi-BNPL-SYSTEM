@@ -10,7 +10,6 @@ import { MaterialIcons } from '@expo/vector-icons';
 import StripeWrapper from './Components/StripeWrapper';
 
 // --- Import Screens (ensure all your screen imports are here) ---
-// ... (All your screen imports remain the same)
 import LoginScreen from './screens/LoginScreen';
 import SignupScreen from './screens/SignupScreen';
 import ForgotPasswordScreen from './screens/ForgotPasswordScreen';
@@ -49,8 +48,8 @@ const Stack = createStackNavigator();
 
 const placeholderAvatarUri = 'https://via.placeholder.com/40'; // Global placeholder
 
-// CustomHeader Component (Remains the same, capable of showing title and avatar)
-const CustomHeader = ({ navigation, title, avatarUrl }) => ({
+// CustomHeader Component
+const CustomHeader = ({ navigation, title, avatarUrl, titleAlign = 'left' }) => ({ // Added titleAlign, default to 'left'
   headerShown: true,
   headerStyle: { backgroundColor: '#FF0000', elevation: 0, shadowOpacity: 0, borderBottomWidth: 0 },
   headerTintColor: 'white',
@@ -61,7 +60,7 @@ const CustomHeader = ({ navigation, title, avatarUrl }) => ({
       </TouchableOpacity>
     ) : null
   ),
-  headerTitleAlign: 'left',
+  headerTitleAlign: titleAlign, // Use the passed titleAlign prop
   headerTitle: () => (
     <View style={styles.customHeaderTitleContainer}>
       {avatarUrl && typeof avatarUrl === 'string' && avatarUrl.trim() !== '' ? (
@@ -76,6 +75,11 @@ const CustomHeader = ({ navigation, title, avatarUrl }) => ({
       </Text>
     </View>
   ),
+  // You might need headerTitleContainerStyle for perfect centering with a back button on Android.
+  // Example (uncomment and adjust if needed):
+  // headerTitleContainerStyle: titleAlign === 'center' && navigation.canGoBack() && Platform.OS === 'android'
+  //   ? { position: 'absolute', left: 0, right: 0, alignItems: 'center' }
+  //   : {},
 });
 
 export default function App() {
@@ -85,105 +89,114 @@ export default function App() {
         <StatusBar backgroundColor="#CC0000" barStyle="light-content" />
         <Stack.Navigator
           initialRouteName="Login"
-          screenOptions={{ headerShown: false }}
+          // Default screenOptions for all screens in this navigator
+          // Titles will be centered by default unless overridden
+          screenOptions={({ navigation }) => ({
+            ...CustomHeader({ navigation, title: '', titleAlign: 'center' }),
+          })}
         >
-          {/* ... (Other screens remain the same) ... */}
-          <Stack.Screen name="Login" component={LoginScreen} />
-          <Stack.Screen name="Signup" component={SignupScreen} />
+          <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }}/>
+          <Stack.Screen name="Signup" component={SignupScreen} options={{ headerShown: false }}/>
           <Stack.Screen
             name="ForgotPassword"
             component={ForgotPasswordScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password', titleAlign: 'center' })}
           />
 
-          <Stack.Screen name="BottomTabs" component={BottomTabNavigation} />
-          <Stack.Screen name="AdminDashboardTabs" component={AdminDashboardNavigation} />
+          <Stack.Screen name="BottomTabs" component={BottomTabNavigation} options={{ headerShown: false }}/>
+          <Stack.Screen name="AdminDashboardTabs" component={AdminDashboardNavigation} options={{ headerShown: false }}/>
 
           <Stack.Screen
             name="ProductDetails"
             component={ProductDetailsScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="CartScreen"
             component={CartScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'My Cart' })}
+             options={({ navigation, route }) => {
+              if (route.params?.hideHeader) { // Allow CartScreen to hide its own header if needed
+                return { headerShown: false };
+              }
+              return CustomHeader({ navigation, title: 'My Cart', titleAlign: 'center' });
+            }}
           />
           <Stack.Screen
             name="CheckoutScreen"
             component={CheckoutScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Checkout', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="OrderConfirmationScreen"
             component={OrderConfirmationScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Order Confirmation' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Order Confirmation', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="UserProfileScreen"
             component={UserProfileScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Profile' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Profile', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="RequestVerificationScreen"
             component={RequestVerificationScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Request Verification' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Request Verification', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="PrivacyPolicyScreen"
             component={PrivacyPolicyScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Privacy Policy' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Privacy Policy', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="RulesRegulationScreen"
             component={RulesRegulationScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Rules & Regulations' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Rules & Regulations', titleAlign: 'center' })}
           />
 
-          {/* --- MODIFIED SupportChatScreen options --- */}
-          {/* It will now use CustomHeader but SupportChatScreen.js will update title/avatar */}
+          {/* --- SupportChatScreen: Explicitly use left alignment --- */}
           <Stack.Screen
             name="SupportChatScreen"
             component={SupportChatScreen}
             options={({ navigation }) => CustomHeader({
               navigation,
-              title: 'Support', // Default title
-              avatarUrl: null    // Default/no avatar, screen will update
-                                  // or use placeholderAvatarUri if you want one initially
-                                  // avatarUrl: placeholderAvatarUri
+              title: 'Support',      // Default title, screen can update
+              avatarUrl: null,       // Default avatar, screen can update
+              titleAlign: 'left'     // EXCEPTION: Set to left
             })}
           />
-          {/* --- END OF MODIFICATION --- */}
 
           <Stack.Screen
             name="AboutUsScreen"
             component={AboutUsScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'About Us' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'About Us', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="WishlistScreen"
             component={WishlistScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Wishlist' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Wishlist', titleAlign: 'center' })}
           />
            <Stack.Screen
             name="AddressEditScreen"
             component={AddressEditScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Edit Delivery Address' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Edit Delivery Address', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="MyOrders"
             component={MyOrders}
-            options={{ headerShown: false }}
+            options={{ headerShown: false }} // Uses its own header or no header
           />
           <Stack.Screen
             name="UserOrderDetailScreen"
             component={UserOrderDetailScreen}
-            options={({ route, navigation }) => CustomHeader({ navigation, title: `Order #${route.params?.order?.orderNumber || route.params?.orderId?.substring(0,6) || 'Details'}` })}
+            options={({ route, navigation }) => CustomHeader({
+                navigation,
+                title: `Order #${route.params?.order?.orderNumber || route.params?.orderId?.substring(0,6) || 'Details'}`,
+                titleAlign: 'center'
+            })}
           />
            <Stack.Screen
             name="UserBNPLSchedules"
             component={UserBNPLSchedules}
-            options={{ headerShown: false }}
+            options={{ headerShown: false }} // Uses its own header or no header
           />
           <Stack.Screen
             name="SchedulesDetailScreen"
@@ -192,67 +205,84 @@ export default function App() {
               navigation,
               title: route.params?.schedule?.orderNumber
                      ? `Schedule #${route.params.schedule.orderNumber}`
-                     : 'Schedule Details'
+                     : 'Schedule Details',
+              titleAlign: 'center'
             })}
           />
           <Stack.Screen
             name="AdminMessageScreen"
             component={AdminMessageScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'User Messages' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'User Messages', titleAlign: 'center' })}
           />
+
+          {/* --- MessageDetailScreen: Explicitly use left alignment --- */}
           <Stack.Screen
             name="MessageDetailScreen"
             component={MessageDetailScreen}
             options={({ route, navigation }) => CustomHeader({
               navigation,
               title: route.params?.recipientName || 'Chat Details',
-              avatarUrl: route.params?.recipientAvatar
+              avatarUrl: route.params?.recipientAvatar,
+              titleAlign: 'left' // EXCEPTION: Set to left
             })}
           />
+
           <Stack.Screen
             name="AdminDetailOrderScreen"
             component={AdminDetailOrderScreen}
-            options={({ route, navigation }) => CustomHeader({ navigation, title: `Order #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}` })}
+            options={({ route, navigation }) => CustomHeader({
+                navigation,
+                title: `Order #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}`,
+                titleAlign: 'center'
+            })}
           />
            <Stack.Screen
             name="UserSchedulesProgressDetails"
             component={UserSchedulesProgressDetails}
-            options={({ route, navigation }) => CustomHeader({ navigation, title: `Schedule #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}` })}
+            options={({ route, navigation }) => CustomHeader({
+                navigation,
+                title: `Schedule #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}`,
+                titleAlign: 'center'
+            })}
           />
           <Stack.Screen
             name="UsersScreen"
             component={UsersScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Users Management' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Users Management', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="UserDetail"
-            component={UserDetailScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'User Verification Request' })}
+            component={UserDetailScreen} // Assuming this is the User Verification Request screen
+            options={({ navigation }) => CustomHeader({ navigation, title: 'User Verification Request', titleAlign: 'center' })}
           />
           <Stack.Screen
-            name="UserVerificationDetail"
+            name="UserVerificationDetail" // This is for Admin to see user details
             component={UserVerificationDetailScreen}
-            options={({ route, navigation }) => CustomHeader({ navigation, title: route.params?.user?.name || 'User Details' })}
+            options={({ route, navigation }) => CustomHeader({
+                navigation,
+                title: route.params?.user?.name || 'User Details',
+                titleAlign: 'center'
+            })}
           />
           <Stack.Screen
             name="AdminProfileScreen"
             component={AdminProfileScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Admin Profile' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Admin Profile', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="AdminCategoryScreen"
             component={AdminCategoryScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Manage Categories' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Manage Categories', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="ReportsScreen"
             component={ReportsScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Reports' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Reports', titleAlign: 'center' })}
           />
           <Stack.Screen
             name="BNPLPlansScreen"
             component={BNPLPlansScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Manage BNPL Plans' })}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Manage BNPL Plans', titleAlign: 'center' })}
           />
         </Stack.Navigator>
       </NavigationContainer>
@@ -260,7 +290,7 @@ export default function App() {
   );
 }
 
-// Styles for CustomHeader (ensure these are correct)
+// Styles for CustomHeader
 const styles = StyleSheet.create({
   customHeaderLeftButton: {
     paddingHorizontal: Platform.OS === 'ios' ? 10 : 15,
@@ -269,17 +299,23 @@ const styles = StyleSheet.create({
   customHeaderTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    // For Android, when headerTitleAlign: 'center' and headerLeft is present,
+    // the title component might still be slightly offset.
+    // You may need to adjust its container or use a more complex centering logic if precise centering is critical.
+    // One common trick for Android is a negative marginLeft if a back button is present.
+    // e.g., marginLeft: Platform.OS === 'android' && navigation.canGoBack() ? -20 : 0,
+    // However, this is best handled by testing on an Android device.
   },
   customHeaderAvatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
     marginRight: 10,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: '#E0E0E0', // Placeholder background for the avatar
   },
   customHeaderTitleText: {
     color: 'white',
     fontSize: 17,
-    fontWeight: '600',
+    fontWeight: '800',
   },
 });

@@ -212,11 +212,6 @@ const HomeScreen = () => {
     const onRefresh = useCallback(() => {
         setRefreshing(true);
         console.log("[Refresh] Pull-to-refresh triggered (visual only).");
-        // Data is updated by onSnapshot. If you need to force re-calculation or specific re-fetch:
-        // 1. You could potentially re-trigger the calculateTopTrendingFromList if allProductsMasterList is up-to-date.
-        // 2. Or, if the listener itself needs to be re-established (unlikely unless major config change),
-        //    that would require more complex state management to tear down and set up listeners.
-        // For now, onSnapshot should keep things fresh.
         setTimeout(() => { setRefreshing(false); }, 1000);
     }, []);
 
@@ -304,7 +299,7 @@ const HomeScreen = () => {
         console.log("[RenderTrending] Rendering trending products. Count:", trendingProducts.length);
         return (
             <View style={styles.trendingSectionContainer}>
-                {renderTitle("🔥 Trending Now", "fire")}
+                {renderTitle("Trending Now", "fire")}
                 <FlatList
                     data={trendingProducts}
                     renderItem={({item}) => renderProductCard({item, isTrendingCard: true})}
@@ -333,7 +328,7 @@ const HomeScreen = () => {
         console.log("[RenderForYou] Rendering 'Products For You'. Count:", productsForYou.length);
         return (
             <View> 
-                {renderTitle("🛍️ Products For You", "shopping-bag")}
+                {renderTitle("Products For You", "shopping-bag")}
                 <FlatList
                     data={productsForYou}
                     renderItem={({item}) => renderProductCard({item, isTrendingCard: false})}

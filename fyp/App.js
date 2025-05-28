@@ -24,7 +24,6 @@ import PrivacyPolicyScreen from './screens/userscreens/PrivacyPolicyScreen';
 import RulesRegulationScreen from './screens/userscreens/RulesRegulationScreen';
 import SupportChatScreen from './screens/userscreens/SupportChatScreen';
 import AboutUsScreen from './screens/userscreens/AboutUsScreen';
-import WishlistScreen from './screens/userscreens/WishlistScreen';
 import MyOrders from './screens/userscreens/MyOrders';
 import UserBNPLSchedules from './screens/userscreens/UserBNPLSchedules';
 import UserOrderDetailScreen from './screens/userscreens/UserOrderDetailScreen';
@@ -111,6 +110,7 @@ export default function App() {
             component={ProductDetailsScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details', titleAlign: 'center' })}
           />
+          
           <Stack.Screen
             name="CartScreen"
             component={CartScreen}
@@ -169,11 +169,7 @@ export default function App() {
             component={AboutUsScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'About Us', titleAlign: 'center' })}
           />
-          <Stack.Screen
-            name="WishlistScreen"
-            component={WishlistScreen}
-            options={({ navigation }) => CustomHeader({ navigation, title: 'Wishlist', titleAlign: 'center' })}
-          />
+       
            <Stack.Screen
             name="AddressEditScreen"
             component={AddressEditScreen}

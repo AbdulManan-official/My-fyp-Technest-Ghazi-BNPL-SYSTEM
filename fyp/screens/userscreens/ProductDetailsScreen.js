@@ -71,6 +71,8 @@ const relatedCardWidth = (screenWidth - (GRID_PADDING_HORIZONTAL * 2) - (CARD_MA
 
 // --- Firestore Constants ---
 const CARTS_COLLECTION = 'Carts'; // Added for consistency
+const USERS_COLLECTION = 'Users'; // <<< ADD THIS
+const VERIFIED_STATUS_CONSTANT = 'Verified';
 
 // --- Helper Function for Date Formatting ---
 // ... (keep formatDate function as is) ...
@@ -104,7 +106,6 @@ export default function ProductDetailsScreen() {
     const [isLoadingProduct, setIsLoadingProduct] = useState(true);
     const [isLoadingPlans, setIsLoadingPlans] = useState(false);
     const [activeIndex, setActiveIndex] = useState(0); // For gallery pagination
-    const [isWishlisted, setIsWishlisted] = useState(false); // Wishlist state
     const [showAllReviews, setShowAllReviews] = useState(false);
     const [relatedProducts, setRelatedProducts] = useState([]);
     const [loadingRelatedProducts, setLoadingRelatedProducts] = useState(true);
@@ -117,6 +118,8 @@ export default function ProductDetailsScreen() {
     const popupOpacity = useRef(new Animated.Value(0)).current;
     const [fetchedReviews, setFetchedReviews] = useState([]);
     const [isLoadingReviews, setIsLoadingReviews] = useState(true);
+     const [userVerificationStatus, setUserVerificationStatus] = useState(null);
+     const [isLoadingUserVerification, setIsLoadingUserVerification] = useState(true);
 
     // *** ADDED State for Cart Item Count ***
     const [cartItemCount, setCartItemCount] = useState(0);
@@ -544,9 +547,55 @@ export default function ProductDetailsScreen() {
             incrementProductView();
         }
     }, [product, isLoadingProduct]);
+    useEffect(() => {
+        if (user && user.uid) { // Ensure user and user.uid are present
+            setIsLoadingUserVerification(true);
+            setUserVerificationStatus(null); // Reset status before fetching, especially if user changes
+            const userDocRef = doc(db, USERS_COLLECTION, user.uid);
+            console.log(`Setting up verification status listener for user: ${user.uid}`);
+
+            const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
+                setIsLoadingUserVerification(false); // Set loading to false once data/error received
+                if (docSnap.exists()) {
+                    const userData = docSnap.data();
+                    const status = userData.verificationStatus;
+                    // Use the actual status, or 'NotVerified' if the field is missing or falsy
+                    setUserVerificationStatus(status || 'NotVerified');
+                    console.log(`User ${user.uid} verification status updated to: ${status || 'NotVerified'}`);
+                } else {
+                    // If user document doesn't exist in Users collection, treat as not verified
+                    setUserVerificationStatus('NotVerified');
+                    console.warn(`User document not found for UID: ${user.uid} in ${USERS_COLLECTION}. Treating as NotVerified.`);
+                }
+            }, (error) => {
+                console.error("Error listening to user verification status:", error);
+                // On error, treat as not verified to be safe
+                setUserVerificationStatus('NotVerified');
+                setIsLoadingUserVerification(false);
+            });
+
+            // Cleanup function: Unsubscribe when the component unmounts or user changes
+            return () => {
+                console.log("Unsubscribing from user verification status listener.");
+                unsubscribe();
+            };
+        } else {
+            // User is logged out or user.uid is not yet available
+            setUserVerificationStatus(null); // Explicitly null for logged-out/unknown state
+            setIsLoadingUserVerification(false);
+            console.log("No user or user.uid available for verification status listener.");
+        }
+    }, [user]);
     // --- End Effects ---
 
     // --- Memos ---
+     const showVerificationAlert = () => {
+        Alert.alert(
+            "Verification Required",
+            "Please verify your account to proceed.",
+            [{ text: "OK" }]
+        );
+    };
     // ... (keep all existing useMemo hooks as they are) ...
     // Memoize gallery items based on product media/image
     const galleryItems = useMemo(() => {
@@ -666,13 +715,7 @@ export default function ProductDetailsScreen() {
     }, [hasLoadedBnplOption, product?.BNPLPlans]);
     // --- End Memos ---
 
-    // --- Handlers ---
-    // ... (keep toggleWishlist, shareProduct, onViewableItemsChanged, handlePlanSelection, openPaymentModal) ...
-    const toggleWishlist = () => {
-        // Placeholder: Implement actual wishlist logic (e.g., update Firestore)
-        setIsWishlisted(!isWishlisted);
-        console.log("Wishlist toggled");
-    };
+
 
     const shareProduct = async () => {
         if (!product || !product.name) {
@@ -919,11 +962,26 @@ export default function ProductDetailsScreen() {
     };
 
     // Main handler for the "Add to Cart" button press
-    const handleAddToCart = () => {
+       const handleAddToCart = () => {
+        // *** START: ADDED VERIFICATION LOGIC ***
+        if (!user) { // 1. Check if user is logged in
+            Alert.alert("Login Required", "Please log in to add items to your cart.");
+            return;
+        }
+        if (isLoadingUserVerification) { // 2. Check if verification status is still loading
+            Alert.alert("Please wait", "Checking account status...", [{text: "OK"}], { cancelable: true });
+            return;
+        }
+        if (userVerificationStatus !== VERIFIED_STATUS_CONSTANT) { // 3. Check verification status
+            showVerificationAlert(); // Assumes showVerificationAlert() is defined as previously discussed
+            return;
+        }
+        // *** END: ADDED VERIFICATION LOGIC ***
+
+        // Original logic starts here:
         if (isProcessingCart || !product || !product.id) return; // Prevent action if busy or no product
 
         const canCOD = product.codAvailable === true;
-        // Use hasLoadedBnplOption which checks availability, loading state, and plan presence
         const canBNPL = hasLoadedBnplOption;
 
         console.log(`Add to Cart pressed. COD available: ${canCOD}, BNPL available: ${canBNPL}`);
@@ -936,18 +994,32 @@ export default function ProductDetailsScreen() {
 
         // Case 2: Only COD is available
         if (canCOD && !canBNPL) {
-            // Directly add to cart using COD logic, skip modal
             proceedDirectlyWithCOD_AddToCart();
         }
         // Case 3: BNPL is available (either alone or with COD)
         else {
-            // Open the modal to allow selection between COD (if available) and BNPL plans
             openPaymentModal('addToCart');
         }
     };
-
     // Main handler for the "Buy Now" button press
+        // Main handler for the "Buy Now" button press
     const handleBuyNow = () => {
+        // *** START: ADDED VERIFICATION LOGIC ***
+        if (!user) { // 1. Check if user is logged in
+            Alert.alert("Login Required", "Please log in to proceed with your purchase.");
+            return;
+        }
+        if (isLoadingUserVerification) { // 2. Check if verification status is still loading
+            Alert.alert("Please wait", "Checking account status...", [{text: "OK"}], { cancelable: true });
+            return;
+        }
+        if (userVerificationStatus !== VERIFIED_STATUS_CONSTANT) { // 3. Check verification status
+            showVerificationAlert();
+            return;
+        }
+        // *** END: ADDED VERIFICATION LOGIC ***
+
+        // Original logic starts here
         if (isProcessingCart || !product || !product.id) return; // Prevent action if busy or no product
 
         console.log("Buy Now initiated");
@@ -1822,13 +1894,7 @@ export default function ProductDetailsScreen() {
                     <View style={styles.priceActionsRow}>
                         {renderPriceSection()}
                         <View style={styles.rightActionButtonsGroup}>
-                            <TouchableOpacity onPress={toggleWishlist} style={styles.iconButton} activeOpacity={0.7}>
-                                <MaterialIcons
-                                    name={isWishlisted ? 'favorite' : 'favorite-border'}
-                                    size={24}
-                                    color={isWishlisted ? AccentColor : TextColorPrimary}
-                                />
-                            </TouchableOpacity>
+                           
                             <TouchableOpacity onPress={shareProduct} style={[styles.iconButton, { marginLeft: 10 }]} activeOpacity={0.7}>
                                 <Feather name="share-2" size={22} color={TextColorPrimary} />
                             </TouchableOpacity>
@@ -1918,14 +1984,18 @@ export default function ProductDetailsScreen() {
                     */}
                 </TouchableOpacity>
 
-                {/* Add to Cart Button (Keep as is) */}
+                               {/* Add to Cart Button */}
                 <TouchableOpacity
-                    style={[styles.bottomButtonBase, styles.cartButton, isProcessingCart && styles.buttonDisabledGeneric]}
+                    style={[
+                        styles.bottomButtonBase,
+                        styles.cartButton,
+                        (isProcessingCart || isLoadingUserVerification) && styles.buttonDisabledGeneric // MODIFIED
+                    ]}
                     onPress={handleAddToCart}
                     activeOpacity={0.7}
-                    disabled={isProcessingCart}
+                    disabled={isProcessingCart || isLoadingUserVerification} // MODIFIED
                 >
-                    {isProcessingCart && actionType === 'addToCart' ? (
+                    {(isProcessingCart && actionType === 'addToCart') || isLoadingUserVerification ? ( // MODIFIED to also show loader if isLoadingUserVerification
                         <ActivityIndicator size="small" color={AccentColor} />
                     ) : (
                         <Text style={[styles.buttonText, styles.cartButtonText]}>Add to Cart</Text>
@@ -1933,18 +2003,22 @@ export default function ProductDetailsScreen() {
                 </TouchableOpacity>
 
                 {/* Buy Now Button (Keep as is) */}
+                                {/* Buy Now Button */}
                 <TouchableOpacity
-                    style={[styles.buyButtonContainer, isProcessingCart && styles.buttonDisabledGeneric]}
+                    style={[
+                        styles.buyButtonContainer,
+                        (isProcessingCart || isLoadingUserVerification) && styles.buttonDisabledGeneric // MODIFIED
+                    ]}
                     onPress={handleBuyNow}
                     activeOpacity={0.8}
-                    disabled={isProcessingCart}
+                    disabled={isProcessingCart || isLoadingUserVerification} // MODIFIED
                 >
                     <LinearGradient
                         colors={[AccentColor, AccentColor]}
                         style={styles.buyButtonGradient}
                         start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }}
                     >
-                        {isProcessingCart && actionType === 'buyNow' ? (
+                        {(isProcessingCart && actionType === 'buyNow') || isLoadingUserVerification ? ( // MODIFIED to also show loader if isLoadingUserVerification
                             <ActivityIndicator size="small" color="#FFFFFF" />
                         ) : (
                             <Text style={[styles.buttonText, styles.buyButtonText]}>Buy Now</Text>

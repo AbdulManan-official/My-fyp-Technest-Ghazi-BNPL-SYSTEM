@@ -1,5 +1,5 @@
 // UserOrderDetailScreen.js
-// (COMPLETE CODE - Incorporating All Features & Fixes - Product Review Stats Added)
+// (COMPLETE CODE - Incorporating All Features & Fixes - Product Review Stats Added - Order Cancellation Added)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -14,7 +14,7 @@ import { MaterialIcons as IconMUI } from '@expo/vector-icons';
 import {
     getFirestore, doc, onSnapshot, Timestamp,
     collection, query, where, getDocs, // Ensure getDocs is imported
-    updateDoc, // <<< ADDED for product updates
+    updateDoc, // <<< ADDED for product updates AND order cancellation
     increment, // <<< ADDED for atomic increments
     getDoc as getSingleDoc // <<< ADDED to fetch product after increment (aliased to avoid name clash if any)
 } from 'firebase/firestore';
@@ -29,12 +29,13 @@ const AppBackgroundColor = '#FFFFFF';
 const ScreenBackgroundColor = '#F8F9FA';
 const TextColorPrimary = '#212121';
 const TextColorSecondary = '#6B7280';
-const AccentColor = '#FF0000'; // Used for errors, potentially highlights
+const AccentColor = '#FF0000'; // Used for errors, potentially highlights, cancel button
 const SuccessColor = '#4CAF50'; // Used for success states, paid status
 const ActiveStatusColor = '#29B6F6';
 const PendingStatusColor = '#FFA726'; // Orange for pending
 const LightBorderColor = '#E5E7EB'; // Subtle borders
-const PlaceholderBgColor = '#F0F0F0'; // Image placeholder background
+const PlaceholderBgColor = '#F0F0F0'; 
+const cancel_color= '#EF5350';// Image placeholder background
 
 // Data & Logic Constants
 const CURRENCY_SYMBOL = 'PKR';
@@ -53,7 +54,7 @@ const PAID_STATUS = 'Paid';
 const PENDING_STATUS = 'Pending'; // Default/Initial status for many things
 const PARTIALLY_PAID_STATUS = 'Partially Paid';
 const COMPLETED_ORDER_STATUS = 'Delivered'; // Status required to show review forms
-const CANCELLED_STATUS = 'Cancelled'; // Example
+const CANCELLED_STATUS = 'Cancelled'; // Example - Used for order cancellation
 const REJECTED_STATUS = 'Rejected'; // Example
 
 // Payment Method Constants (Ensure these match Firestore values)
@@ -100,7 +101,7 @@ const getStatusStyle = (status) => {
           case SHIPPED_STATUS.toLowerCase(): return styles.statusShipped;
           case ACTIVE_STATUS.toLowerCase(): return styles.statusActive;
           case COMPLETED_ORDER_STATUS.toLowerCase(): return styles.statusDelivered;
-          case CANCELLED_STATUS.toLowerCase(): case REJECTED_STATUS.toLowerCase(): return styles.statusCancelled;
+          case CANCELLED_STATUS.toLowerCase(): case REJECTED_STATUS.toLowerCase(): return styles.statusCancelled; // <<< Ensure CANCELLED_STATUS uses AccentColor via styles.statusCancelled
           case PAID_STATUS.toLowerCase(): return styles.statusPaidBadge;
           default: return styles.statusUnknown;
       }
@@ -152,6 +153,7 @@ export default function UserOrderDetailScreen() {
     const [reviewedProductIds, setReviewedProductIds] = useState(new Set());
     const [loadingReviews, setLoadingReviews] = useState(true);
     const [reviewError, setReviewError] = useState(null);
+    const [isCancellingOrder, setIsCancellingOrder] = useState(false); // <<< ADDED for cancellation loading state
 
     const reviewerId = currentOrderData?.userId;
     const reviewerName = currentOrderData?.userName || 'A user';
@@ -190,82 +192,45 @@ export default function UserOrderDetailScreen() {
             .finally(() => { setLoadingReviews(false); });
     }, [orderId, reviewerId]);
 
-    // --- MODIFIED CALLBACK ---
-    const handleReviewSuccess = useCallback(async (submittedProductId, ratingValue) => { // <<< ADDED ratingValue
+    const handleReviewSuccess = useCallback(async (submittedProductId, ratingValue) => {
         console.log(`[ReviewSuccess] START - Product ID: ${submittedProductId}, Order ID: ${orderId}, Rating: ${ratingValue}`);
-
-        // --- Parameter Validation ---
         if (!submittedProductId) {
             console.error("[ReviewSuccess] ERROR: submittedProductId is missing or invalid.");
             Alert.alert("Error", "Could not process review: Product ID missing.");
             return;
         }
-        if (typeof ratingValue !== 'number' || ratingValue < 1 || ratingValue > 5) { // Assuming 1-5 star rating
+        if (typeof ratingValue !== 'number' || ratingValue < 1 || ratingValue > 5) {
             console.error(`[ReviewSuccess] ERROR: ratingValue is invalid. Received: ${ratingValue} (type: ${typeof ratingValue})`);
             Alert.alert("Error", "Could not process review: Invalid rating value. Please rate between 1 and 5.");
             return;
         }
-        // --- End Parameter Validation ---
-
-        // 1. Update Local UI State
-        console.log("[ReviewSuccess] Step 1: Updating local UI state (reviewedProductIds).");
         setReviewedProductIds(prevIds => new Set(prevIds).add(submittedProductId));
-
-        // 2. Show User Confirmation Message
-        console.log("[ReviewSuccess] Step 2: Showing user confirmation message.");
         if (Platform.OS === 'android') {
             ToastAndroid.show('Thanks for your review!', ToastAndroid.SHORT);
         } else {
             Alert.alert("Review Submitted", "Thanks for your feedback!");
         }
-
-        // --- 3. Update Product Review Statistics ---
-        console.log(`[ReviewSuccess] Step 3: Attempting to update product review stats for product ID: ${submittedProductId}`);
         try {
             const productRef = doc(db, PRODUCTS_COLLECTION_NAME, submittedProductId);
-            console.log(`[ProductReviewStats] Product Ref Path: ${productRef.path}`);
-            console.log(`[ProductReviewStats] Values to increment: reviewCount by 1, totalRatingSum by ${ratingValue}`);
-
-            // Step A: Atomically increment reviewCount and totalRatingSum
-            await updateDoc(productRef, {
-                reviewCount: increment(1),
-                totalRatingSum: increment(ratingValue)
-            });
-            console.log(`[ProductReviewStats] SUCCESS: Incremented reviewCount and totalRatingSum for product: ${submittedProductId}.`);
-
-            // Step B: Fetch the updated product data to calculate the new average rating
-            console.log(`[ProductReviewStats] Fetching updated product data for ${submittedProductId}...`);
-            const updatedProductSnap = await getSingleDoc(productRef); // Using aliased getSingleDoc
-
+            await updateDoc(productRef, { reviewCount: increment(1), totalRatingSum: increment(ratingValue) });
+            const updatedProductSnap = await getSingleDoc(productRef);
             if (updatedProductSnap.exists()) {
                 const productData = updatedProductSnap.data();
-                console.log(`[ProductReviewStats] Fetched product data after increment:`, JSON.stringify(productData, null, 2));
-
                 const newReviewCount = productData.reviewCount;
                 const newTotalRatingSum = productData.totalRatingSum;
-
                 if (typeof newReviewCount === 'number' && newReviewCount > 0 && typeof newTotalRatingSum === 'number') {
-                    const newAverageRating = parseFloat((newTotalRatingSum / newReviewCount).toFixed(1)); // Rounded to 1 decimal
-                    console.log(`[ProductReviewStats] Calculated newAverageRating: ${newAverageRating} (Sum: ${newTotalRatingSum}, Count: ${newReviewCount})`);
-
-                    await updateDoc(productRef, {
-                        averageRating: newAverageRating
-                    });
+                    const newAverageRating = parseFloat((newTotalRatingSum / newReviewCount).toFixed(1));
+                    await updateDoc(productRef, { averageRating: newAverageRating });
                     console.log(`[ProductReviewStats] SUCCESS: Updated averageRating for product ${submittedProductId} to: ${newAverageRating}`);
                 } else {
-                    console.warn(`[ProductReviewStats] WARN: Product ${submittedProductId} has reviewCount: ${newReviewCount} (type: ${typeof newReviewCount}) or totalRatingSum: ${newTotalRatingSum} (type: ${typeof newTotalRatingSum}) which is not valid for average calculation after increment.`);
+                    console.warn(`[ProductReviewStats] WARN: Product ${submittedProductId} has invalid stats for average calculation after increment.`);
                 }
             } else {
-                console.error(`[ProductReviewStats] CRITICAL ERROR: Product ${submittedProductId} NOT FOUND after attempting to increment stats. This indicates a serious issue or incorrect product ID.`);
+                console.error(`[ProductReviewStats] CRITICAL ERROR: Product ${submittedProductId} NOT FOUND after increment.`);
             }
         } catch (productUpdateError) {
             console.error(`[ProductReviewStats] FAILED to update product review statistics for ${submittedProductId}. Error:`, productUpdateError);
-            // Alert.alert("Error", "Could not update product review details. Please try again later."); // Optional user feedback
         }
-        // --- End Product Review Statistics Update ---
-
-        // 4. Prepare and Send Admin Notification
-        console.log("[ReviewSuccess] Step 4: Preparing and sending admin notification.");
         try {
             if (!currentOrderData || !currentOrderData.items) {
                 console.warn("[handleReviewSuccess - AdminNotify] Cannot send notification: currentOrderData or items missing.");
@@ -275,22 +240,87 @@ export default function UserOrderDetailScreen() {
             const productName = reviewedItem?.name || 'Unknown Product';
             const orderDisplayId = currentOrderData.orderNumber ? `#${currentOrderData.orderNumber}` : `ID...${currentOrderData.id.slice(-6)}`;
             const notificationTitle = `New Review Submitted!`;
-            const notificationBody = `${reviewerName} rated "${productName}" ${ratingValue} stars (Order ${orderDisplayId}).`; // <<< MODIFIED to include rating
+            const notificationBody = `${reviewerName} rated "${productName}" ${ratingValue} stars (Order ${orderDisplayId}).`;
             const notificationData = { orderId: currentOrderData.id, productId: submittedProductId, type: 'new_review' };
-
             const adminTokens = await getAdminExpoTokens();
             if (adminTokens.length > 0) {
                 await sendExpoPushNotification(adminTokens, notificationTitle, notificationBody, notificationData);
-                console.log("[handleReviewSuccess - AdminNotify] Admin review notifications dispatched.");
-            } else {
-                console.log("[handleReviewSuccess - AdminNotify] No admin tokens found to send review notification.");
             }
         } catch (adminNotifyError) {
             console.error("[handleReviewSuccess - AdminNotify] Failed to send admin notification:", adminNotifyError);
         }
         console.log("[ReviewSuccess] END");
     }, [currentOrderData, orderId, reviewerName]);
-    // --- END MODIFIED CALLBACK ---
+
+    // <<< ADDED FUNCTION TO HANDLE ORDER CANCELLATION >>>
+    const handleCancelOrder = useCallback(async () => {
+        if (!currentOrderData || !orderId) {
+            Alert.alert("Error", "Order details are not available to process cancellation.");
+            return;
+        }
+
+        if (currentOrderData.status !== PENDING_STATUS) {
+            Alert.alert("Cannot Cancel Order", "This order can no longer be cancelled as its status is not 'Pending'.");
+            return;
+        }
+
+        Alert.alert(
+            "Confirm Cancellation",
+            "Are you sure you want to cancel this order? This action cannot be undone.",
+            [
+                { text: "No, Keep Order", style: "cancel", onPress: () => {} },
+                {
+                    text: "Yes, Cancel Order",
+                    style: "destructive",
+                    onPress: async () => {
+                        setIsCancellingOrder(true);
+                        try {
+                            const orderRef = doc(db, ORDERS_COLLECTION, orderId);
+                            await updateDoc(orderRef, {
+                                status: CANCELLED_STATUS,
+                                lastUpdatedAt: Timestamp.now(),
+                                cancelledAt: Timestamp.now(),
+                                cancellationReason: "Cancelled by user",
+                            });
+
+                            if (Platform.OS === 'android') {
+                                ToastAndroid.show('Order cancelled successfully.', ToastAndroid.SHORT);
+                            } else {
+                                Alert.alert("Success", "Order has been cancelled.");
+                            }
+
+                            // Notify admins about the cancellation
+                            try {
+                                const orderDisplayId = currentOrderData.orderNumber ? `#${currentOrderData.orderNumber}` : `ID...${currentOrderData.id.slice(-6)}`;
+                                const userNameForNotif = currentOrderData.userName || 'A user';
+                                const notificationTitle = `Order Cancelled by User`;
+                                const notificationBody = `Order ${orderDisplayId} has been cancelled by ${userNameForNotif}.`;
+                                const notificationData = { orderId: currentOrderData.id, type: 'order_cancelled_by_user' };
+
+                                const adminTokens = await getAdminExpoTokens();
+                                if (adminTokens.length > 0) {
+                                    await sendExpoPushNotification(adminTokens, notificationTitle, notificationBody, notificationData);
+                                    console.log("[handleCancelOrder - AdminNotify] Admin cancellation notification dispatched.");
+                                } else {
+                                    console.log("[handleCancelOrder - AdminNotify] No admin tokens found for cancellation notification.");
+                                }
+                            } catch (adminNotifyError) {
+                                console.error("[handleCancelOrder - AdminNotify] Failed to send admin cancellation notification:", adminNotifyError);
+                            }
+                            // onSnapshot will update the UI
+                        } catch (error) {
+                            console.error("Error cancelling order:", error);
+                            Alert.alert("Cancellation Failed", "Could not cancel the order. Please try again or contact support.");
+                        } finally {
+                            setIsCancellingOrder(false);
+                        }
+                    },
+                },
+            ],
+            { cancelable: true }
+        );
+    }, [orderId, currentOrderData]); // <<< END ADDED FUNCTION >>>
+
 
     const renderOrderItem = ({ item, index }) => {
         if (!item || typeof item.price !== 'number' || typeof item.quantity !== 'number') {
@@ -354,6 +384,9 @@ export default function UserOrderDetailScreen() {
     const allUniqueProductsReviewed = isOrderComplete && !loadingReviews && !reviewError && uniqueProductIdsInOrder.length > 0 && uniqueProductIdsToReview.length === 0;
     const paymentMethodDisplayText = paymentMethod === BNPL_METHOD ? 'Installment' : paymentMethod;
 
+    // <<< ADDED: Determine if order can be cancelled >>>
+    const canCancelOrder = currentOrderData.status === PENDING_STATUS;
+
     return (
         <SafeAreaView style={styles.container}>
             <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
@@ -375,8 +408,29 @@ export default function UserOrderDetailScreen() {
                     <Text style={styles.sectionTitle}>Order Summary</Text>
                     <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Order ID:</Text><Text style={styles.summaryValue}>#{currentOrderData.orderNumber || currentOrderData.id?.substring(0, 8).toUpperCase() || 'N/A'}</Text></View>
                     <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Order Date:</Text><Text style={styles.summaryValue}>{formatDate(currentOrderData.createdAt || currentOrderData.orderDate)}</Text></View>
-                    <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Status:</Text><View style={[styles.statusBadge, getStatusStyle(currentOrderData.status)]}><Text style={styles.statusText}>{currentOrderData.status || 'Unknown'}</Text></View></View>
+                    <View style={styles.summaryRow}>
+                        <Text style={styles.summaryLabel}>Status:</Text>
+                        <View style={[styles.statusBadge, getStatusStyle(currentOrderData.status)]}>
+                            <Text style={styles.statusText}>{currentOrderData.status || 'Unknown'}</Text>
+                        </View>
+                    </View>
                     {currentOrderData.status === SHIPPED_STATUS && currentOrderData.deliveryOtp && (<View style={styles.otpDisplayRow}><IconMUI name="vpn-key" size={16} color={SuccessColor} style={styles.otpIcon} /><Text style={styles.otpDisplayLabel}>Delivery OTP:</Text><Text style={styles.otpDisplayValue}>{currentOrderData.deliveryOtp}</Text></View>)}
+                    
+                    {/* <<< ADDED CANCEL ORDER BUTTON RENDER >>> */}
+                    {canCancelOrder && (
+                        <TouchableOpacity
+                            style={[styles.cancelOrderButton, isCancellingOrder && styles.disabledButton]}
+                            onPress={handleCancelOrder}
+                            disabled={isCancellingOrder}
+                        >
+                            {isCancellingOrder ? (
+                                <ActivityIndicator size="small" color="#FFFFFF" />
+                            ) : (
+                                <Text style={styles.cancelOrderButtonText}>Cancel Order</Text>
+                            )}
+                        </TouchableOpacity>
+                    )}
+                    {/* <<< END ADDED CANCEL ORDER BUTTON RENDER >>> */}
                 </View>
 
                 <View style={styles.section}>
@@ -456,7 +510,7 @@ const styles = StyleSheet.create({
     summaryValue: { fontSize: 14, fontWeight: '500', color: TextColorPrimary, textAlign: 'right', flexShrink: 1 },
     statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12, alignSelf: 'flex-start' },
     statusText: { fontSize: 12, fontWeight: 'bold', color: '#fff' },
-    statusPending: { backgroundColor: PendingStatusColor }, statusProcessing: { backgroundColor: '#42A5F5' }, statusShipped: { backgroundColor: '#66BB6A' }, statusDelivered: { backgroundColor: '#78909C' }, statusCancelled: { backgroundColor: AccentColor }, statusUnknown: { backgroundColor: '#BDBDBD' }, statusActive: { backgroundColor: ActiveStatusColor }, statusPaidBadge: { backgroundColor: SuccessColor },
+    statusPending: { backgroundColor: PendingStatusColor }, statusProcessing: { backgroundColor: '#42A5F5' }, statusShipped: { backgroundColor: '#66BB6A' }, statusDelivered: { backgroundColor: '#78909C' }, statusCancelled: { backgroundColor: cancel_color }, statusUnknown: { backgroundColor: '#BDBDBD' }, statusActive: { backgroundColor: ActiveStatusColor }, statusPaidBadge: { backgroundColor: SuccessColor },
     detailText: { fontSize: 14, color: TextColorPrimary, lineHeight: 20, marginBottom: 4 },
     paymentSubSection: { marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
     paymentSubHeader: { fontSize: 15, fontWeight: '600', color: TextColorPrimary, marginBottom: 10 },
@@ -504,4 +558,24 @@ const styles = StyleSheet.create({
     reviewItemName: { flex: 1, fontSize: 15, fontWeight: '600', color: TextColorPrimary, lineHeight: 20 },
     reviewItemDivider: { height: 1, backgroundColor: '#f0f0f0', marginVertical: 10, marginLeft: -15, marginRight: -15 },
     reviewNotAvailableText: { fontSize: 13, fontStyle: 'italic', color: TextColorSecondary, textAlign: 'center', paddingVertical: 15, lineHeight: 18 },
+
+    // <<< ADDED STYLES FOR CANCEL BUTTON >>>
+    cancelOrderButton: {
+        backgroundColor: AccentColor,
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 15, // Margin from the status or OTP row
+    },
+    cancelOrderButtonText: {
+        color: '#FFFFFF',
+        fontSize: 15,
+        fontWeight: 'bold',
+    },
+    disabledButton: {
+        opacity: 0.7, // Standard way to show disabled state
+    },
+    // <<< END ADDED STYLES >>>
 });

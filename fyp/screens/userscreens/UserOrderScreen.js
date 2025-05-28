@@ -28,14 +28,11 @@ const UserOrderScreen = ({ navigation }) => {
 
       <ScrollView contentContainerStyle={styles.scrollView} showsVerticalScrollIndicator={false}>
         
-        {/* Extra Space Before Support & Information Section */}
-        <View style={{ height: 20 }}></View>
-
         {/* 1. Support & Information (Icons in a Single Row) */}
         <View style={styles.sectionContainer}>
           {/* Replace Lottie animation with a local image */}
           <Image
-            source={require("../../assets/file1.png")}  // Replace with your image path
+            source={require("../../assets/orders1.png")}  // Replace with your image path
             style={styles.imageStyle}
           />
         </View>
@@ -184,9 +181,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   imageStyle: {
-    width: 150,  // Adjust the size of the image
-    height: 150, 
-    marginBottom: 20,  // Space between image and text
+    width: 200,  // Adjust the size of the image
+    height: 220, 
+    marginBottom: 0,  // Space between image and text
     borderRadius: 15,
   },
 });

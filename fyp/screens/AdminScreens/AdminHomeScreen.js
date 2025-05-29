@@ -319,7 +319,7 @@ export default function AdminHomeScreen({ navigation }) {
             <StatusBar barStyle="light-content" backgroundColor={REFRESH_CONTROL_COLOR} />
             <View style={styles.headerBar}>
                 {/* ... Header JSX ... */}
-                <Image source={require('../../assets/logoh.png')} style={styles.logo} />
+                <Image source={require('../../assets/logobg1.png')} style={styles.logo} />
                 <TouchableOpacity onPress={() => setIsDrawerOpen(true)}>
                     <View style={styles.profileIconContainer}>
                         {loadingProfile ? <ActivityIndicator size="small" color="white" />

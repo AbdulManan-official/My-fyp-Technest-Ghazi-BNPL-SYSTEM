@@ -17,6 +17,7 @@ import {
     RefreshControl,
     Platform
 } from 'react-native';
+
 import { useNavigation } from '@react-navigation/native';
 import { MaterialIcons } from '@expo/vector-icons';
 import Icon from 'react-native-vector-icons/FontAwesome';
@@ -39,9 +40,9 @@ const { width } = Dimensions.get('window');
 
 // Static banners
 const banners = [
-    require('../../assets/pic2.jpg'),
-    require('../../assets/pic3.jpg'),
-    require('../../assets/pic4.jpg'),
+    require('../../assets/1.png'),
+    require('../../assets/2.png'),
+    require('../../assets/3.png'),
 ];
 
 // Placeholders and constants
@@ -345,7 +346,7 @@ const HomeScreen = () => {
         <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="light-content" backgroundColor="#FF0000" />
             <View style={styles.header}>
-                 <Image source={require('../../assets/logoh.png')} style={styles.logo} />
+                 <Image source={require('../../assets/logobg1.png')} style={styles.logo} />
                  <TouchableOpacity onPress={() => setIsDrawerOpen(true)}>
                     <View style={styles.profileIconContainer}>
                         {loadingProfile ? (<ActivityIndicator size="small" color="white" />)

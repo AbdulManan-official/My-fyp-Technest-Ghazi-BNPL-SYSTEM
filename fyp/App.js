@@ -115,9 +115,9 @@ export default function App() {
             name="CartScreen"
             component={CartScreen}
              options={({ navigation, route }) => {
-              if (route.params?.hideHeader) { // Allow CartScreen to hide its own header if needed
-                return { headerShown: false };
-              }
+              // if (route.params?.hideHeader) { // Allow CartScreen to hide its own header if needed
+              //   return { headerShown: false };
+              // }
               return CustomHeader({ navigation, title: 'My Cart', titleAlign: 'center' });
             }}
           />

@@ -55,7 +55,7 @@ export default function CartScreen() {
     // --- Determine if the custom header should be hidden ---
     // Check if the hideHeader param was passed and is true. Default to false.
     const hideHeader = route.params?.hideHeader ?? false;
-    console.log(`CartScreen mounted. hideHeader parameter: ${hideHeader}`); // Optional: Log for debugging
+    // console.log(`CartScreen mounted. hideHeader parameter: ${hideHeader}`); // Optional: Log for debugging
 
     // --- Firestore Listener Effect ---
     useEffect(() => {
@@ -64,10 +64,10 @@ export default function CartScreen() {
         }
         setIsLoading(true); setError(null);
         const cartDocRef = doc(db, CARTS_COLLECTION, user.uid);
-        console.log(`Setting up cart listener for user: ${user.uid}`);
+        // console.log(`Setting up cart listener for user: ${user.uid}`);
 
         const unsubscribe = onSnapshot(cartDocRef, (docSnap) => {
-            console.log("Cart listener received update.");
+            // console.log("Cart listener received update.");
             if (docSnap.exists()) {
                 const data = docSnap.data();
                 const itemsArray = Array.isArray(data?.items) ? data.items : [];
@@ -77,7 +77,7 @@ export default function CartScreen() {
                     const generatedFallbackId = `${item.productId || 'unknown'}_${item.paymentMethod || 'unk'}_${item.bnplPlan?.id || 'NA'}_${itemIndex++}_${Date.now()}`; // Added timestamp for uniqueness
                     const finalCartItemId = item.cartItemId || generatedFallbackId;
                     if (!item.cartItemId) {
-                        console.warn(`Cart item missing cartItemId, generated fallback: ${finalCartItemId}`, item);
+                        // console.warn(`Cart item missing cartItemId, generated fallback: ${finalCartItemId}`, item);
                     }
 
                     const validatedImage = (typeof item.image === 'string' && item.image) ? item.image : PLACEHOLDER_IMAGE_URL;
@@ -85,13 +85,13 @@ export default function CartScreen() {
                     // Ensure quantity is a positive number, default to 1
                     const validatedQuantity = (typeof item.quantity === 'number' && item.quantity > 0) ? item.quantity : 1;
                     if (validatedQuantity !== item.quantity) {
-                        console.warn(`Corrected invalid quantity for item ${finalCartItemId}. Original: ${item.quantity}, Corrected: ${validatedQuantity}`);
+                        // console.warn(`Corrected invalid quantity for item ${finalCartItemId}. Original: ${item.quantity}, Corrected: ${validatedQuantity}`);
                     }
 
                     // Ensure priceAtAddition is a number, default to 0
                     const validatedPrice = typeof item.priceAtAddition === 'number' ? item.priceAtAddition : 0;
                      if (validatedPrice !== item.priceAtAddition) {
-                        console.warn(`Corrected invalid price for item ${finalCartItemId}. Original: ${item.priceAtAddition}, Corrected: ${validatedPrice}`);
+                        // console.warn(`Corrected invalid price for item ${finalCartItemId}. Original: ${item.priceAtAddition}, Corrected: ${validatedPrice}`);
                     }
 
                     return {
@@ -113,10 +113,10 @@ export default function CartScreen() {
                         paymentMethod: item.paymentMethod || 'COD', // Default to COD if missing
                     };
                 });
-                console.log(`Setting ${validatedItems.length} validated items.`);
+                // console.log(`Setting ${validatedItems.length} validated items.`);
                 setCartItems(validatedItems);
             } else {
-                console.log("Cart document does not exist, setting empty cart.");
+                // console.log("Cart document does not exist, setting empty cart.");
                 setCartItems([]);
             }
             setIsLoading(false);
@@ -128,7 +128,7 @@ export default function CartScreen() {
 
         // Cleanup function
         return () => {
-            console.log("Unsubscribing from cart listener");
+            // console.log("Unsubscribing from cart listener");
             unsubscribe();
         };
     }, [user]); // Dependency array includes user
@@ -197,7 +197,7 @@ export default function CartScreen() {
                 items: updatedItemsArray,
                 lastUpdated: serverTimestamp()
             });
-            console.log(`Quantity updated for ${cartItemId} to ${newQuantity}. Firestore should trigger state update via onSnapshot.`);
+            // console.log(`Quantity updated for ${cartItemId} to ${newQuantity}. Firestore should trigger state update via onSnapshot.`);
              // No local state update needed here, onSnapshot will handle it.
 
         } catch (err) {
@@ -213,7 +213,7 @@ export default function CartScreen() {
             // Avoid Alert here as it's usually called from another action
             return;
         }
-        console.log(`Executing removal for item: ${itemToRemove.cartItemId}`);
+        // console.log(`Executing removal for item: ${itemToRemove.cartItemId}`);
         const cartDocRef = doc(db, CARTS_COLLECTION, user.uid);
         try {
             const currentCartSnap = await getDoc(cartDocRef);
@@ -227,15 +227,15 @@ export default function CartScreen() {
                         items: arrayRemove(itemObjectToRemove), // Use arrayRemove with the exact object
                         lastUpdated: serverTimestamp()
                     });
-                    console.log(`Item removed via executeRemoval: ${itemToRemove.cartItemId}. Firestore should trigger state update.`);
+                    // console.log(`Item removed via executeRemoval: ${itemToRemove.cartItemId}. Firestore should trigger state update.`);
                      // onSnapshot handles the UI update. No direct state manipulation needed.
                 } else {
-                    console.warn(`Item with cartItemId ${itemToRemove.cartItemId} not found in Firestore for executeRemoval (might be already removed).`);
+                    // console.warn(`Item with cartItemId ${itemToRemove.cartItemId} not found in Firestore for executeRemoval (might be already removed).`);
                     // As a fallback, force local state update if Firestore seems out of sync
                      setCartItems(prev => prev.filter(i => i.cartItemId !== itemToRemove.cartItemId));
                 }
             } else {
-                console.warn("Cart document doesn't exist during executeRemoval.");
+                // console.warn("Cart document doesn't exist during executeRemoval.");
                  // Cart doc gone, clear local state too
                  setCartItems([]);
             }
@@ -291,7 +291,7 @@ export default function CartScreen() {
                 } : null;
 
              if (item.paymentMethod === 'BNPL' && !planDetails?.id) {
-                 console.warn(`Missing BNPL Plan ID for cart item ${item.cartItemId} during checkout prep.`);
+                 // console.warn(`Missing BNPL Plan ID for cart item ${item.cartItemId} during checkout prep.`);
              }
 
             return {
@@ -306,7 +306,7 @@ export default function CartScreen() {
             };
         });
 
-        console.log(`Proceeding to checkout with ${itemsForCheckout.length} mapped items (total quantity ${totalQuantityCount}).`);
+        // console.log(`Proceeding to checkout with ${itemsForCheckout.length} mapped items (total quantity ${totalQuantityCount}).`);
         navigation.navigate('CheckoutScreen', {
             cartItems: itemsForCheckout, // Pass the mapped items
             totalPrice: totalPrice // Pass the calculated total price
@@ -315,13 +315,22 @@ export default function CartScreen() {
 
     const handleProductPress = (item) => {
         if (item && item.productId && item.productId !== 'unknown') {
-             console.log(`Navigating to ProductDetails for productId: ${item.productId}`);
+             // console.log(`Navigating to ProductDetails for productId: ${item.productId}`);
             navigation.navigate('ProductDetails', { productId: item.productId });
         } else {
             Alert.alert("Error", "Product details are unavailable.");
-            console.warn("Attempted to navigate with invalid productId:", item?.productId);
+            // console.warn("Attempted to navigate with invalid productId:", item?.productId);
         }
     };
+
+    // MODIFIED HANDLER for "Start Shopping" button
+    const handleStartShopping = () => {
+        // console.log("Start Shopping pressed. Navigating to Home tab via BottomTabs.");
+        // Navigate to the BottomTabs navigator, and then to its 'Home' screen.
+        // Replace 'BottomTabs' with the actual name of your BottomTabNavigator screen in your root StackNavigator
+        navigation.navigate('BottomTabs', { screen: 'Home' });
+    };
+
 
     // --- Render Item Function for FlatList ---
     const renderCartItem = ({ item, index }) => {
@@ -436,7 +445,10 @@ export default function CartScreen() {
                              <Ionicons name="cart-outline" size={60} color={SECONDARY_TEXT_COLOR} />
                             <Text style={styles.emptyCartText}>Your cart is empty</Text>
                             <Text style={localStyles.emptyCartSubText}>Looks like you haven't added anything yet.</Text>
-                            <TouchableOpacity style={localStyles.shopNowButton} onPress={() => navigation.navigate('Home')}><Text style={localStyles.shopNowButtonText}>Start Shopping</Text></TouchableOpacity>
+                            {/* UPDATED onPress HERE */}
+                            <TouchableOpacity style={localStyles.shopNowButton} onPress={handleStartShopping}>
+                                <Text style={localStyles.shopNowButtonText}>Start Shopping</Text>
+                            </TouchableOpacity>
                         </View>
                     )}
                 </View>
@@ -491,7 +503,7 @@ const styles = StyleSheet.create({
     },
     listContentContainer: {
         paddingHorizontal: 10,
-        paddingTop: 10, // Add padding from top of the list area
+        paddingTop: 0, // Add padding from top of the list area
         paddingBottom: 180, // Ensure space for the checkout footer
     },
     separator: {
@@ -563,7 +575,7 @@ const styles = StyleSheet.create({
         right: 0,
         bottom: 0,
         paddingHorizontal: 20,
-        paddingTop: 20,
+        paddingTop: 10,
         paddingBottom: Platform.OS === 'ios' ? 30 : 20, // Adjust for bottom safe area/navbar
         backgroundColor: CARD_BACKGROUND_COLOR, // White background for footer
         borderTopLeftRadius: 20,

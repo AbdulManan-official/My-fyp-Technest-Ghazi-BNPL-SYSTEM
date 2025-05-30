@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import {
     useNavigation,
-    useRoute,
+    // useRoute, // We'll use the 'route' prop primarily for params
     useIsFocused,
 } from '@react-navigation/native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -28,9 +28,7 @@ import { db, auth } from '../../firebaseConfig'; // Adjust path as needed
 import {
     doc,
     onSnapshot, // Import the real-time listener
-    // Removed order placement related imports:
-    // serverTimestamp, addDoc, collection, query, where, documentId, getDocs
-} from 'firebase/firestore'; // Ensure all needed imports
+} from 'firebase/firestore';
 
 // --- Define Constants Locally ---
 const AppBackgroundColor = '#FFFFFF';
@@ -46,7 +44,7 @@ const BnplPlanIconColor = '#757575';
 const ERROR_COLOR = '#D32F2F';
 const ACCENT_COLOR_ADD = '#4CAF50';
 const REMOVE_ICON_COLOR = '#757575';
-const QuantityButtonDisabledColor = '#cccccc';
+// const QuantityButtonDisabledColor = '#cccccc'; // Appears unused
 const ScreenBackgroundColor = '#F8F9FA';
 
 // --- Placeholder Texts ---
@@ -74,20 +72,20 @@ function formatAddressString(structuredAddr) {
     return addressString || null;
 }
 
+// The 'route' prop is directly passed by React Navigation
 export default function CheckoutScreen({ route }) {
     const navigation = useNavigation();
-    const currentRoute = useRoute();
     const isFocused = useIsFocused();
 
+    // Initialize cartItems from route.params received by this screen
+    // The 'origin' parameter will be in route.params.origin
     const [cartItems, setCartItems] = useState(route.params?.cartItems ?? []);
     const [subTotal, setSubTotal] = useState(0);
-    const [isLoadingUser, setIsLoadingUser] = useState(true); // For initial data load
-    const [currentUserDetails, setCurrentUserDetails] = useState(null); // Stores combined user details
+    const [isLoadingUser, setIsLoadingUser] = useState(true);
+    const [currentUserDetails, setCurrentUserDetails] = useState(null);
 
-    // --- Calculations ---
-    const grandTotal = useMemo(() => subTotal, [subTotal]); // Simplified total
+    const grandTotal = useMemo(() => subTotal, [subTotal]);
 
-    // --- Subtotal Calculation Effect ---
     useEffect(() => {
         let calculatedTotal = 0;
         cartItems.forEach((item) => {
@@ -103,65 +101,40 @@ export default function CheckoutScreen({ route }) {
         setSubTotal(calculatedTotal);
     }, [cartItems]);
 
-    // --- Effect for Auth State Changes & Real-time Data Listening ---
     useEffect(() => {
         let unsubscribeSnapshot = null;
-
         const unsubscribeAuth = auth.onAuthStateChanged((userAuth) => {
             if (unsubscribeSnapshot) {
-                console.log(
-                    '[Auth/Snapshot Effect] Cleaning up previous listener.'
-                );
+                console.log('[CheckoutScreen Auth/Snapshot Effect] Cleaning up previous listener.');
                 unsubscribeSnapshot();
                 unsubscribeSnapshot = null;
             }
-
             if (userAuth) {
                 const userId = userAuth.uid;
-                console.log(
-                    `[Auth/Snapshot Effect] User ${userId} logged in. Setting up listener.`
-                );
-                setIsLoadingUser(true); // Set loading true when setting up listener
+                console.log(`[CheckoutScreen Auth/Snapshot Effect] User ${userId} logged in. Setting up listener.`);
+                setIsLoadingUser(true);
                 const userDocRef = doc(db, 'Users', userId);
-
                 unsubscribeSnapshot = onSnapshot(
                     userDocRef,
                     (snapshot) => {
-                        console.log(
-                            '[Auth/Snapshot Effect] Received snapshot update.'
-                        );
+                        console.log('[CheckoutScreen Auth/Snapshot Effect] Received snapshot update.');
                         let processedData = null;
                         if (snapshot.exists()) {
                             const dbUserData = snapshot.data();
-                            console.log(
-                                '[Auth/Snapshot Effect] Firestore data:',
-                                dbUserData
-                            );
-
-                            // Process data (same logic as before)
-                            const name =
-                                dbUserData.name ??
-                                userAuth.displayName ??
-                                `User ${userId.substring(0, 5)}`;
-                            const phone =
-                                dbUserData.phone ??
-                                userAuth.phoneNumber ??
-                                PLACEHOLDER_PHONE;
+                            const name = dbUserData.name ?? userAuth.displayName ?? `User ${userId.substring(0, 5)}`;
+                            const phone = dbUserData.phone ?? userAuth.phoneNumber ?? PLACEHOLDER_PHONE;
                             let addressString = PLACEHOLDER_ADDRESS;
                             let structuredAddress = null;
                             if (dbUserData.deliveryAddress) {
                                 structuredAddress = dbUserData.deliveryAddress;
-                                addressString =
-                                    formatAddressString(structuredAddress) ||
-                                    PLACEHOLDER_ADDRESS;
+                                addressString = formatAddressString(structuredAddress) || PLACEHOLDER_ADDRESS;
                             }
                             processedData = {
                                 uid: userId, name: name, phone: phone, address: addressString,
                                 structuredAddress: structuredAddress, email: dbUserData.email || userAuth.email,
                             };
                         } else {
-                             // Handle user doc not existing yet
-                            console.warn( `[Auth/Snapshot Effect] User document ${userId} missing.` );
+                            console.warn(`[CheckoutScreen Auth/Snapshot Effect] User document ${userId} missing.`);
                             processedData = {
                                 uid: userId, name: userAuth.displayName ?? `User ${userId.substring(0, 5)}`,
                                 phone: userAuth.phoneNumber ?? PLACEHOLDER_PHONE, address: PLACEHOLDER_ADDRESS,
@@ -169,47 +142,43 @@ export default function CheckoutScreen({ route }) {
                             };
                         }
                         setCurrentUserDetails(processedData);
-                        setIsLoadingUser(false); // Stop loading after data is processed
+                        setIsLoadingUser(false);
                     },
                     (error) => {
-                        // Handle snapshot errors
-                        console.error( '[Auth/Snapshot Effect] Snapshot listener error:', error );
-                        setCurrentUserDetails({
-                            uid: userId, name: userAuth.displayName || `User ${userId.substring(0, 5)}`,
-                            address: 'Error loading address', phone: userAuth.phoneNumber || PLACEHOLDER_PHONE,
-                            structuredAddress: null, email: userAuth.email,
-                        });
+                        console.error('[CheckoutScreen Auth/Snapshot Effect] Snapshot listener error:', error);
+                        if (userAuth) { // Check if userAuth still exists before using its properties
+                            setCurrentUserDetails({
+                                uid: userAuth.uid, name: userAuth.displayName || `User ${userAuth.uid.substring(0, 5)}`,
+                                address: 'Error loading address', phone: userAuth.phoneNumber || PLACEHOLDER_PHONE,
+                                structuredAddress: null, email: userAuth.email,
+                            });
+                        }
                         setIsLoadingUser(false);
                     }
                 );
             } else {
-                // User logged out
-                console.log('[Auth/Snapshot Effect] No user logged in.');
+                console.log('[CheckoutScreen Auth/Snapshot Effect] No user logged in.');
                 setCurrentUserDetails(null);
                 setIsLoadingUser(false);
             }
         });
-
-        // Cleanup function
         return () => {
-            console.log('[Auth/Snapshot Effect] Cleaning up listeners.');
+            console.log('[CheckoutScreen Auth/Snapshot Effect] Cleaning up listeners.');
             unsubscribeAuth();
             if (unsubscribeSnapshot) {
                 unsubscribeSnapshot();
             }
         };
-    }, []); // Empty dependency array - runs once to set up listeners
+    }, []);
 
-    // --- Effect to Clear Navigation Params on Focus ---
     useEffect(() => {
-        // Only purpose is to clear params if returning from edit screen
-        if (isFocused && currentRoute.params?.updatedUserDetails) {
-            console.log('[Focus Effect] Clearing updatedUserDetails param.');
+        // Use 'route.params' from the prop for checking updatedUserDetails
+        if (isFocused && route.params?.updatedUserDetails) {
+            console.log('[CheckoutScreen Focus Effect] Clearing updatedUserDetails param.');
             navigation.setParams({ updatedUserDetails: undefined });
         }
-    }, [isFocused, currentRoute.params?.updatedUserDetails, navigation]);
+    }, [isFocused, route.params?.updatedUserDetails, navigation]);
 
-    // --- Navigation Handler to Edit Address ---
     const navigateToEditAddress = useCallback(() => {
         if (!currentUserDetails) {
             Alert.alert('Loading', 'User data is still loading.');
@@ -217,51 +186,25 @@ export default function CheckoutScreen({ route }) {
         }
         const currentDetails = {
             name: currentUserDetails.name,
-            phone:
-                currentUserDetails.phone === PLACEHOLDER_PHONE
-                    ? ''
-                    : currentUserDetails.phone,
-            addressString:
-                currentUserDetails.address === PLACEHOLDER_ADDRESS
-                    ? ''
-                    : currentUserDetails.address,
+            phone: currentUserDetails.phone === PLACEHOLDER_PHONE ? '' : currentUserDetails.phone,
+            addressString: currentUserDetails.address === PLACEHOLDER_ADDRESS ? '' : currentUserDetails.address,
             structuredAddress: currentUserDetails.structuredAddress,
         };
         navigation.navigate('AddressEditScreen', {
             currentDetails: currentDetails,
-            sourceScreen: 'CheckoutScreen',
+            sourceScreen: 'CheckoutScreen', // This helps AddressEditScreen know where to return or what to do
         });
     }, [navigation, currentUserDetails]);
 
-    // --- Quantity/Remove Logic ---
     const increaseQuantity = useCallback((itemId) => {
         setCartItems((currentItems) =>
             currentItems.map((item) =>
-                item.id === itemId
-                    ? { ...item, quantity: (item.quantity || 0) + 1 }
-                    : item
+                // Use item.id or item.cartItemId consistently, assuming item.id is the product ID
+                // and item.cartItemId is the unique ID within the cart if it exists
+                (item.cartItemId || item.id) === itemId ? { ...item, quantity: (item.quantity || 0) + 1 } : item
             )
         );
     }, []);
-
-    const decreaseQuantity = useCallback(
-        (itemId) => {
-            setCartItems((currentItems) => {
-                const itemIndex = currentItems.findIndex((item) => item.id === itemId);
-                if (itemIndex === -1) return currentItems;
-                const itemToUpdate = currentItems[itemIndex];
-                if (itemToUpdate.quantity > 1) {
-                    const updatedItems = [...currentItems];
-                    updatedItems[itemIndex] = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 };
-                    return updatedItems;
-                } else {
-                    confirmRemoveItem(itemToUpdate);
-                    return currentItems;
-                }
-            });
-        },
-        [confirmRemoveItem] // Added dependency
-    );
 
     const confirmRemoveItem = useCallback((itemToRemove) => {
         Alert.alert(
@@ -273,7 +216,7 @@ export default function CheckoutScreen({ route }) {
                     text: 'Remove',
                     onPress: () =>
                         setCartItems((items) =>
-                            items.filter((item) => item.id !== itemToRemove.id)
+                            items.filter((item) => (item.cartItemId || item.id) !== (itemToRemove.cartItemId || itemToRemove.id))
                         ),
                     style: 'destructive',
                 },
@@ -282,84 +225,99 @@ export default function CheckoutScreen({ route }) {
         );
     }, []);
 
-    // --- Render BNPL details ---
+    const decreaseQuantity = useCallback((itemId) => {
+        setCartItems((currentItems) => {
+            const itemIndex = currentItems.findIndex((item) => (item.cartItemId || item.id) === itemId);
+            if (itemIndex === -1) return currentItems; // Item not found
+            const itemToUpdate = currentItems[itemIndex];
+            if (itemToUpdate.quantity > 1) {
+                const updatedItems = [...currentItems];
+                updatedItems[itemIndex] = { ...itemToUpdate, quantity: itemToUpdate.quantity - 1 };
+                return updatedItems;
+            } else {
+                confirmRemoveItem(itemToUpdate);
+                return currentItems;
+            }
+        });
+    }, [confirmRemoveItem]);
+
+
     const renderBnplDetails = useCallback((item) => {
         const { bnplPlan, quantity, price } = item;
         if (!bnplPlan || !bnplPlan.id || typeof price !== 'number' || typeof quantity !== 'number' || quantity <= 0) return null;
-        const name = bnplPlan.name || 'Installment Plan'; const duration = bnplPlan.duration; const interestRate = bnplPlan.interestRate; const planType = bnplPlan.planType || 'N/A'; const formattedInterest = interestRate != null ? `${(interestRate ).toFixed(1)}%` : 'N/A'; const isFixed = planType === 'Fixed Duration'; const numInstallments = !isFixed && duration ? duration : 1; let currentMonthlyPayment = null; if (!isFixed && duration && duration > 0) { const currentTotalPrice = price * quantity; const monthlyRaw = currentTotalPrice / duration; currentMonthlyPayment = `${CURRENCY_SYMBOL} ${monthlyRaw.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`; }
+        const name = bnplPlan.name || 'Installment Plan';
+        const duration = bnplPlan.duration;
+        const interestRate = bnplPlan.interestRate;
+        const planType = bnplPlan.planType || 'N/A';
+        const formattedInterest = interestRate != null ? `${interestRate.toFixed(1)}%` : 'N/A';
+        const isFixed = planType === 'Fixed Duration';
+        const numInstallments = !isFixed && duration ? duration : 1;
+        let currentMonthlyPayment = null;
+        if (!isFixed && duration && duration > 0) {
+            const currentTotalPriceWithInterest = price * quantity;
+            const monthlyRaw = currentTotalPriceWithInterest / duration;
+            currentMonthlyPayment = `${CURRENCY_SYMBOL} ${monthlyRaw.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+        }
         return (
             <View style={styles.bnplDetailsContainer}>
                 <Text style={styles.bnplPlanTitle}>Plan: {name}</Text>
-                {/* ... other BNPL details ... */}
-                 {planType !== 'N/A' && (<View style={styles.bnplDetailRow}><MaterialIcons name="info-outline" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Type: <Text style={styles.bnplDetailValue}>{planType}</Text></Text></View>)}
-                {duration && (<View style={styles.bnplDetailRow}><MaterialIcons name="schedule" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Duration: <Text style={styles.bnplDetailValue}>{duration} {duration === 1 ? 'Month' : 'Months'}</Text>{isFixed ? (<Text style={styles.bnplDetailValue}> (1 Pay)</Text>) : (<Text style={styles.bnplDetailValue}> / {numInstallments} Inst.</Text>)}</Text></View>)}
+                {planType !== 'N/A' && (<View style={styles.bnplDetailRow}><MaterialIcons name="info-outline" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Type: <Text style={styles.bnplDetailValue}>{planType}</Text></Text></View>)}
+                {duration != null && (<View style={styles.bnplDetailRow}><MaterialIcons name="schedule" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Duration: <Text style={styles.bnplDetailValue}>{duration} {duration === 1 ? 'Month' : 'Months'}</Text>{isFixed ? (<Text style={styles.bnplDetailValue}> (1 Pay)</Text>) : (duration > 0 && (<Text style={styles.bnplDetailValue}> / {numInstallments} Inst.</Text>))}</Text></View>)}
                 {currentMonthlyPayment && !isFixed && (<View style={styles.bnplDetailRow}><MaterialIcons name="calculate" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Est. Monthly: <Text style={styles.bnplDetailValue}>{currentMonthlyPayment}</Text></Text></View>)}
                 {interestRate !== null && (<View style={styles.bnplDetailRow}><MaterialIcons name="percent" size={14} color={BnplPlanIconColor} style={styles.bnplDetailIcon} /><Text style={styles.bnplDetailText}>Interest: <Text style={styles.bnplDetailValue}>{formattedInterest}</Text></Text></View>)}
             </View>
         );
     }, []);
 
-    // --- Render Cart Item ---
-    const renderCartItem = useCallback(
-        ({ item, index }) => {
-            if (!item || !item.id || typeof item.price !== 'number' || typeof item.quantity !== 'number' || item.quantity <= 0) { return null; }
-            const itemTotalPrice = item.price * item.quantity; const isBnpl = item.paymentMethod === 'BNPL' && item.bnplPlan; const isLastItem = index === cartItems.length - 1;
-            return (
-                <View style={[styles.cartItem, isLastItem && styles.lastCartItem]}>
-                    <Image source={item.image ? { uri: item.image } : placeholderImagePath} style={styles.productImage} onError={(e) => console.log(`ImgErr:${item.image}`, e.nativeEvent.error)} defaultSource={placeholderImagePath} />
-                    <View style={styles.details}>
-                        <Text style={styles.productName} numberOfLines={1}>{item.name || 'Unnamed'}</Text>
-                        <Text style={styles.productPrice}>{`${CURRENCY_SYMBOL} ${itemTotalPrice.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})}`}</Text>
-                        {item.quantity > 1 && (<Text style={styles.unitPriceText}>{`(${CURRENCY_SYMBOL} ${item.price.toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})} each)`}</Text>)}
-                        <View style={styles.quantityControlContainer}>
-                            <TouchableOpacity style={styles.quantityButton} onPress={() => decreaseQuantity(item.id)} hitSlop={{top:10,bottom:10,left:10,right:5}}><Ionicons name="remove-circle-outline" size={26} color={ERROR_COLOR} /></TouchableOpacity>
-                            <Text style={styles.quantityTextDisplay}>{item.quantity}</Text>
-                            <TouchableOpacity style={styles.quantityButton} onPress={() => increaseQuantity(item.id)} hitSlop={{top:10,bottom:10,left:5,right:10}}><Ionicons name="add-circle-outline" size={26} color={ACCENT_COLOR_ADD} /></TouchableOpacity>
-                        </View>
-                        {isBnpl && renderBnplDetails(item)}
-                    </View>
-                    <TouchableOpacity style={styles.removeIconContainer} onPress={() => confirmRemoveItem(item)} hitSlop={{top:15,bottom:15,left:10,right:10}}><Ionicons name="trash-outline" size={24} color={REMOVE_ICON_COLOR} /></TouchableOpacity>
-                </View>
-            );
-        },
-        [ cartItems.length, increaseQuantity, decreaseQuantity, confirmRemoveItem, renderBnplDetails ]
-    );
+    const renderCartItem = useCallback(({ item, index }) => {
+        // Use item.cartItemId if available (from cart), otherwise fallback to item.id (product ID for "Buy Now")
+        const uniqueItemId = item.cartItemId || item.id;
+        if (!uniqueItemId || typeof item.price !== 'number' || typeof item.quantity !== 'number' || item.quantity <= 0) { return null; }
 
-    // --- Handle Proceed to Confirmation ---
+        const itemTotalPrice = item.price * item.quantity;
+        const isBnpl = item.paymentMethod === 'BNPL' && item.bnplPlan;
+        const isLastItem = index === cartItems.length - 1;
+        return (
+            <View style={[styles.cartItem, isLastItem && styles.lastCartItem]}>
+                <Image source={item.image ? { uri: item.image } : placeholderImagePath} style={styles.productImage} onError={(e) => console.log(`ImgErr:${item.image}`, e.nativeEvent.error)} defaultSource={placeholderImagePath} />
+                <View style={styles.details}>
+                    <Text style={styles.productName} numberOfLines={1}>{item.name || 'Unnamed'}</Text>
+                    <Text style={styles.productPrice}>{`${CURRENCY_SYMBOL} ${itemTotalPrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`}</Text>
+                    {item.quantity > 1 && (<Text style={styles.unitPriceText}>{`(${CURRENCY_SYMBOL} ${item.price.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} each)`}</Text>)}
+                    <View style={styles.quantityControlContainer}>
+                        <TouchableOpacity style={styles.quantityButton} onPress={() => decreaseQuantity(uniqueItemId)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 5 }}><Ionicons name="remove-circle-outline" size={26} color={ERROR_COLOR} /></TouchableOpacity>
+                        <Text style={styles.quantityTextDisplay}>{item.quantity}</Text>
+                        <TouchableOpacity style={styles.quantityButton} onPress={() => increaseQuantity(uniqueItemId)} hitSlop={{ top: 10, bottom: 10, left: 5, right: 10 }}><Ionicons name="add-circle-outline" size={26} color={ACCENT_COLOR_ADD} /></TouchableOpacity>
+                    </View>
+                    {isBnpl && renderBnplDetails(item)}
+                </View>
+                <TouchableOpacity style={styles.removeIconContainer} onPress={() => confirmRemoveItem(item)} hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}><Ionicons name="trash-outline" size={24} color={REMOVE_ICON_COLOR} /></TouchableOpacity>
+            </View>
+        );
+    }, [cartItems, increaseQuantity, decreaseQuantity, confirmRemoveItem, renderBnplDetails]);
+
     const handleProceedToConfirmation = useCallback(() => {
-        // Validation
         const isAddressValid = currentUserDetails?.address && currentUserDetails.address !== PLACEHOLDER_ADDRESS;
         const isPhoneValid = currentUserDetails?.phone && currentUserDetails.phone !== PLACEHOLDER_PHONE;
 
-        if (!currentUserDetails || !currentUserDetails.uid) {
-            Alert.alert('Loading', 'User data still loading.'); return;
-        }
-        if (!isAddressValid || !isPhoneValid) {
-            Alert.alert('Missing Information', 'Please add address & phone.', [{ text: "Add Address", onPress: navigateToEditAddress }, { text: "Cancel", style: "cancel" }]); return;
-        }
-        if (cartItems.length === 0) {
-            Alert.alert('Empty Cart', 'Your cart is empty.'); return;
-        }
+        if (!currentUserDetails || !currentUserDetails.uid) { Alert.alert('Loading', 'User data still loading.'); return; }
+        if (!isAddressValid || !isPhoneValid) { Alert.alert('Missing Information', 'Please add address & phone.', [{ text: "Add Address", onPress: navigateToEditAddress }, { text: "Cancel", style: "cancel" }]); return; }
+        if (cartItems.length === 0) { Alert.alert('Empty Cart', 'Your cart is empty.'); return; }
 
-        // Navigate to Confirmation Screen, passing ALL necessary data
-        console.log("[CheckoutScreen] Navigating to Confirmation with:", { currentUserDetails, cartItems, subTotal, grandTotal });
+        console.log("[CheckoutScreen] Navigating to Confirmation with origin:", route.params?.origin);
         navigation.navigate('OrderConfirmationScreen', {
-            currentUserDetails: currentUserDetails, // Pass the whole object
+            currentUserDetails: currentUserDetails,
             cartItems: cartItems,
             subTotal: subTotal,
-            grandTotal: grandTotal, // Pass calculated total
+            grandTotal: grandTotal,
+            origin: route.params?.origin // Crucial: Pass the origin from the initial route params
         });
-    }, [currentUserDetails, cartItems, subTotal, grandTotal, navigation, navigateToEditAddress]);
+    }, [currentUserDetails, cartItems, subTotal, grandTotal, navigation, navigateToEditAddress, route.params?.origin]);
 
-
-    // --- Render Logic ---
     if (isLoadingUser) {
         return (
             <SafeAreaView style={styles.safeAreaContainer}>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={AccentColor} />
-                    <Text style={styles.loadingText}>Loading...</Text>
-                </View>
+                <View style={styles.loadingContainer}><ActivityIndicator size="large" color={AccentColor} /><Text style={styles.loadingText}>Loading...</Text></View>
             </SafeAreaView>
         );
     }
@@ -370,15 +328,12 @@ export default function CheckoutScreen({ route }) {
                 <View style={styles.loadingContainer}>
                     <Ionicons name="log-in-outline" size={60} color={TextColorSecondary} />
                     <Text style={styles.errorText}>Please log in.</Text>
-                    <TouchableOpacity style={styles.loginButton} onPress={() => navigation.navigate('Login')}>
-                        <Text style={styles.loginButtonText}>Login</Text>
-                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.loginButton} onPress={() => navigation.navigate('Login')}><Text style={styles.loginButtonText}>Login</Text></TouchableOpacity>
                 </View>
             </SafeAreaView>
         );
     }
 
-    // Determine button disabled state
     const isAddressMissing = !currentUserDetails.address || currentUserDetails.address === PLACEHOLDER_ADDRESS;
     const isPhoneMissing = !currentUserDetails.phone || currentUserDetails.phone === PLACEHOLDER_PHONE;
     const isCheckoutDisabled = cartItems.length === 0 || isAddressMissing || isPhoneMissing;
@@ -392,7 +347,6 @@ export default function CheckoutScreen({ route }) {
                 showsVerticalScrollIndicator={false}
                 keyboardShouldPersistTaps="handled"
             >
-                {/* User Info Section */}
                 <TouchableOpacity style={styles.userInfoContainer} onPress={navigateToEditAddress} activeOpacity={0.7} >
                     <Ionicons name="location-outline" size={24} color={TextColorSecondary} style={styles.infoIcon} />
                     <View style={styles.userInfo}>
@@ -403,28 +357,25 @@ export default function CheckoutScreen({ route }) {
                     <Ionicons name="chevron-forward-outline" size={24} color={AccentColor} style={styles.chevronIcon}/>
                 </TouchableOpacity>
 
-                {/* Order Items Section */}
                 <Text style={styles.sectionTitle}>Order Items</Text>
                 <View style={styles.cartListContainer}>
                     {cartItems.length === 0 ? (
                         <View style={styles.emptyCartContainer}>
                             <Ionicons name="cart-outline" size={50} color={TextColorSecondary} />
                             <Text style={styles.emptyCartText}>Cart is empty.</Text>
-                            <TouchableOpacity onPress={() => navigation.navigate('Home')}>
-                                <Text style={styles.browseProductsLink}>Browse Products</Text>
-                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => navigation.navigate('Home')}><Text style={styles.browseProductsLink}>Browse Products</Text></TouchableOpacity>
                         </View>
                      ) : (
                         <FlatList
                             data={cartItems}
-                            keyExtractor={(item) => item.cartItemId || item.id?.toString() || `checkout-${Math.random()}`}
+                            // Key extractor should use the same logic as item identification in quantity functions
+                            keyExtractor={(item) => item.cartItemId || item.id?.toString() || `checkout-${item.name}-${Math.random()}`}
                             renderItem={renderCartItem}
                             scrollEnabled={false}
                         />
                     )}
                 </View>
 
-                {/* Order Summary Section */}
                 <Text style={styles.sectionTitle}>Order Summary</Text>
                 <View style={styles.summaryContainer}>
                     <View style={styles.summaryRow}>
@@ -438,14 +389,12 @@ export default function CheckoutScreen({ route }) {
                     </View>
                 </View>
 
-                {/* Review Order Button */}
                 <TouchableOpacity
                     style={[ styles.paymentButton, isCheckoutDisabled && styles.disabledButton, ]}
                     onPress={handleProceedToConfirmation}
                     disabled={isCheckoutDisabled}
                     activeOpacity={0.8}
                 >
-                    {/* Removed loading indicator as order isn't placed here */}
                     <Text style={styles.paymentText}>Review Order</Text>
                 </TouchableOpacity>
             </ScrollView>
@@ -459,7 +408,6 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: ScreenBackgroundColor,
     },
-    // outerContainer: { flex: 1, backgroundColor: ScreenBackgroundColor, }, // Can likely be removed
     loadingContainer: {
         flex: 1,
         justifyContent: 'center',

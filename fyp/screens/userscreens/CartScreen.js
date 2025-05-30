@@ -55,7 +55,6 @@ export default function CartScreen() {
     // --- Determine if the custom header should be hidden ---
     // Check if the hideHeader param was passed and is true. Default to false.
     const hideHeader = route.params?.hideHeader ?? false;
-    // console.log(`CartScreen mounted. hideHeader parameter: ${hideHeader}`); // Optional: Log for debugging
 
     // --- Firestore Listener Effect ---
     useEffect(() => {
@@ -263,56 +262,60 @@ export default function CartScreen() {
 
 
     // --- Navigation Handlers ---
-     const handleCheckout = () => {
-        if (!cartItems || cartItems.length === 0) {
-            Alert.alert("Empty Cart", "Your cart is empty.");
-            return;
-        }
-        const bnplItems = cartItems.filter(item => item.paymentMethod === 'BNPL');
-        const bnplItemCount = bnplItems.length;
-        if (bnplItemCount > 1) {
-            Alert.alert(
-                "Multiple Installment Items",
-                "You can only checkout with one item on an installment plan at a time. Please remove additional installment items from your cart before proceeding.",
-                [{ text: "OK" }]
-            );
-            return;
-        }
+     // In CartScreen.js
 
-        // Map items for checkout, ensuring structure is correct
-        const itemsForCheckout = cartItems.map(item => {
-             const planDetails = item.paymentMethod === 'BNPL' && item.bnplPlan ? {
-                    id: item.bnplPlan.id,
-                    name: item.bnplPlan.name,
-                    duration: item.bnplPlan.duration,
-                    interestRate: item.bnplPlan.interestRate,
-                    planType: item.bnplPlan.planType,
-                    calculatedMonthly: item.bnplPlan.calculatedMonthly, // Ensure this is passed if needed
-                } : null;
+const handleCheckout = () => {
+    // --- Start of your provided code ---
+    if (!cartItems || cartItems.length === 0) {
+        Alert.alert("Empty Cart", "Your cart is empty.");
+        return;
+    }
+    const bnplItems = cartItems.filter(item => item.paymentMethod === 'BNPL');
+    const bnplItemCount = bnplItems.length;
+    if (bnplItemCount > 1) {
+        Alert.alert(
+            "Multiple Installment Items",
+            "You can only checkout with one item on an installment plan at a time. Please remove additional installment items from your cart before proceeding.",
+            [{ text: "OK" }]
+        );
+        return;
+    }
+    // --- End of your provided code ---
 
-             if (item.paymentMethod === 'BNPL' && !planDetails?.id) {
-                 // console.warn(`Missing BNPL Plan ID for cart item ${item.cartItemId} during checkout prep.`);
-             }
+    // --- Add your existing mapping logic here ---
+    // This part is crucial and should already be in your function
+    const itemsForCheckout = cartItems.map(item => {
+        // Example: Ensure this mapping is correct based on what CheckoutScreen expects
+        const planDetails = item.paymentMethod === 'BNPL' && item.bnplPlan ? {
+            id: item.bnplPlan.id,
+            name: item.bnplPlan.name,
+            duration: item.bnplPlan.duration,
+            interestRate: item.bnplPlan.interestRate,
+            planType: item.bnplPlan.planType,
+            calculatedMonthly: item.bnplPlan.calculatedMonthly,
+        } : null;
 
-            return {
-                id: item.productId, // Usually product ID is needed
-                cartItemId: item.cartItemId, // Pass cartItemId for potential reference
-                name: item.productName,
-                image: item.image,
-                quantity: item.quantity,
-                price: item.priceAtAddition, // Price per unit at time of addition
-                paymentMethod: item.paymentMethod,
-                bnplPlan: planDetails, // Pass BNPL details if applicable
-            };
-        });
+        return {
+            id: item.productId, // Usually product ID is needed for CheckoutScreen
+            cartItemId: item.cartItemId, // Pass cartItemId for potential reference
+            name: item.productName,
+            image: item.image,
+            quantity: item.quantity,
+            price: item.priceAtAddition, // Price per unit at time of addition
+            paymentMethod: item.paymentMethod,
+            bnplPlan: planDetails, // Pass BNPL details if applicable
+        };
+    });
 
-        // console.log(`Proceeding to checkout with ${itemsForCheckout.length} mapped items (total quantity ${totalQuantityCount}).`);
-        navigation.navigate('CheckoutScreen', {
-            cartItems: itemsForCheckout, // Pass the mapped items
-            totalPrice: totalPrice // Pass the calculated total price
-        });
-    };
+    // --- Add the origin parameter to your navigation call ---
+    navigation.navigate('CheckoutScreen', {
+        cartItems: itemsForCheckout,
+        totalPrice: totalPrice, // Assuming totalPrice is calculated and available in CartScreen's scope
+        origin: 'CartScreen'   // <--- *** THIS IS THE KEY ADDITION ***
+    });
+};
 
+    
     const handleProductPress = (item) => {
         if (item && item.productId && item.productId !== 'unknown') {
              // console.log(`Navigating to ProductDetails for productId: ${item.productId}`);

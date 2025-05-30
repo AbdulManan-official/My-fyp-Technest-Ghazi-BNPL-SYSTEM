@@ -14,7 +14,7 @@ import {
     doc, serverTimestamp, addDoc, collection, query, where,
     documentId, getDocs, updateDoc, Timestamp, getFirestore, limit,
     setDoc, writeBatch
-} from 'firebase/firestore';
+} from 'firebase/firestore'; // Ensure updateDoc and serverTimestamp are imported
 import axios from 'axios';
 import { useStripe } from '@stripe/stripe-react-native';
 
@@ -32,7 +32,7 @@ const BnplPlanIconColor = '#757575';
 const placeholderImagePath = require('../../assets/p3.jpg'); // !!! ADJUST PATH AS NEEDED !!!
 const CURRENCY_SYMBOL = 'PKR';
 const ERROR_COLOR = '#D32F2F';
-const CARTS_COLLECTION = 'Carts';
+const CARTS_COLLECTION = 'Carts'; // <<< ENSURE THIS IS CORRECT AND DEFINED
 const ORDERS_COLLECTION = 'orders';
 const ADMIN_COLLECTION = 'Admin'; // Verify collection name
 
@@ -62,6 +62,7 @@ const COMPLETED_ORDER_STATUS = 'Delivered';
 
 // --- Helper: Fetch Admin Tokens ---
 async function getAdminExpoTokens() {
+    // ... (your existing getAdminExpoTokens function - no changes needed here for Scenario 1)
     const tokens = [];
     console.log('[getAdminExpoTokens] Fetching admin push tokens...');
     try {
@@ -107,6 +108,7 @@ async function getAdminExpoTokens() {
 
 // --- Helper: Render BNPL/Fixed Details in Item ---
 const renderBnplDetailsSection = (item) => {
+    // ... (your existing renderBnplDetailsSection function - no changes needed here for Scenario 1)
     const { bnplPlan, quantity, price } = item;
     if (!bnplPlan?.id || typeof price !== 'number' || typeof quantity !== 'number' || quantity <= 0) {
         return null;
@@ -137,6 +139,7 @@ const renderBnplDetailsSection = (item) => {
 
 // --- Helper: Calculate Due Date ---
 const calculateDueDate = (baseDateInput, monthOffset) => {
+    // ... (your existing calculateDueDate function - no changes needed here for Scenario 1)
     let baseDate;
     if (baseDateInput instanceof Timestamp) { baseDate = baseDateInput.toDate(); }
     else if (baseDateInput instanceof Date) { baseDate = new Date(baseDateInput.getTime()); }
@@ -148,6 +151,7 @@ const calculateDueDate = (baseDateInput, monthOffset) => {
 
 // --- Helper: Generate ALL BNPL Installments (First Due Immediately) ---
 const generateBnplInstallments = (bnplTotal, bnplPlanDetails, orderTimestampInput) => {
+    // ... (your existing generateBnplInstallments function - no changes needed here for Scenario 1)
     if (!bnplPlanDetails || bnplPlanDetails.planType !== 'Installment' || !bnplPlanDetails.duration || bnplPlanDetails.duration <= 0 || bnplTotal <= 0) {
         console.log("[generateBnplInstallments] Conditions not met for installment generation.", { planType: bnplPlanDetails?.planType, duration: bnplPlanDetails?.duration, bnplTotal });
         return [];
@@ -193,6 +197,7 @@ const generateBnplInstallments = (bnplTotal, bnplPlanDetails, orderTimestampInpu
 
 // --- Payment and Notification Helper Functions ---
 async function sendAdminPaymentNotification(orderIdentifier, userName, finalPaidAmount, paymentMethod) {
+    // ... (your existing sendAdminPaymentNotification function - no changes needed here for Scenario 1)
     const adminTokens = await getAdminExpoTokens();
     if (!adminTokens || adminTokens.length === 0) {
         console.log("[AdminPaymentNotify] No admin tokens found. Skipping final completion notification.");
@@ -218,6 +223,7 @@ async function sendAdminPaymentNotification(orderIdentifier, userName, finalPaid
 }
 
 async function sendAdminInstallmentPaidNotification(orderId, userName, installmentNumber, installmentAmount) {
+    // ... (your existing sendAdminInstallmentPaidNotification function - no changes needed here for Scenario 1)
     const adminTokens = await getAdminExpoTokens();
     if (!adminTokens || adminTokens.length === 0) {
         console.log("[AdminInstallmentNotify] No admin tokens found. Skipping installment paid notification.");
@@ -243,6 +249,7 @@ async function sendAdminInstallmentPaidNotification(orderId, userName, installme
 }
 
 async function updateFirestoreAfterFirstPayment(orderId, paidAmount, firstInstallment, originalOrderData) {
+    // ... (your existing updateFirestoreAfterFirstPayment function - no changes needed here for Scenario 1)
     if (!orderId || !firstInstallment?.installmentNumber || !originalOrderData || paidAmount <= 0) {
         console.error("[Firestore Update Error] Missing required data for first payment update:", { orderId, firstInstallment, originalOrderDataExists: !!originalOrderData, paidAmount });
         Alert.alert( "Order Update Issue", "Payment successful, but critical information was missing to update the order automatically. Please contact support with your Order ID." );
@@ -316,6 +323,7 @@ async function initializeAndPayFirstInstallment(
     orderId, firstInstallment, currentUserDetails, amountToPay,
     setProcessingPayment, stripe, originalOrderData, navigation
 ) {
+    // ... (your existing initializeAndPayFirstInstallment function - no changes needed here for Scenario 1)
     const paymentAttemptId = `${orderId}-Inst-${firstInstallment?.installmentNumber ?? '1'}-${Date.now()}`;
     if (!orderId || !firstInstallment?.installmentNumber || !currentUserDetails?.uid || !amountToPay || amountToPay <= 0 || !stripe?.initPaymentSheet || !stripe?.presentPaymentSheet || !originalOrderData) {
         Alert.alert("Payment Error", "Cannot initiate payment due to missing information.");
@@ -375,8 +383,15 @@ async function initializeAndPayFirstInstallment(
 // --- Main Component ---
 export default function OrderConfirmationScreen() {
     const navigation = useNavigation();
-    const route = useRoute();
-    const { currentUserDetails = null, cartItems = [], subTotal = 0, grandTotal = 0 } = route.params || {};
+    const route = useRoute(); // Using useRoute to get params
+    // Destructure cartItems from route.params, and rename to avoid conflict if you use a local cartItems state later
+    const {
+        currentUserDetails = null,
+        cartItems: initialCartItemsFromRoute = [], // Use this for the order items
+        subTotal = 0,
+        grandTotal = 0,
+        // origin will be in route.params.origin
+    } = route.params || {};
 
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const { initPaymentSheet, presentPaymentSheet, loading: stripeLoadingHook } = useStripe();
@@ -386,18 +401,19 @@ export default function OrderConfirmationScreen() {
     const lottieAnimationRef = useRef(null);
 
     const totalItemCount = useMemo(() => {
-        if (!Array.isArray(cartItems)) return 0;
-        return cartItems.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0);
-    }, [cartItems]);
+        if (!Array.isArray(initialCartItemsFromRoute)) return 0; // Use initialCartItemsFromRoute
+        return initialCartItemsFromRoute.reduce((sum, item) => sum + (Number(item?.quantity) || 0), 0);
+    }, [initialCartItemsFromRoute]); // Use initialCartItemsFromRoute
 
-    const isCartEmpty = !cartItems || cartItems.length === 0 || totalItemCount === 0;
+    const isCartEmpty = !initialCartItemsFromRoute || initialCartItemsFromRoute.length === 0 || totalItemCount === 0; // Use initialCartItemsFromRoute
 
     const renderConfirmationItem = useCallback(({ item, index }) => {
+        // ... (your existing renderConfirmationItem logic)
         if (!item?.id || typeof item.price !== 'number' || typeof item.quantity !== 'number' || item.quantity <= 0) {
             console.warn("Skipping rendering invalid cart item:", item); return null;
         }
         const itemTotalPrice = item.price * item.quantity;
-        const isLastItem = index === cartItems.length - 1;
+        const isLastItem = index === initialCartItemsFromRoute.length - 1; // Use initialCartItemsFromRoute
         const showPlanDetails = (item.paymentMethod === 'BNPL' || item.paymentMethod === 'Fixed Duration') && item.bnplPlan;
         return (
             <View style={[styles.cartItem, isLastItem && styles.lastCartItem]}>
@@ -410,10 +426,10 @@ export default function OrderConfirmationScreen() {
                 </View>
             </View>
         );
-    }, [cartItems]);
+    }, [initialCartItemsFromRoute]); // Use initialCartItemsFromRoute
 
     const handlePostOrderSuccessActions = useCallback(async () => {
-        // Prevent multiple executions if back and OK are somehow triggered closely
+        // ... (your existing handlePostOrderSuccessActions function - no changes needed here for Scenario 1)
         if (!showOrderSuccessAnimation && !postOrderActionDataRef.current) return;
 
         setShowOrderSuccessAnimation(false);
@@ -454,7 +470,7 @@ export default function OrderConfirmationScreen() {
         postOrderActionDataRef.current = null; // Clear the ref
     }, [
         currentUserDetails, navigation, initPaymentSheet, presentPaymentSheet,
-        isProcessingFirstPayment, stripeLoadingHook, showOrderSuccessAnimation // Added showOrderSuccessAnimation
+        isProcessingFirstPayment, stripeLoadingHook, showOrderSuccessAnimation
     ]);
 
     const handleConfirmAndPlaceOrder = useCallback(async () => {
@@ -462,13 +478,13 @@ export default function OrderConfirmationScreen() {
             console.log("Ignoring tap: Action already in progress."); return;
         }
         if (!currentUserDetails?.uid) { Alert.alert('Authentication Error', 'User details are missing.'); return; }
-        if (!Array.isArray(cartItems) || cartItems.length === 0) { Alert.alert('Empty Cart', 'Your shopping cart is empty.'); return; }
-        const validCartItems = cartItems.filter(item => item?.id && typeof item.quantity === 'number' && item.quantity > 0 && typeof item.price === 'number' && item.price >= 0);
+        // Use initialCartItemsFromRoute for validation
+        if (!Array.isArray(initialCartItemsFromRoute) || initialCartItemsFromRoute.length === 0) { Alert.alert('Empty Cart', 'Your shopping cart is empty.'); return; }
+        const validCartItems = initialCartItemsFromRoute.filter(item => item?.id && typeof item.quantity === 'number' && item.quantity > 0 && typeof item.price === 'number' && item.price >= 0);
         if (validCartItems.length === 0) { Alert.alert('Invalid Cart', 'No valid items found.'); return; }
 
-        const currentCartItems = validCartItems;
-        const currentSubTotal = currentCartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const currentGrandTotal = grandTotal;
+        const currentCartItemsForOrder = validCartItems; // These items will be saved in the order
+        // subTotal and grandTotal are already available from route.params
 
         setIsPlacingOrder(true);
         const userId = currentUserDetails.uid;
@@ -479,8 +495,10 @@ export default function OrderConfirmationScreen() {
         let isBnplInstallmentOrder = false;
 
         try {
-            const newOrderHasBnplOrFixed = currentCartItems.some(item => item?.paymentMethod === 'BNPL' || item?.paymentMethod === 'Fixed Duration');
+            // --- Existing Incomplete BNPL/Fixed Order Check ---
+            const newOrderHasBnplOrFixed = currentCartItemsForOrder.some(item => item?.paymentMethod === 'BNPL' || item?.paymentMethod === 'Fixed Duration');
             if (newOrderHasBnplOrFixed) {
+                // ... (your existing check logic) ...
                 const ordersRef = collection(db, ORDERS_COLLECTION);
                 const qExisting = query( ordersRef, where('userId', '==', userId), where('paymentMethod', 'in', BNPL_FIXED_METHODS), where('paymentStatus', 'in', INCOMPLETE_BNPL_FIXED_STATUSES), limit(1) );
                 const existingIncompleteSnapshot = await getDocs(qExisting);
@@ -490,13 +508,20 @@ export default function OrderConfirmationScreen() {
                 }
             }
 
-            const codItems = currentCartItems.filter(item => item?.paymentMethod === 'COD');
-            const bnplItems = currentCartItems.filter(item => item?.paymentMethod === 'BNPL' && item.bnplPlan?.planType === 'Installment');
-            const fixedItems = currentCartItems.filter(item => item.bnplPlan?.planType === 'Fixed Duration' && (item?.paymentMethod === 'Fixed Duration' || item?.paymentMethod === 'BNPL'));
+            // --- Determine Payment Method, Status, and Construct Order Details ---
+            // ... (your existing logic for codItems, bnplItems, fixedItems, subtotals) ...
+            // ... (your existing logic for relevantItemForPlan, relevantBnplPlan, planType) ...
+            // ... (your existing logic for overallPaymentMethod, overallPaymentStatus, orderSpecificData) ...
+            // ... (your existing logic for generating installments if BNPL) ...
+            // ... (your existing logic for fixed duration details if Fixed Duration) ...
 
-            const bnplSubTotal = bnplItems.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
-            const fixedSubTotal = fixedItems.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
-            const codSubTotal = codItems.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
+            const codItems = currentCartItemsForOrder.filter(item => item?.paymentMethod === 'COD');
+            const bnplItems = currentCartItemsForOrder.filter(item => item?.paymentMethod === 'BNPL' && item.bnplPlan?.planType === 'Installment');
+            const fixedItems = currentCartItemsForOrder.filter(item => item.bnplPlan?.planType === 'Fixed Duration' && (item?.paymentMethod === 'Fixed Duration' || item?.paymentMethod === 'BNPL'));
+
+            const bnplSubTotalFromItems = bnplItems.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
+            const fixedSubTotalFromItems = fixedItems.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
+            const codSubTotalFromItems = codItems.reduce((sum, item) => sum + ((item?.price || 0) * (item?.quantity || 0)), 0);
 
             const relevantItemForPlan = bnplItems[0] || fixedItems[0];
             const relevantBnplPlan = relevantItemForPlan?.bnplPlan || null;
@@ -514,13 +539,13 @@ export default function OrderConfirmationScreen() {
             else if (hasBnpl) { overallPaymentMethod = 'BNPL'; }
             else if (hasFixed) { overallPaymentMethod = 'Fixed Duration'; }
             else if (hasCod) { overallPaymentMethod = 'COD'; }
-            else { overallPaymentMethod = 'Prepaid'; overallPaymentStatus = 'Paid'; }
+            else { overallPaymentMethod = 'Prepaid'; overallPaymentStatus = 'Paid'; } // Should not happen if cart has items
 
             isBnplInstallmentOrder = false;
 
             if (overallPaymentMethod === 'BNPL' || (overallPaymentMethod === 'Mixed' && hasBnpl)) {
-                if (relevantBnplPlan && planType === 'Installment' && relevantBnplPlan.duration > 0 && bnplSubTotal > 0) {
-                    const fullInstallmentSchedule = generateBnplInstallments(bnplSubTotal, relevantBnplPlan, jsOrderPlacementDate);
+                if (relevantBnplPlan && planType === 'Installment' && relevantBnplPlan.duration > 0 && bnplSubTotalFromItems > 0) {
+                    const fullInstallmentSchedule = generateBnplInstallments(bnplSubTotalFromItems, relevantBnplPlan, jsOrderPlacementDate);
                     if (fullInstallmentSchedule.length > 0) {
                         isBnplInstallmentOrder = true;
                         overallPaymentStatus = overallPaymentMethod === 'Mixed' ? 'Mixed (COD/BNPL Pending)' : 'Pending First Installment';
@@ -532,7 +557,7 @@ export default function OrderConfirmationScreen() {
                 if (relevantBnplPlan && planType === 'Fixed Duration') {
                     const fixedDueDate = calculateDueDate(jsOrderPlacementDate, relevantBnplPlan.duration);
                     overallPaymentStatus = overallPaymentMethod === 'Mixed' ? 'Mixed (COD/Fixed Pending)' : 'Unpaid (Fixed Duration)';
-                    orderSpecificData = { paymentStatus: overallPaymentStatus, fixedDurationDetails: { id: relevantBnplPlan.id, name: relevantBnplPlan.name, duration: relevantBnplPlan.duration, interestRate: relevantBnplPlan.interestRate, planType: relevantBnplPlan.planType }, paymentDueDate: fixedDueDate, fixedDurationAmountDue: fixedSubTotal, penalty: 0 };
+                    orderSpecificData = { paymentStatus: overallPaymentStatus, fixedDurationDetails: { id: relevantBnplPlan.id, name: relevantBnplPlan.name, duration: relevantBnplPlan.duration, interestRate: relevantBnplPlan.interestRate, planType: relevantBnplPlan.planType }, paymentDueDate: fixedDueDate, fixedDurationAmountDue: fixedSubTotalFromItems, penalty: 0 };
                 } else { overallPaymentStatus = 'Pending Review (Missing Fixed Plan)'; }
             }
             else if (overallPaymentMethod === 'COD') {
@@ -541,12 +566,15 @@ export default function OrderConfirmationScreen() {
             }
             else { orderSpecificData = { paymentStatus: overallPaymentStatus }; }
 
+
             let firstInstallmentPref = isBnplInstallmentOrder ? 'Pending Choice' : null;
-             orderDetailsToSave = {
+            orderDetailsToSave = {
                 userId: userId, userName: currentUserDetails.name || 'N/A', userAddress: currentUserDetails.address || 'N/A', userPhone: currentUserDetails.phone || 'N/A', userEmail: currentUserDetails.email || null,
-                items: currentCartItems.map(item => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, image: item.image || null, paymentMethod: item.paymentMethod, ...(item.bnplPlan && { bnplPlan: { id: item.bnplPlan.id, name: item.bnplPlan.name, duration: item.bnplPlan.duration, interestRate: item.bnplPlan.interestRate, planType: item.bnplPlan.planType }}) })),
-                subtotal: currentSubTotal, grandTotal: currentGrandTotal,
-                codAmount: codSubTotal, bnplAmount: bnplSubTotal,
+                items: currentCartItemsForOrder.map(item => ({ id: item.id, name: item.name, price: item.price, quantity: item.quantity, image: item.image || null, paymentMethod: item.paymentMethod, ...(item.bnplPlan && { bnplPlan: { id: item.bnplPlan.id, name: item.bnplPlan.name, duration: item.bnplPlan.duration, interestRate: item.bnplPlan.interestRate, planType: item.bnplPlan.planType }}) })),
+                subtotal: subTotal, // Use subTotal from route params
+                grandTotal: grandTotal, // Use grandTotal from route params
+                codAmount: codSubTotalFromItems, // Use calculated COD subtotal
+                bnplAmount: bnplSubTotalFromItems, // Use calculated BNPL subtotal
                 createdAt: firestoreWriteTimestamp, orderDate: jsOrderPlacementDate,
                 status: 'Pending', paymentMethod: overallPaymentMethod,
                 ...orderSpecificData,
@@ -556,21 +584,57 @@ export default function OrderConfirmationScreen() {
             if (!orderDetailsToSave.items || orderDetailsToSave.items.length === 0) { throw new Error("Order contains no valid items."); }
             if (!orderDetailsToSave.paymentMethod || orderDetailsToSave.paymentMethod === 'Unknown') { throw new Error("Could not determine valid payment method."); }
 
+            // --- Save Order to Firestore ---
             const orderCollectionRef = collection(db, ORDERS_COLLECTION);
             const docRef = await addDoc(orderCollectionRef, orderDetailsToSave);
             newOrderId = docRef.id;
             if (!newOrderId) { throw new Error('Failed to get Order ID after saving.'); }
             console.log('[ConfirmScreen] Order successfully saved with ID:', newOrderId);
 
+
+            // +++++++++++++++++++++++ CART MODIFICATION LOGIC FOR SCENARIO 1 +++++++++++++++++++++++
+            const orderOrigin = route.params?.origin; // Get origin from the route params
+
+            // This was the old cart clearing logic, we will replace/enhance it.
+            // try {
+            //     const cartDocRef = doc(db, CARTS_COLLECTION, userId);
+            //     await updateDoc(cartDocRef, { items: [], lastUpdated: serverTimestamp() });
+            // } catch (cartError) {
+            //      console.error(`[ConfirmScreen] CRITICAL ERROR: Failed to clear cart for user ${userId} after order ${newOrderId}:`, cartError);
+            //      Alert.alert("Cart Clear Issue", "Order placed, but failed to clear cart. Please manually remove items or contact support.");
+            // }
+
+            // NEW CART MODIFICATION LOGIC
             try {
                 const cartDocRef = doc(db, CARTS_COLLECTION, userId);
-                await updateDoc(cartDocRef, { items: [], lastUpdated: serverTimestamp() });
-            } catch (cartError) {
-                 console.error(`[ConfirmScreen] CRITICAL ERROR: Failed to clear cart for user ${userId} after order ${newOrderId}:`, cartError);
-                 Alert.alert("Cart Clear Issue", "Order placed, but failed to clear cart. Please manually remove items or contact support.");
-            }
 
+                if (orderOrigin === 'CartScreen') {
+                    // SCENARIO 1: Clear entire cart
+                    console.log("[OrderConfirmation] Origin is CartScreen. Clearing entire cart for user:", userId);
+                    await updateDoc(cartDocRef, { items: [], lastUpdated: serverTimestamp() });
+                    console.log(`[OrderConfirmation] Cart cleared for user ${userId}`);
+                }
+                // Placeholder for Scenario 2 & 3
+                // else if (orderOrigin === 'ProductDetailFromCart' && route.params?.orderedItemId) { /* ... */ }
+                // else if (orderOrigin === 'ProductDetailDirect') { /* ... */ }
+                else {
+                    console.warn(`[OrderConfirmation] Origin is '${orderOrigin}'. No specific cart modification rule implemented yet for this origin (besides CartScreen).`);
+                }
+
+            } catch (cartModificationError) {
+                console.error(`[OrderConfirmation] CRITICAL ERROR during cart modification for user ${userId} (origin: ${orderOrigin}):`, cartModificationError);
+                // Important: Don't let cart modification error block the user from knowing the order was placed.
+                Alert.alert(
+                    "Order Placed, Cart Issue",
+                    "Your order has been placed successfully, but there was an issue updating your cart. Please check your cart or contact support."
+                );
+            }
+            // +++++++++++++++++++++++ END OF CART MODIFICATION LOGIC +++++++++++++++++++++++
+
+
+            // --- Admin Notifications ---
             getAdminExpoTokens().then(adminTokens => {
+                // ... (your existing notification sending logic)
                 if (adminTokens && adminTokens.length > 0) {
                     const shortOrderId = newOrderId.substring(0, 6).toUpperCase();
                     const messages = adminTokens.map(token => ({ to: token, sound: 'default', title: `🛒 New Order! (#${shortOrderId})`, body: `User ${orderDetailsToSave.userName} placed a ${orderDetailsToSave.paymentMethod} order (#${shortOrderId}). Total: ${CURRENCY_SYMBOL}${orderDetailsToSave.grandTotal.toLocaleString()}`, data: { orderId: newOrderId, type: 'new_order' }, priority: 'high', channelId: 'admin-notifications' }));
@@ -584,27 +648,40 @@ export default function OrderConfirmationScreen() {
             setShowOrderSuccessAnimation(true);
 
         } catch (error) {
-             console.error('[ConfirmScreen] CRITICAL ERROR during order placement:', error);
-             setIsPlacingOrder(false); setIsProcessingFirstPayment(false);
-             let errorMsg = 'Could not place order. Please try again.';
-             if (error.code === 'permission-denied') errorMsg = 'Authentication Error. Please log in again and retry.';
-             else if (error.code === 'failed-precondition' || error.message?.includes('index required')) errorMsg = 'Server busy processing history. Please try again in a moment.';
-             else if (error.message) errorMsg = `Failed: ${error.message}`;
-             Alert.alert('Order Placement Failed', errorMsg);
+            console.error('[ConfirmScreen] CRITICAL ERROR during order placement:', error);
+            setIsPlacingOrder(false); setIsProcessingFirstPayment(false);
+            let errorMsg = 'Could not place order. Please try again.';
+            if (error.code === 'permission-denied') errorMsg = 'Authentication Error. Please log in again and retry.';
+            else if (error.code === 'failed-precondition' || error.message?.includes('index required')) errorMsg = 'Server busy processing history. Please try again in a moment.';
+            else if (error.message) errorMsg = `Failed: ${error.message}`;
+            Alert.alert('Order Placement Failed', errorMsg);
         }
     }, [
-        currentUserDetails, cartItems, subTotal, grandTotal, navigation,
-        isPlacingOrder, isProcessingFirstPayment, stripeLoadingHook, initPaymentSheet, presentPaymentSheet,
+        currentUserDetails,
+        initialCartItemsFromRoute, // Ensures this is from route.params
+        subTotal, // From route.params
+        grandTotal, // From route.params
+        route.params?.origin, // *** ADDED route.params?.origin TO THE DEPENDENCY ARRAY ***
+        navigation,
+        isPlacingOrder,
+        isProcessingFirstPayment,
+        stripeLoadingHook,
+        initPaymentSheet,
+        presentPaymentSheet,
         showOrderSuccessAnimation
+        // Ensure all other state/props used inside are listed if they can change
     ]);
 
+    // --- Loading/Empty States and Main Render ---
     if (!currentUserDetails) { return (<SafeAreaView style={styles.safeArea}><View style={styles.loadingContainer}><ActivityIndicator size="large" color={AccentColor} /><Text style={styles.loadingText}>Loading User Details...</Text></View></SafeAreaView>); }
     if (isCartEmpty) { return ( <SafeAreaView style={styles.safeArea}><StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} /><View style={styles.emptyCartContainer}><Icon name="remove-shopping-cart" size={60} color={TextColorSecondary} /><Text style={styles.emptyCartTitle}>Your Cart is Empty</Text><Text style={styles.emptyCartSubtitle}>Add items to place an order.</Text><TouchableOpacity style={styles.goShoppingButton} onPress={() => navigation.navigate('Home')}><Text style={styles.goShoppingButtonText}>Start Shopping</Text></TouchableOpacity></View></SafeAreaView> ); }
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <StatusBar barStyle="dark-content" backgroundColor={ScreenBackgroundColor} />
+            {/* Use initialCartItemsFromRoute for the FlatList data */}
             <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContentContainer} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" >
+                {/* ... (Delivery Address Section) ... */}
                 <View style={styles.sectionContainer}>
                      <Text style={styles.sectionTitle}>Delivery Address</Text>
                      <View style={styles.addressBox}>
@@ -616,12 +693,15 @@ export default function OrderConfirmationScreen() {
                          </View>
                      </View>
                 </View>
+                {/* ... (Order Items Section) ... */}
                 <View style={styles.sectionContainer}>
                      <Text style={styles.sectionTitle}>Order Items ({totalItemCount})</Text>
                      <View style={styles.cartListContainer}>
-                         <FlatList data={cartItems} keyExtractor={(item, index) => item.cartItemId || item.id?.toString() || `confirm-${index}`} renderItem={renderConfirmationItem} scrollEnabled={false} ListEmptyComponent={<Text style={styles.emptyListText}>No items found in cart data.</Text>} />
+                         {/* Pass initialCartItemsFromRoute to FlatList */}
+                         <FlatList data={initialCartItemsFromRoute} keyExtractor={(item, index) => item.cartItemId || item.id?.toString() || `confirm-${index}`} renderItem={renderConfirmationItem} scrollEnabled={false} ListEmptyComponent={<Text style={styles.emptyListText}>No items found in cart data.</Text>} />
                      </View>
                 </View>
+                {/* ... (Order Summary Section) ... */}
                 <View style={styles.sectionContainer}>
                      <Text style={styles.sectionTitle}>Order Summary</Text>
                      <View style={styles.summaryBox}>
@@ -634,6 +714,7 @@ export default function OrderConfirmationScreen() {
                 <View style={{ height: 20 }} />
             </ScrollView>
 
+            {/* ... (Footer with Confirm Button) ... */}
             <View style={styles.footer}>
                  {isProcessingFirstPayment && ( <View style={styles.paymentProcessingIndicator}><ActivityIndicator size="small" color={AccentColor} /><Text style={styles.paymentProcessingText}>Processing Payment...</Text></View> )}
                 <TouchableOpacity style={[ styles.confirmButton, (isPlacingOrder || isCartEmpty || isProcessingFirstPayment || showOrderSuccessAnimation) && styles.disabledButton ]} onPress={handleConfirmAndPlaceOrder} disabled={isPlacingOrder || isCartEmpty || isProcessingFirstPayment || showOrderSuccessAnimation} activeOpacity={0.7} >
@@ -641,6 +722,7 @@ export default function OrderConfirmationScreen() {
                 </TouchableOpacity>
             </View>
 
+            {/* ... (Order Success Animation Modal) ... */}
             {showOrderSuccessAnimation && (
                 <Modal
                     transparent={true}
@@ -670,6 +752,7 @@ export default function OrderConfirmationScreen() {
 }
 
 // --- Styles ---
+// ... (Your existing styles - no changes needed here for Scenario 1)
 const styles = StyleSheet.create({
     safeArea: { flex: 1, backgroundColor: ScreenBackgroundColor },
     scrollView: { flex: 1 },

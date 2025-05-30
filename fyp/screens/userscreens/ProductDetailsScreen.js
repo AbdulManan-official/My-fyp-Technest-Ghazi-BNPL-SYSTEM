@@ -1004,84 +1004,88 @@ export default function ProductDetailsScreen() {
     // Main handler for the "Buy Now" button press
         // Main handler for the "Buy Now" button press
     const handleBuyNow = () => {
-        // *** START: ADDED VERIFICATION LOGIC ***
-        if (!user) { // 1. Check if user is logged in
-            Alert.alert("Login Required", "Please log in to proceed with your purchase.");
+    // *** START: ADDED VERIFICATION LOGIC ***
+    if (!user) { // 1. Check if user is logged in
+        Alert.alert("Login Required", "Please log in to proceed with your purchase.");
+        return;
+    }
+    if (isLoadingUserVerification) { // 2. Check if verification status is still loading
+        Alert.alert("Please wait", "Checking account status...", [{ text: "OK" }], { cancelable: true });
+        return;
+    }
+    if (userVerificationStatus !== VERIFIED_STATUS_CONSTANT) { // 3. Check verification status
+        showVerificationAlert();
+        return;
+    }
+    // *** END: ADDED VERIFICATION LOGIC ***
+
+    // Original logic starts here
+    if (isProcessingCart || !product || !product.id) return; // Prevent action if busy or no product
+
+    console.log("Buy Now initiated");
+    setActionType('buyNow'); // Set context immediately for potential loader
+
+    const canCOD = product.codAvailable === true;
+    const canBNPL = hasLoadedBnplOption;
+
+    // Case 1: No payment options available
+    if (!canCOD && !canBNPL) {
+        Alert.alert("Payment Unavailable", "Cannot proceed with purchase, no payment options available.");
+        setActionType(null); // Reset action type
+        return;
+    }
+
+    // Case 2: Only COD is available (or any scenario where modal is skipped for "Buy Now")
+    if (canCOD && !canBNPL) {
+        console.log("Buy Now with COD only - preparing direct navigation to checkout");
+        setIsProcessingCart(true); // Show loader on button while preparing data
+
+        const priceForCheckout = basePriceForCalculations;
+        if (priceForCheckout === null) {
+            Alert.alert("Error", "Product price information is missing.");
+            setIsProcessingCart(false);
+            setActionType(null);
             return;
         }
-        if (isLoadingUserVerification) { // 2. Check if verification status is still loading
-            Alert.alert("Please wait", "Checking account status...", [{text: "OK"}], { cancelable: true });
-            return;
-        }
-        if (userVerificationStatus !== VERIFIED_STATUS_CONSTANT) { // 3. Check verification status
-            showVerificationAlert();
-            return;
-        }
-        // *** END: ADDED VERIFICATION LOGIC ***
 
-        // Original logic starts here
-        if (isProcessingCart || !product || !product.id) return; // Prevent action if busy or no product
+        // Prepare item data specifically for the Checkout screen
+        const checkoutItem = {
+            id: product.id,
+            name: product.name || 'Unnamed Product',
+            image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage,
+            quantity: 1,
+            price: Number(priceForCheckout.toFixed(2)), // Final price for this item
+            paymentMethod: 'COD',
+            bnplPlan: null
+            // IMPORTANT: If CheckoutScreen expects a cartItemId for "Buy Now" items,
+            // you might want to generate a temporary one here, e.g.,
+            // cartItemId: `buynow_${product.id}_${Date.now()}`
+            // However, CheckoutScreen's renderCartItem seems to handle item.id as a fallback.
+        };
 
-        console.log("Buy Now initiated");
-        setActionType('buyNow'); // Set context immediately for potential loader
+        console.log("Navigating to CheckoutScreen with COD item and 'ProductDetailScreenDirect' origin:", checkoutItem);
+        // Use setTimeout to allow loader state to render before blocking UI with navigation
+        setTimeout(() => {
+            navigation.navigate('CheckoutScreen', {
+                cartItems: [checkoutItem],
+                totalPrice: checkoutItem.price * checkoutItem.quantity,
+                origin: 'ProductDetailScreenDirect' // <--- *** ADDED ORIGIN PARAMETER ***
+            });
+            // Reset state after navigation (or slightly delayed)
+            setIsProcessingCart(false);
+            setActionType(null);
+        }, 50);
 
-        const canCOD = product.codAvailable === true;
-        const canBNPL = hasLoadedBnplOption;
-
-        // Case 1: No payment options available
-        if (!canCOD && !canBNPL) {
-            Alert.alert("Payment Unavailable", "Cannot proceed with purchase, no payment options available.");
-            setActionType(null); // Reset action type
-            return;
-        }
-
-        // Case 2: Only COD is available
-        if (canCOD && !canBNPL) {
-            console.log("Buy Now with COD only - preparing direct navigation to checkout");
-            setIsProcessingCart(true); // Show loader on button while preparing data
-
-            const priceForCheckout = basePriceForCalculations;
-            if (priceForCheckout === null) {
-                Alert.alert("Error", "Product price information is missing.");
-                setIsProcessingCart(false);
-                setActionType(null);
-                return;
-            }
-
-            // Prepare item data specifically for the Checkout screen
-            const checkoutItem = {
-                // Structure might differ based on CheckoutScreen needs, adjust accordingly
-                id: product.id, // Assuming checkout uses product ID
-                name: product.name || 'Unnamed Product',
-                image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage,
-                quantity: 1,
-                price: Number(priceForCheckout.toFixed(2)), // Final price for this item
-                paymentMethod: 'COD',
-                bnplPlan: null
-            };
-
-            console.log("Navigating to CheckoutScreen with COD item:", checkoutItem);
-            // Use setTimeout to allow loader state to render before blocking UI with navigation
-            setTimeout(() => {
-                // Navigate to Checkout screen, passing the single item and total price
-                navigation.navigate('CheckoutScreen', { // Ensure 'CheckoutScreen' is the correct route name
-                    cartItems: [checkoutItem], // Pass as an array even if single item
-                    totalPrice: checkoutItem.price * checkoutItem.quantity // Calculate total for checkout screen
-                });
-                // Reset state after navigation (or slightly delayed)
-                setIsProcessingCart(false);
-                setActionType(null);
-            }, 50); // Small delay to ensure UI update
-
-        }
-        // Case 3: BNPL is available (either alone or with COD)
-        else {
-            console.log("Buy Now requires payment selection - opening modal.");
-            // Open the modal for selection, passing 'buyNow' context
-            openPaymentModal('buyNow');
-            // Note: setActionType('buyNow') was already set at the start of this handler
-        }
-    };
+    }
+    // Case 3: BNPL is available (either alone or with COD), or other scenarios requiring modal
+    else {
+        console.log("Buy Now requires payment selection - opening modal.");
+        // Open the modal for selection, passing 'buyNow' context
+        // The setActionType('buyNow') was already set at the start of this handler.
+        // The origin will be added in handleProceedWithPayment for this case.
+        openPaymentModal('buyNow');
+    }
+};
 
     // *** REMOVE handleChat function ***
     // const handleChat = () => { ... }; // REMOVED
@@ -1100,138 +1104,141 @@ export default function ProductDetailsScreen() {
 
     // Handler for the "Proceed" button inside the Payment Modal
     const handleProceedWithPayment = async () => {
-        if (isProcessingCart) return; // Prevent double clicks
+    if (isProcessingCart) return; // Prevent double clicks
 
-        // Validate selections
-        if (!selectedPaymentMethod) {
-            Alert.alert("Selection Required", "Please choose a payment method (COD or BNPL).");
-            return;
-        }
-        if (selectedPaymentMethod === 'BNPL' && !selectedBnplPlan) {
-            Alert.alert("Selection Required", "Please select an installment plan.");
-            return;
-        }
-        if (!product || !product.id) {
-            Alert.alert("Error", "Product details seem to be missing. Please try again.");
-            return;
-        }
+    // Validate selections
+    if (!selectedPaymentMethod) {
+        Alert.alert("Selection Required", "Please choose a payment method (COD or BNPL).");
+        return;
+    }
+    if (selectedPaymentMethod === 'BNPL' && !selectedBnplPlan) {
+        Alert.alert("Selection Required", "Please select an installment plan.");
+        return;
+    }
+    if (!product || !product.id) {
+        Alert.alert("Error", "Product details seem to be missing. Please try again.");
+        return;
+    }
 
-        // Capture action type before async operations might clear it
-        const currentAction = actionType;
-        console.log(`Proceeding from modal with action: ${currentAction}, method: ${selectedPaymentMethod}`);
+    // Capture action type before async operations might clear it
+    const currentAction = actionType;
+    console.log(`Proceeding from modal with action: ${currentAction}, method: ${selectedPaymentMethod}`);
 
-        setIsProcessingCart(true);     // Show loading state on modal button
-        setIsPaymentModalVisible(false); // Close the modal immediately
+    setIsProcessingCart(true);     // Show loading state on modal button
+    setIsPaymentModalVisible(false); // Close the modal immediately
 
-        let finalPrice = null;
-        let bnplDetailsForCartOrCheckout = null;
-        const basePrice = basePriceForCalculations;
+    let finalPrice = null;
+    let bnplDetailsForCartOrCheckout = null;
+    const basePrice = basePriceForCalculations;
 
-        if (basePrice === null) {
-            Alert.alert("Error", "Cannot determine product price. Please try again.");
-            setIsProcessingCart(false);
-            setActionType(null);
-            return;
-        }
+    if (basePrice === null) {
+        Alert.alert("Error", "Cannot determine product price. Please try again.");
+        setIsProcessingCart(false);
+        setActionType(null);
+        return;
+    }
 
-        // Calculate final price and gather BNPL details based on selection
-        if (selectedPaymentMethod === 'COD') {
-            finalPrice = basePrice;
-        } else if (selectedPaymentMethod === 'BNPL' && selectedBnplPlan) {
-            const rate = typeof selectedBnplPlan.interestRate === 'number' ? selectedBnplPlan.interestRate : 0;
-            finalPrice = basePrice * (1 + (rate / 100)); // Calculate total price including interest
+    // Calculate final price and gather BNPL details based on selection
+    if (selectedPaymentMethod === 'COD') {
+        finalPrice = basePrice;
+    } else if (selectedPaymentMethod === 'BNPL' && selectedBnplPlan) {
+        const rate = typeof selectedBnplPlan.interestRate === 'number' ? selectedBnplPlan.interestRate : 0;
+        finalPrice = basePrice * (1 + (rate / 100)); // Calculate total price including interest
 
-            // Structure BNPL details for storage/checkout
-            const duration = typeof selectedBnplPlan.duration === 'number' ? selectedBnplPlan.duration : null;
-            const planType = selectedBnplPlan.planType;
-            let monthlyPayment = null;
-            // Calculate monthly payment if applicable (not fixed duration, valid duration)
-            if (planType !== 'Fixed Duration' && duration !== null && duration > 0) {
-                 monthlyPayment = finalPrice / duration;
-            }
-
-            bnplDetailsForCartOrCheckout = {
-                id: selectedBnplPlan.id,
-                name: selectedBnplPlan.planName || 'Unnamed Plan',
-                duration: duration,
-                interestRate: rate,
-                planType: planType,
-                // Optionally include calculated monthly payment if needed downstream
-                calculatedMonthly: monthlyPayment ? Number(monthlyPayment.toFixed(2)) : null,
-            };
+        // Structure BNPL details for storage/checkout
+        const duration = typeof selectedBnplPlan.duration === 'number' ? selectedBnplPlan.duration : null;
+        const planType = selectedBnplPlan.planType;
+        let monthlyPayment = null;
+        // Calculate monthly payment if applicable (not fixed duration, valid duration)
+        if (planType !== 'Fixed Duration' && duration !== null && duration > 0) {
+            monthlyPayment = finalPrice / duration;
         }
 
-        // Final price validation after calculation
-        if (finalPrice === null || typeof finalPrice !== 'number') {
-            Alert.alert("Error", "Could not calculate the final price for the selected option.");
-            setIsProcessingCart(false);
-            setActionType(null);
-            return;
+        bnplDetailsForCartOrCheckout = {
+            id: selectedBnplPlan.id,
+            name: selectedBnplPlan.planName || 'Unnamed Plan',
+            duration: duration,
+            interestRate: rate,
+            planType: planType,
+            calculatedMonthly: monthlyPayment ? Number(monthlyPayment.toFixed(2)) : null,
+        };
+    }
+
+    // Final price validation after calculation
+    if (finalPrice === null || typeof finalPrice !== 'number') {
+        Alert.alert("Error", "Could not calculate the final price for the selected option.");
+        setIsProcessingCart(false);
+        setActionType(null);
+        return;
+    }
+
+    // --- Branch Logic: Add to Cart vs Buy Now ---
+
+    if (currentAction === 'addToCart') {
+        console.log("Modal Proceed: Action is Add to Cart");
+        // Construct item details for the cart
+        const cartItem = {
+            cartItemId: `${product.id}_${selectedPaymentMethod}_${selectedBnplPlan?.id || 'NA'}_${Date.now()}`,
+            productId: product.id,
+            productName: product.name || 'Unnamed Product',
+            image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage,
+            quantity: 1,
+            paymentMethod: selectedPaymentMethod,
+            priceAtAddition: Number(finalPrice.toFixed(2)), // Price at the time of adding
+            bnplPlan: bnplDetailsForCartOrCheckout, // Include BNPL details if selected
+        };
+
+        let success = false;
+        try {
+            success = await updateFirestoreCart(cartItem); // Update the persistent cart
+        } catch (e) {
+            // Error handled within updateFirestoreCart
+            success = false;
+        } finally {
+            setIsProcessingCart(false); // Reset loading state
+            setActionType(null);      // Clear action context
         }
 
-        // --- Branch Logic: Add to Cart vs Buy Now ---
-
-        if (currentAction === 'addToCart') {
-            console.log("Modal Proceed: Action is Add to Cart");
-            // Construct item details for the cart
-             const cartItem = {
-                cartItemId: `${product.id}_${selectedPaymentMethod}_${selectedBnplPlan?.id || 'NA'}_${Date.now()}`,
-                productId: product.id,
-                productName: product.name || 'Unnamed Product',
-                image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage,
-                quantity: 1,
-                paymentMethod: selectedPaymentMethod,
-                priceAtAddition: Number(finalPrice.toFixed(2)), // Price at the time of adding
-                bnplPlan: bnplDetailsForCartOrCheckout, // Include BNPL details if selected
-            };
-
-            let success = false;
-            try {
-                success = await updateFirestoreCart(cartItem); // Update the persistent cart
-            } catch (e) {
-                // Error handled within updateFirestoreCart
-                success = false;
-            } finally {
-                setIsProcessingCart(false); // Reset loading state
-                setActionType(null);      // Clear action context
-            }
-
-            if (success) {
-                triggerAddedToCartPopup(); // Show success popup
-            }
-             // Error Alerts are handled within updateFirestoreCart
-
-        } else if (currentAction === 'buyNow') {
-            console.log("Modal Proceed: Action is Buy Now");
-            // Construct item details specifically for checkout navigation
-            const checkoutItem = {
-                id: product.id,
-                name: product.name || 'Unnamed Product',
-                image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage,
-                quantity: 1,
-                price: Number(finalPrice.toFixed(2)), // Final calculated price
-                paymentMethod: selectedPaymentMethod,
-                bnplPlan: bnplDetailsForCartOrCheckout // Pass selected plan details
-            };
-
-            console.log("Navigating to CheckoutScreen from Modal:", checkoutItem);
-            // Use setTimeout to allow UI to unblock before navigating
-            setTimeout(() => {
-                navigation.navigate('CheckoutScreen', {
-                    cartItems: [checkoutItem],
-                    totalPrice: checkoutItem.price * checkoutItem.quantity
-                });
-                setIsProcessingCart(false); // Reset loading state after navigation starts
-                setActionType(null);      // Clear action context
-            }, 50);
-
-        } else {
-            // Should not happen, but handle defensively
-            console.warn("Invalid action type detected in handleProceedWithPayment:", currentAction);
-            setIsProcessingCart(false);
-            setActionType(null);
+        if (success) {
+            triggerAddedToCartPopup(); // Show success popup
         }
-    };
+        // Error Alerts are handled within updateFirestoreCart
+
+    } else if (currentAction === 'buyNow') {
+        console.log("Modal Proceed: Action is Buy Now");
+        // Construct item details specifically for checkout navigation
+        const checkoutItem = {
+            id: product.id,
+            name: product.name || 'Unnamed Product',
+            image: galleryItems.find(item => item.type === 'image' && !item.isPlaceholder)?.url || placeholderImage,
+            quantity: 1,
+            price: Number(finalPrice.toFixed(2)), // Final calculated price
+            paymentMethod: selectedPaymentMethod,
+            bnplPlan: bnplDetailsForCartOrCheckout // Pass selected plan details
+            // Optional: Consider adding a temporary cartItemId if CheckoutScreen strictly needs it
+            // cartItemId: `buynow_${product.id}_${Date.now()}`
+        };
+
+        console.log("Navigating to CheckoutScreen from Modal with 'ProductDetailScreenDirect' origin:", checkoutItem);
+        // Use setTimeout to allow UI to unblock before navigating
+        setTimeout(() => {
+            navigation.navigate('CheckoutScreen', {
+                cartItems: [checkoutItem],
+                totalPrice: checkoutItem.price * checkoutItem.quantity,
+                origin: 'ProductDetailScreenDirect' // <--- *** ADDED ORIGIN PARAMETER HERE ***
+            });
+            setIsProcessingCart(false); // Reset loading state after navigation starts
+            setActionType(null);      // Clear action context
+        }, 50);
+
+    } else {
+        // Should not happen, but handle defensively
+        console.warn("Invalid action type detected in handleProceedWithPayment:", currentAction);
+        setIsProcessingCart(false);
+        setActionType(null);
+    }
+};
+
     // --- End Handlers ---
 
     // --- Render Functions ---

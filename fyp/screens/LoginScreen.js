@@ -149,7 +149,7 @@ const LoginScreen = ({ navigation }) => {
               colors={['#C40000', '#FF0000']}
               style={styles.gradientContainer}
             >
-              <Image source={require('../assets/cart.png')} style={styles.image} />
+              <Image source={require('../assets/Mobile login-bro.png')} style={styles.image} />
               <Text style={styles.title}>Welcome to TechNest Ghazi</Text>
               <Text style={styles.subtitle}>Buy Now, Pay Later - Secure & Flexible Shopping</Text>
             </LinearGradient>
@@ -231,7 +231,7 @@ const styles = StyleSheet.create({
   },
   gradientContainer: {
     width: '100%',
-    height: '50%',
+    height: '55%',
     justifyContent: 'center',
     alignItems: 'center',
     borderTopLeftRadius: 40,
@@ -244,8 +244,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   image: {
-    width: 120,
-    height: 120,
+    width: 150,
+    height: 150,
     resizeMode: 'contain',
     marginBottom: 10,
   },

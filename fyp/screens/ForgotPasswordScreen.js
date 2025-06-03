@@ -117,7 +117,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.content}>
             <LinearGradient colors={['#C40000', '#FF0000']} style={styles.gradientContainer}>
-              <Image source={require('../assets/forgot.png')} style={styles.image} />
+              <Image source={require('../assets/Reset password-bro.png')} style={styles.image} />
               <Text style={styles.title}>Forgot Password?</Text>
               <Text style={styles.subtitle}>Enter your registered email to reset your password</Text>
             </LinearGradient>
@@ -191,7 +191,7 @@ const styles = StyleSheet.create({
   },
   gradientContainer: {
     width: '100%',
-    height: '50%',
+    height: '65%',
     justifyContent: 'center',
     alignItems: 'center',
     borderTopLeftRadius: 40,
@@ -204,8 +204,8 @@ const styles = StyleSheet.create({
     marginBottom: 30,
   },
   image: {
-    width: 160,
-    height: 160,
+    width: 140,
+    height: 140,
     resizeMode: 'contain',
     marginBottom: 15,
   },

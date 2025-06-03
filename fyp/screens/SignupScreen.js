@@ -157,7 +157,7 @@ const SignupScreen = ({ navigation }) => {
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.content}>
             <LinearGradient colors={['#C40000', '#FF0000']} style={styles.gradientContainer}>
-              <Image source={require('../assets/cod.png')} style={styles.image} />
+              <Image source={require('../assets/Tablet login-bro (1).png')} style={styles.image} />
               <Text style={styles.title}>Join TechNest Ghazi</Text>
               <Text style={styles.subtitle}>Create an account to start shopping</Text>
             </LinearGradient>
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
   },
   gradientContainer: {
     width: '100%',
-    height: '45%',
+    height: '50%',
     justifyContent: 'center',
     alignItems: 'center',
     borderTopLeftRadius: 40,
@@ -262,8 +262,8 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   image: {
-    width: 160,
-    height: 160,
+    width: 140,
+    height: 140,
     resizeMode: 'contain',
     marginBottom: 10,
   },

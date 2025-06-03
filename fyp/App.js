@@ -1,6 +1,5 @@
 // App.js
 
-import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { TouchableOpacity, StatusBar, Platform, View, Text, Image, StyleSheet } from 'react-native';
@@ -41,7 +40,7 @@ import BNPLPlansScreen from './screens/AdminScreens/BNPLPlansScreen';
 import UserSchedulesProgressDetails from './screens/AdminScreens/UserSchedulesProgressDetails';
 import UserVerificationDetailScreen from './screens/AdminScreens/UserVerificationDetailScreen';
 import SchedulesDetailScreen from './screens/userscreens/SchedulesDetailScreen';
-
+import VideoSplashScreen from './screens/VideoSplashScreen';
 
 const Stack = createStackNavigator();
 
@@ -87,34 +86,39 @@ export default function App() {
       <NavigationContainer>
         <StatusBar backgroundColor="#CC0000" barStyle="light-content" />
         <Stack.Navigator
-          initialRouteName="Login"
+          initialRouteName="VideoSplash"
           // Default screenOptions for all screens in this navigator
           // Titles will be centered by default unless overridden
           screenOptions={({ navigation }) => ({
             ...CustomHeader({ navigation, title: '', titleAlign: 'center' }),
           })}
         >
-          <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }}/>
-          <Stack.Screen name="Signup" component={SignupScreen} options={{ headerShown: false }}/>
+          <Stack.Screen
+            name="VideoSplash"
+            component={VideoSplashScreen}
+            options={{ headerShown: false }} // no header on splash
+          />
+          <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Signup" component={SignupScreen} options={{ headerShown: false }} />
           <Stack.Screen
             name="ForgotPassword"
             component={ForgotPasswordScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Forgot Password', titleAlign: 'center' })}
           />
 
-          <Stack.Screen name="BottomTabs" component={BottomTabNavigation} options={{ headerShown: false }}/>
-          <Stack.Screen name="AdminDashboardTabs" component={AdminDashboardNavigation} options={{ headerShown: false }}/>
+          <Stack.Screen name="BottomTabs" component={BottomTabNavigation} options={{ headerShown: false }} />
+          <Stack.Screen name="AdminDashboardTabs" component={AdminDashboardNavigation} options={{ headerShown: false }} />
 
           <Stack.Screen
             name="ProductDetails"
             component={ProductDetailsScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Product Details', titleAlign: 'center' })}
           />
-          
+
           <Stack.Screen
             name="CartScreen"
             component={CartScreen}
-             options={({ navigation, route }) => {
+            options={({ navigation, route }) => {
               // if (route.params?.hideHeader) { // Allow CartScreen to hide its own header if needed
               //   return { headerShown: false };
               // }
@@ -169,8 +173,8 @@ export default function App() {
             component={AboutUsScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'About Us', titleAlign: 'center' })}
           />
-       
-           <Stack.Screen
+
+          <Stack.Screen
             name="AddressEditScreen"
             component={AddressEditScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Edit Delivery Address', titleAlign: 'center' })}
@@ -184,12 +188,12 @@ export default function App() {
             name="UserOrderDetailScreen"
             component={UserOrderDetailScreen}
             options={({ route, navigation }) => CustomHeader({
-                navigation,
-                title: `Order #${route.params?.order?.orderNumber || route.params?.orderId?.substring(0,6) || 'Details'}`,
-                titleAlign: 'center'
+              navigation,
+              title: `Order #${route.params?.order?.orderNumber || route.params?.orderId?.substring(0, 6) || 'Details'}`,
+              titleAlign: 'center'
             })}
           />
-           <Stack.Screen
+          <Stack.Screen
             name="UserBNPLSchedules"
             component={UserBNPLSchedules}
             options={{ headerShown: false }} // Uses its own header or no header
@@ -200,8 +204,8 @@ export default function App() {
             options={({ route, navigation }) => CustomHeader({
               navigation,
               title: route.params?.schedule?.orderNumber
-                     ? `Schedule #${route.params.schedule.orderNumber}`
-                     : 'Schedule Details',
+                ? `Schedule #${route.params.schedule.orderNumber}`
+                : 'Schedule Details',
               titleAlign: 'center'
             })}
           />
@@ -227,18 +231,18 @@ export default function App() {
             name="AdminDetailOrderScreen"
             component={AdminDetailOrderScreen}
             options={({ route, navigation }) => CustomHeader({
-                navigation,
-                title: `Order #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}`,
-                titleAlign: 'center'
+              navigation,
+              title: `Order #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0, 6) || 'Details'}`,
+              titleAlign: 'center'
             })}
           />
-           <Stack.Screen
+          <Stack.Screen
             name="UserSchedulesProgressDetails"
             component={UserSchedulesProgressDetails}
             options={({ route, navigation }) => CustomHeader({
-                navigation,
-                title: `Schedule #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0,6) || 'Details'}`,
-                titleAlign: 'center'
+              navigation,
+              title: `Schedule #${route.params?.order?.orderNumber || route.params?.order?.id?.substring(0, 6) || 'Details'}`,
+              titleAlign: 'center'
             })}
           />
           <Stack.Screen
@@ -255,9 +259,9 @@ export default function App() {
             name="UserVerificationDetail" // This is for Admin to see user details
             component={UserVerificationDetailScreen}
             options={({ route, navigation }) => CustomHeader({
-                navigation,
-                title: route.params?.user?.name || 'User Details',
-                titleAlign: 'center'
+              navigation,
+              title: route.params?.user?.name || 'User Details',
+              titleAlign: 'center'
             })}
           />
           <Stack.Screen

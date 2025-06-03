@@ -1,3 +1,5 @@
+// ForgotPasswordScreen.js (Updated to check Firestore 'Users' collection)
+
 import React, { useState } from 'react';
 import {
   View,
@@ -13,48 +15,93 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   StatusBar,
+  Alert
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { auth } from '../firebaseConfig'; // Firebase config for password reset
-import { sendPasswordResetEmail } from 'firebase/auth'; // Firebase method to send reset email
+import { auth, db } from '../firebaseConfig'; // Import db for Firestore
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { collection, query, where, getDocs } from 'firebase/firestore'; // Import Firestore functions
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
-  const [emailWarning, setEmailWarning] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Email Validation
-  const validateEmail = (text) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(text)) {
-      setEmailWarning('Invalid email format.');
-    } else {
-      setEmailWarning('');
-    }
-    setEmail(text);
-  };
-
   const handleResetPassword = async () => {
-    if (!email) {
-      setMessage('Please enter your email address.');
+    setMessage('');
+    const trimmedEmail = email.trim(); // Use a trimmed version consistently
+    const lowerCaseEmail = trimmedEmail.toLowerCase(); // For case-insensitive Firestore query
+
+    // 1. Client-Side Validations
+    if (!trimmedEmail) {
+      Alert.alert('Missing Email', 'Please enter your email address to reset your password.');
       return;
     }
-    if (emailWarning) {
-      setMessage('Please enter a valid email.');
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      Alert.alert(
+        'Invalid Email Format',
+        'Please enter a valid email address (e.g., user@example.com).'
+      );
       return;
     }
 
     setIsLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
-      setMessage('Password reset instructions have been sent to your email.');
-      setTimeout(() => {
-        navigation.navigate('Login'); // Navigate after successful password reset
-      }, 3000);
-    } catch (e) {
-      setMessage('Failed to send reset email. Please try again.');
+      // 2. Check if email exists in Firestore 'Users' collection
+      // Ensure your 'email' field in Firestore is stored consistently (e.g., lowercase)
+      const usersRef = collection(db, 'Users');
+      const q = query(usersRef, where('email', '==', lowerCaseEmail)); // Query by the lowercase email
+      const querySnapshot = await getDocs(q);
+
+      if (querySnapshot.empty) {
+        // Email not found in Firestore 'Users' collection
+        const notRegisteredMsg = "This email is not registered in our system. Please check the email or sign up.";
+        Alert.alert('Email Not Found', notRegisteredMsg);
+        setMessage(notRegisteredMsg);
+        setIsLoading(false); // Stop loading before returning
+        return;
+      }
+
+      // 3. If email exists in Firestore, proceed to send password reset email via Auth
+      await sendPasswordResetEmail(auth, trimmedEmail); // Use the original trimmed email for Auth
+      const successMsg = 'Password reset instructions have been sent to your email. Please check your inbox (and spam folder).';
+      Alert.alert('Email Sent', successMsg);
+      setMessage(successMsg);
+
+    } catch (err) {
+      // This catch block will now primarily handle errors from sendPasswordResetEmail
+      // or errors during the Firestore query itself (though less common if permissions are right)
+      // console.error("Error:", err.code, err.message); // Comment out to suppress console logs
+
+      let alertTitle = "Operation Failed";
+      let alertMessage = "An unexpected error occurred. Please try again.";
+      let inlineErrorMessage = alertMessage;
+
+      // Handle Firebase Auth specific errors if they still occur (e.g., network, too many requests)
+      // The 'auth/user-not-found' from Auth might be redundant if Firestore check is perfect,
+      // but good as a fallback.
+      if (err.code === 'auth/user-not-found') { // Should ideally be caught by Firestore check now
+        alertTitle = "Email Not Registered (Auth)";
+        alertMessage = "This email is not registered with an authentication account. Please check the email or sign up.";
+        inlineErrorMessage = "This email is not registered (Auth).";
+      } else if (err.code === 'auth/invalid-email') {
+        alertTitle = "Invalid Email (Auth System Check)";
+        alertMessage = "The email address provided is invalid according to the authentication system.";
+        inlineErrorMessage = "The email address is invalid (Auth).";
+      } else if (err.code === 'auth/too-many-requests') {
+        alertTitle = "Too Many Attempts";
+        alertMessage = "We have blocked all requests from this device due to unusual activity. Try again later.";
+        inlineErrorMessage = "Too many requests. Please try again later.";
+      } else if (err.message) { // Generic error message
+        alertMessage = err.message;
+        inlineErrorMessage = err.message;
+      }
+
+      Alert.alert(alertTitle, alertMessage);
+      setMessage(inlineErrorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -63,18 +110,18 @@ const ForgotPasswordScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#FAFAFA" />
-
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.container}
+      >
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.content}>
-            {/* Gradient Header */}
             <LinearGradient colors={['#C40000', '#FF0000']} style={styles.gradientContainer}>
               <Image source={require('../assets/forgot.png')} style={styles.image} />
               <Text style={styles.title}>Forgot Password?</Text>
-              <Text style={styles.subtitle}>Enter your email to reset your password</Text>
+              <Text style={styles.subtitle}>Enter your registered email to reset your password</Text>
             </LinearGradient>
 
-            {/* Input Field */}
             <View style={styles.inputContainer}>
               <View style={styles.inputWrapper}>
                 <Icon name="email" size={22} color="#FF0000" />
@@ -83,29 +130,38 @@ const ForgotPasswordScreen = ({ navigation }) => {
                   placeholder="Email"
                   keyboardType="email-address"
                   value={email}
-                  onChangeText={validateEmail}
+                  onChangeText={(text) => setEmail(text)} // Trimming and lowercasing done in handler
                   placeholderTextColor="#777"
                   autoCapitalize="none"
                 />
               </View>
             </View>
 
-            {/* Warning Message */}
-            {emailWarning ? <Text style={styles.warningText}>{emailWarning}</Text> : null}
+            {message ? (
+              <Text
+                style={[
+                  styles.message,
+                  message.toLowerCase().includes('sent') || message.toLowerCase().includes('success')
+                    ? styles.successMessage
+                    : styles.errorMessage,
+                ]}
+              >
+                {message}
+              </Text>
+            ) : null}
 
-            {/* Reset Button */}
-            <TouchableOpacity onPress={handleResetPassword} style={[styles.button, isLoading && styles.buttonDisabled]} disabled={isLoading}>
+            <TouchableOpacity
+              onPress={handleResetPassword}
+              style={[styles.button, isLoading && styles.buttonDisabled]}
+              disabled={isLoading}
+            >
               {isLoading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
-                <Text style={styles.buttonText}>Reset Password</Text>
+                <Text style={styles.buttonText}>Send Reset Link</Text>
               )}
             </TouchableOpacity>
 
-            {/* Display Message */}
-            {message ? <Text style={styles.message}>{message}</Text> : null}
-
-            {/* Back to Login Link */}
             <TouchableOpacity onPress={() => navigation.navigate('Login')}>
               <Text style={styles.signupText}>
                 Remember your password? <Text style={styles.signupLink}>Login</Text>
@@ -118,6 +174,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
   );
 };
 
+// Styles remain the same
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -130,6 +187,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    justifyContent: 'center',
   },
   gradientContainer: {
     width: '100%',
@@ -143,12 +201,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 5 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
+    marginBottom: 30,
   },
   image: {
-    width: 120,
-    height: 120,
+    width: 160,
+    height: 160,
     resizeMode: 'contain',
-    marginBottom: 10,
+    marginBottom: 15,
   },
   title: {
     fontSize: 22,
@@ -160,11 +219,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#FFCCBC',
     textAlign: 'center',
-    marginTop: 5,
+    marginTop: 8,
+    paddingHorizontal: 20,
   },
   inputContainer: {
     width: '100%',
-    marginTop: 40,
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -172,24 +231,18 @@ const styles = StyleSheet.create({
     borderColor: '#E0E0E0',
     borderWidth: 1,
     borderRadius: 10,
-    marginBottom: 12,
+    marginBottom: 15,
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
     elevation: 2,
   },
   input: {
     flex: 1,
-    height: 42,
+    minHeight: 42,
     fontSize: 15,
     color: '#333',
     marginLeft: 10,
-  },
-  warningText: {
-    color: '#FF8C00',
-    fontSize: 12,
-    marginBottom: 10,
-    textAlign: 'center',
   },
   button: {
     backgroundColor: '#FF0000',
@@ -197,7 +250,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: 'center',
     width: '100%',
-    marginTop: 12,
+    marginTop: 10,
     elevation: 4,
   },
   buttonDisabled: {
@@ -210,12 +263,19 @@ const styles = StyleSheet.create({
   },
   message: {
     marginTop: 15,
-    color: '#F44336',
+    marginBottom: 10,
     textAlign: 'center',
     fontSize: 14,
+    paddingHorizontal: 10,
+  },
+  successMessage: {
+    color: '#4CAF50',
+  },
+  errorMessage: {
+    color: '#F44336',
   },
   signupText: {
-    marginTop: 5,
+    marginTop: 20,
     color: '#333',
     fontSize: 13,
     fontWeight: '500',

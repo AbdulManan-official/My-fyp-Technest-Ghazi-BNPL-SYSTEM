@@ -41,6 +41,7 @@ import UserSchedulesProgressDetails from './screens/AdminScreens/UserSchedulesPr
 import UserVerificationDetailScreen from './screens/AdminScreens/UserVerificationDetailScreen';
 import SchedulesDetailScreen from './screens/userscreens/SchedulesDetailScreen';
 import VideoSplashScreen from './screens/VideoSplashScreen';
+import LocationScreen from './screens/userscreens/LocationScreen';
 
 const Stack = createStackNavigator();
 
@@ -283,6 +284,11 @@ export default function App() {
             name="BNPLPlansScreen"
             component={BNPLPlansScreen}
             options={({ navigation }) => CustomHeader({ navigation, title: 'Manage BNPL Plans', titleAlign: 'center' })}
+          />
+             <Stack.Screen
+            name="LocationScreen"
+            component={LocationScreen}
+            options={({ navigation }) => CustomHeader({ navigation, title: 'Shop Location', titleAlign: 'center' })}
           />
         </Stack.Navigator>
       </NavigationContainer>

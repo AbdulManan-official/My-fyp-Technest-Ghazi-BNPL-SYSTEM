@@ -332,7 +332,7 @@ const CustomDrawerScreen = ({ navigation, closeDrawer }) => {
           {[
             { name: "user", label: "Profile", route: "UserProfileScreen" },
             { name: "comments", label: "Support Chat", route: "SupportChatScreen" },
-            // { name: "heart", label: "Wishlist", route: "WishlistScreen" },
+            { name: "map-marker", label: "Shop Location", route: "LocationScreen" },
             { name: "lock", label: "Privacy Policy", route: "PrivacyPolicyScreen" },
             { name: "balance-scale", label: "Rules & Regulations", route: "RulesRegulationScreen", },
             { name: "info-circle", label: "About Us", route: "AboutUsScreen" },

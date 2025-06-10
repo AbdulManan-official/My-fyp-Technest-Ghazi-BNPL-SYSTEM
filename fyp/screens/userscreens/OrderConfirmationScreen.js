@@ -508,13 +508,7 @@ export default function OrderConfirmationScreen() {
                 }
             }
 
-            // --- Determine Payment Method, Status, and Construct Order Details ---
-            // ... (your existing logic for codItems, bnplItems, fixedItems, subtotals) ...
-            // ... (your existing logic for relevantItemForPlan, relevantBnplPlan, planType) ...
-            // ... (your existing logic for overallPaymentMethod, overallPaymentStatus, orderSpecificData) ...
-            // ... (your existing logic for generating installments if BNPL) ...
-            // ... (your existing logic for fixed duration details if Fixed Duration) ...
-
+          
             const codItems = currentCartItemsForOrder.filter(item => item?.paymentMethod === 'COD');
             const bnplItems = currentCartItemsForOrder.filter(item => item?.paymentMethod === 'BNPL' && item.bnplPlan?.planType === 'Installment');
             const fixedItems = currentCartItemsForOrder.filter(item => item.bnplPlan?.planType === 'Fixed Duration' && (item?.paymentMethod === 'Fixed Duration' || item?.paymentMethod === 'BNPL'));
@@ -595,16 +589,7 @@ export default function OrderConfirmationScreen() {
             // +++++++++++++++++++++++ CART MODIFICATION LOGIC FOR SCENARIO 1 +++++++++++++++++++++++
             const orderOrigin = route.params?.origin; // Get origin from the route params
 
-            // This was the old cart clearing logic, we will replace/enhance it.
-            // try {
-            //     const cartDocRef = doc(db, CARTS_COLLECTION, userId);
-            //     await updateDoc(cartDocRef, { items: [], lastUpdated: serverTimestamp() });
-            // } catch (cartError) {
-            //      console.error(`[ConfirmScreen] CRITICAL ERROR: Failed to clear cart for user ${userId} after order ${newOrderId}:`, cartError);
-            //      Alert.alert("Cart Clear Issue", "Order placed, but failed to clear cart. Please manually remove items or contact support.");
-            // }
-
-            // NEW CART MODIFICATION LOGIC
+            
             try {
                 const cartDocRef = doc(db, CARTS_COLLECTION, userId);
 
@@ -614,9 +599,7 @@ export default function OrderConfirmationScreen() {
                     await updateDoc(cartDocRef, { items: [], lastUpdated: serverTimestamp() });
                     console.log(`[OrderConfirmation] Cart cleared for user ${userId}`);
                 }
-                // Placeholder for Scenario 2 & 3
-                // else if (orderOrigin === 'ProductDetailFromCart' && route.params?.orderedItemId) { /* ... */ }
-                // else if (orderOrigin === 'ProductDetailDirect') { /* ... */ }
+                
                 else {
                     console.warn(`[OrderConfirmation] Origin is '${orderOrigin}'. No specific cart modification rule implemented yet for this origin (besides CartScreen).`);
                 }

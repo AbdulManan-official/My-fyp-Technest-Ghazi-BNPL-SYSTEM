@@ -3,7 +3,6 @@ import {
   StyleSheet,
   Text,
   View,
-  Platform,
   Linking,
   TouchableOpacity,
   Alert,
@@ -11,39 +10,40 @@ import {
 import MapView, { Marker } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
 
-// --- BRANCH 2 SHOP INFORMATION ---
+// --- SHOP INFORMATION ---
 const shopInfo = {
   name: "Ghazi khan Electronics Branch 2",
   address: "HHQ6+4H4, Kubba Chak, Sialkot, Punjab 51310, Pakistan",
   coordinates: {
-    latitude: 32.58860732441515,
-    longitude: 74.56182092701226,
+    latitude: 32.5879198759158, 
+    longitude: 74.56145070674563
   },
+  directionsUrl: "https://maps.app.goo.gl/TtZycmSzrJVpZWva9",
 };
-// ----------------------------------
+
 
 // This object defines the initial map region and zoom level.
 const mapRegion = {
   latitude: shopInfo.coordinates.latitude,
   longitude: shopInfo.coordinates.longitude,
-  // --- CHANGED: Made the zoom level closer ---
-  latitudeDelta: 0.001, 
+  latitudeDelta: 0.001, // A small delta means a closer zoom
   longitudeDelta: 0.001,
-  // ------------------------------------------
 };
 
 export default function LocationScreenBranch2() {
   const markerRef = useRef(null);
 
+  // This effect automatically shows the marker's title/description after the screen loads.
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (markerRef.current) {
         markerRef.current.showCallout();
       }
-    }, 500);
-    return () => clearTimeout(timeout);
+    }, 500); // Wait half a second before showing
+    return () => clearTimeout(timeout); // Clean up the timeout
   }, []);
 
+  // This function shows a confirmation alert before opening the external maps app.
   const openDirectionsWithConfirmation = () => {
     Alert.alert(
       "Open External App",
@@ -57,13 +57,8 @@ export default function LocationScreenBranch2() {
         {
           text: "Open Maps",
           onPress: () => {
-            const { latitude, longitude } = shopInfo.coordinates;
-            const label = encodeURIComponent(shopInfo.name);
-            const url = Platform.select({
-              ios: `maps://?daddr=${latitude},${longitude}&q=${label}`,
-              android: `geo:${latitude},${longitude}?q=${latitude},${longitude}(${label})`,
-            });
-            Linking.openURL(url).catch(err =>
+            // Open the universal Google Maps link, which works on both iOS and Android.
+            Linking.openURL(shopInfo.directionsUrl).catch(err =>
               console.error("An error occurred", err)
             );
           },
@@ -76,6 +71,7 @@ export default function LocationScreenBranch2() {
     <View style={styles.container}>
       <StatusBar style="auto" />
 
+      {/* The MapView takes up the top 3/5ths of the screen */}
       <MapView style={styles.map} initialRegion={mapRegion}>
         <Marker
           ref={markerRef}
@@ -85,6 +81,7 @@ export default function LocationScreenBranch2() {
         />
       </MapView>
 
+      {/* The info card sits on top of the map at the bottom */}
       <View style={styles.infoCard}>
         <Text style={styles.shopName}>{shopInfo.name}</Text>
         <Text style={styles.shopAddress}>{shopInfo.address}</Text>
@@ -99,30 +96,32 @@ export default function LocationScreenBranch2() {
   );
 }
 
-// Styles remain exactly the same
+// All the styles for the components are defined here.
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fff',
   },
   map: {
-    flex: 3,
+    flex: 3, // Takes 3 parts of the available space
   },
   infoCard: {
-    flex: 2,
+    flex: 2, // Takes 2 parts of the available space
     backgroundColor: '#fff',
     paddingTop: 20,
     paddingHorizontal: 25,
     paddingBottom: 15,
     borderTopLeftRadius: 25,
     borderTopRightRadius: 25,
-    marginTop: -25,
-    elevation: 10,
+    marginTop: -25, // This makes the card overlap the map view
+    // Shadow for iOS
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    justifyContent: 'center',
+    // Elevation for Android
+    elevation: 10,
+    justifyContent: 'center', // Centers the content vertically within the card
   },
   shopName: {
     fontSize: 26,
@@ -139,7 +138,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#007AFF', // A standard blue color
     paddingVertical: 15,
     borderRadius: 12,
     alignItems: 'center',

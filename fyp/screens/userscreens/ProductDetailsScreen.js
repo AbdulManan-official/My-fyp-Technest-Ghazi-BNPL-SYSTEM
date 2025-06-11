@@ -64,11 +64,15 @@ const GALLERY_HEIGHT = screenWidth * 0.9;
 const MAX_INITIAL_REVIEWS = 3;
 const RELATED_PRODUCTS_LIMIT = 6;
 const CURRENCY_SYMBOL = 'RS';
-const GRID_PADDING_HORIZONTAL = 15;
-const CARD_MARGIN_HORIZONTAL = 4;
+const ACCENT_RED = '#E53935';
+const BNPL_BADGE_BG = '#0056b3';
+const DISCOUNT_BADGE_BG = '#B8860B';
+const BADGE_TEXT_COLOR = '#FFFFFF';
+const GRID_PADDING_HORIZONTAL = 10;
+const CARD_MARGIN_HORIZONTAL = 8;
 const NUM_COLUMNS = 2;
-const relatedCardWidth = (screenWidth - (GRID_PADDING_HORIZONTAL * 2) - (CARD_MARGIN_HORIZONTAL * NUM_COLUMNS * 2)) / NUM_COLUMNS;
-
+// This calculation is now consistent with the other screens
+const relatedCardWidth = (screenWidth - (GRID_PADDING_HORIZONTAL * 2)) / NUM_COLUMNS - (CARD_MARGIN_HORIZONTAL * 2);
 // --- Firestore Constants ---
 const CARTS_COLLECTION = 'Carts'; // Added for consistency
 const USERS_COLLECTION = 'Users'; // <<< ADD THIS
@@ -1486,85 +1490,91 @@ export default function ProductDetailsScreen() {
     };
 
     // Renders a single card for the Related Products section
-    const renderRelatedProductCard = ({ item }) => {
-        // Handle placeholder card for grid alignment
-        if (item.isPlaceholder) {
-             return <View style={styles.relatedProductCardPlaceholder} />;
-        }
-        if (!item || !item.id) return null; // Skip if invalid item data
+    // --- [REPLACEMENT] renderRelatedProductCard Function ---
 
-        // Determine price display for the related item
-        const itemHasDiscount = typeof item.originalPrice === 'number' && typeof item.discountedPrice === 'number' && item.discountedPrice < item.originalPrice;
-        const relatedOP = formatCurrency(item.originalPrice);
-        const relatedDP = formatCurrency(item.discountedPrice);
-        const relatedFinalPriceDisplay = relatedDP || relatedOP; // Show discounted if available, else original
-        const relatedOriginalPriceDisplay = itemHasDiscount ? relatedOP : null; // Only show original if discounted
+const renderRelatedProductCard = ({ item }) => {
+    // Handle placeholder card for grid alignment
+    if (item.isPlaceholder) {
+        return <View style={styles.relatedProductCardPlaceholder} />;
+    }
+    if (!item || !item.id) return null; // Skip if invalid item data
 
-        // Determine payment badges
-        const hasBnpl = item.bnplAvailable === true;
-        const hasCod = item.codAvailable === true;
+    // Logic is now identical to HomeScreen/SearchScreen's card
+    const hasDiscount = typeof item.discountedPrice === 'number' && typeof item.originalPrice === 'number' && item.discountedPrice < item.originalPrice;
+    const displayOriginalPrice = typeof item.originalPrice === 'number' ? `${CURRENCY_SYMBOL} ${item.originalPrice.toFixed(0)}` : null;
+    const displayDiscountedPrice = typeof item.discountedPrice === 'number' ? `${CURRENCY_SYMBOL} ${item.discountedPrice.toFixed(0)}` : null;
 
-        return (
-            <TouchableOpacity
-                style={styles.relatedProductCard}
-                // Navigate using 'push' to allow navigating to the same screen type
-                onPress={() => {
-                    if (!isProcessingCart) { // Prevent navigation while main actions are busy
-                         // Pass the minimal required data (or full item) to the next screen
-                        navigation.push('ProductDetails', { productId: item.id, product: item }); // Pass ID and potentially the basic data
-                    }
-                }}
-                activeOpacity={0.8}
-                disabled={isProcessingCart} // Disable touch while processing
-            >
-                {/* Image */}
+    let discountPercentage = null;
+    if (hasDiscount && item.originalPrice > 0) {
+        const percentage = ((item.originalPrice - item.discountedPrice) / item.originalPrice) * 100;
+        discountPercentage = `${Math.round(percentage)}% OFF`;
+    }
+
+    const priceForCalc = typeof item.discountedPrice === 'number' ? item.discountedPrice : item.originalPrice;
+    // NOTE: We don't fetch full plans for related items, so BNPL installment text is omitted here,
+    // but the logic for badges and price is the same.
+
+    return (
+        <TouchableOpacity
+            style={styles.relatedProductCard} // The new styles will target this
+            // [IMPORTANT] Using 'push' is correct here to navigate to another ProductDetails screen
+            onPress={() => {
+                if (!isProcessingCart) {
+                    navigation.push('ProductDetails', { productId: item.id, product: item });
+                }
+            }}
+            activeOpacity={0.8}
+            disabled={isProcessingCart}
+        >
+            <View style={styles.relatedImageContainer}>
                 <Image
                     source={item.image ? { uri: item.image } : placeholderImage}
-                    style={styles.relatedCardImage}
+                    style={styles.relatedProductImage}
                     resizeMode="contain"
                 />
-                {/* Name */}
-                <Text style={styles.relatedCardName} numberOfLines={1} ellipsizeMode="tail">
-                    {item.name || ''}
-                </Text>
-                {/* Price */}
-                <View style={styles.relatedCardPriceContainer}>
-                    {relatedFinalPriceDisplay ? (
-                        <Text style={styles.relatedCardDiscountedPrice}>{relatedFinalPriceDisplay}</Text>
-                    ) : (
-                        <View style={styles.relatedCardPricePlaceholder} /> // Placeholder if no price
-                    )}
-                    {relatedOriginalPriceDisplay && (
-                        <Text style={styles.relatedCardStrikethroughPrice}>{relatedOriginalPriceDisplay}</Text>
-                    )}
-                </View>
-                {/* Description (Optional) */}
-                {item.description ? (
-                    <Text style={styles.relatedCardDescription} numberOfLines={2} ellipsizeMode="tail">
-                        {item.description}
-                    </Text>
-                ) : (
-                    <View style={styles.relatedCardDescriptionPlaceholder} /> // Placeholder if no description
+                {/* Overlay Badges */}
+                {item.bnplAvailable && (
+                    <View style={styles.bnplTag}>
+                       <Text style={styles.bnplTagText}>BNPL</Text>
+                    </View>
                 )}
-                {/* Badges (BNPL/COD) */}
-                <View style={styles.relatedCardBadgesContainer}>
-                    {hasBnpl ? (
-                        <View style={styles.relatedCardBnplBadge}>
-                            <MaterialIcons name="schedule" size={14} color={BnplBadgeText} />
-                            <Text style={styles.relatedCardBnplText}>Installments</Text>
-                        </View>
-                    ) : hasCod ? ( // Show COD only if BNPL is not available
-                        <View style={styles.relatedCardCodBadge}>
-                            <MaterialIcons name="local-shipping" size={14} color={CodBadgeText} />
-                            <Text style={styles.relatedCardCodText}>COD Available</Text>
-                        </View>
-                    ) : (
-                        <View style={styles.relatedCardBadgePlaceholder} /> // Placeholder if neither
-                    )}
+                {discountPercentage && (
+                    <View style={styles.discountBadge}>
+                        <Text style={styles.discountBadgeText}>{discountPercentage}</Text>
+                    </View>
+                )}
+            </View>
+
+            <View style={styles.relatedInfoContainer}>
+                <Text style={styles.relatedProductName} numberOfLines={2} ellipsizeMode="tail">
+                    {item.name || 'Product Name'}
+                </Text>
+
+                <Text style={styles.relatedProductDescription} numberOfLines={2} ellipsizeMode="tail">
+                    {item.description || ''}
+                </Text>
+
+                <View style={styles.relatedPriceSection}>
+                    <View style={styles.relatedPriceRow}>
+                        {hasDiscount && (
+                            <>
+                                <Text style={styles.relatedDiscountedPrice}>{displayDiscountedPrice}</Text>
+                                <Text style={styles.relatedStrikethroughPrice}>{displayOriginalPrice}</Text>
+                            </>
+                        )}
+                        {!hasDiscount && displayOriginalPrice && (
+                             <Text style={styles.relatedDiscountedPrice}>{displayOriginalPrice}</Text>
+                        )}
+                        {!hasDiscount && !displayOriginalPrice && displayDiscountedPrice && (
+                            <Text style={styles.relatedDiscountedPrice}>{displayDiscountedPrice}</Text>
+                        )}
+                    </View>
+                    {/* BNPL Installment text is omitted for related cards to keep them simple */}
                 </View>
-            </TouchableOpacity>
-        );
-    };
+            </View>
+        </TouchableOpacity>
+    );
+};
 
     // Renders the entire "Related Products" section including title and FlatList
     const renderRelatedProductsSection = () => {
@@ -2101,34 +2111,133 @@ const styles = StyleSheet.create({
     seeMoreButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginTop: 10, borderTopWidth: 1, borderTopColor: LightBorderColor },
     seeMoreButtonText: { fontSize: 15, fontWeight: '500', color: AccentColor, marginRight: 5 },
     // Related Products Styles
-    relatedProductsContainer: { marginTop: 20, paddingTop: 20, paddingBottom: 0, borderTopWidth: 1, borderTopColor: '#E0E0E0', backgroundColor: RelatedSectionBgColor, },
-    relatedProductsTitle: { fontSize: 18, fontWeight: 'bold', color: TextColorPrimary, marginBottom: 15, paddingHorizontal: GRID_PADDING_HORIZONTAL, },
-    relatedLoadingContainer: { minHeight: 280, justifyContent: 'center', alignItems: 'center', marginVertical: 20, backgroundColor: RelatedSectionBgColor, paddingHorizontal: GRID_PADDING_HORIZONTAL, },
-    relatedLoadingText: { marginTop: 10, fontSize: 14, color: TextColorSecondary, },
-    relatedProductsGridContainer: { paddingHorizontal: GRID_PADDING_HORIZONTAL - CARD_MARGIN_HORIZONTAL, },
-    relatedProductCard: {
-        backgroundColor: '#fff', borderRadius: 8, margin: CARD_MARGIN_HORIZONTAL, width: relatedCardWidth,
-        paddingVertical: 12, paddingHorizontal: 10, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.12, shadowRadius: 2.00, // Slightly adjusted shadow
-        minHeight: 300, alignItems: 'center', justifyContent: 'flex-start', overflow: 'hidden', // Prevent content spill
-    },
-    relatedProductCardPlaceholder: { margin: CARD_MARGIN_HORIZONTAL, width: relatedCardWidth, minHeight: 300, backgroundColor: 'transparent', }, // Placeholder takes space but is invisible
-    relatedCardImage: { width: '100%', height: 120, borderRadius: 6, marginBottom: 10, backgroundColor: PlaceholderBgColor, alignSelf: 'center' },
-    relatedCardName: { fontSize: 14, fontWeight: '600', color: TextColorPrimary, textAlign: 'center', minHeight: 18, marginBottom: 6, width: '100%', paddingHorizontal: 5, },
-    relatedCardPriceContainer: { flexDirection: 'column', alignItems: 'center', minHeight: 35, marginBottom: 8, justifyContent: 'center', width: '100%', },
-    relatedCardDiscountedPrice: { fontSize: 15, color: DiscountedPriceColor, fontWeight: 'bold', },
-    relatedCardStrikethroughPrice: { textDecorationLine: 'line-through', color: StrikethroughColor, fontWeight: 'normal', fontSize: 13, marginTop: 2 },
-    relatedCardPricePlaceholder: { height: 20, minHeight: 35 }, // Placeholder if no price
-    relatedCardDescription: { fontSize: 11, color: TextColorSecondary, textAlign: 'center', marginBottom: 10, paddingHorizontal: 5, minHeight: 28, lineHeight: 14, width: '95%', },
-    relatedCardDescriptionPlaceholder: { height: 28, marginBottom: 10, },
-    relatedCardBadgesContainer: { flexDirection: 'row', justifyContent: 'center', width: '90%', marginTop: 'auto', marginBottom: 4, minHeight: 24, }, // Push badges to bottom
-    relatedCardBnplBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: BnplBadgeBg, borderRadius: 10, paddingVertical: 3, paddingHorizontal: 8, height: 24, alignSelf: 'center', },
-    relatedCardBnplText: { fontSize: 11, color: BnplBadgeText, marginLeft: 4, fontWeight: '600', },
-    relatedCardCodBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: CodBadgeBg, borderRadius: 10, paddingVertical: 3, paddingHorizontal: 8, height: 24, alignSelf: 'center', },
-    relatedCardCodText: { fontSize: 11, color: CodBadgeText, marginLeft: 4, fontWeight: '600', },
-    relatedCardBadgePlaceholder: { height: 24, width: '80%', }, // Placeholder if no badge
-    relatedProductsBottomPadding: { height: 15, backgroundColor: RelatedSectionBgColor }, // Padding inside the related section BG
+    relatedProductsContainer: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    backgroundColor: RelatedSectionBgColor,
+},
+relatedProductsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: TextColorPrimary,
+    marginBottom: 15,
+    paddingHorizontal: GRID_PADDING_HORIZONTAL + CARD_MARGIN_HORIZONTAL, // Adjust for new padding
+},
+relatedLoadingContainer: {
+    minHeight: 280,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 20,
+    backgroundColor: RelatedSectionBgColor,
+    paddingHorizontal: GRID_PADDING_HORIZONTAL,
+},
+relatedLoadingText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: TextColorSecondary,
+},
+relatedProductsGridContainer: {
+    paddingHorizontal: GRID_PADDING_HORIZONTAL,
+},
+relatedProductCardPlaceholder: {
+    // This placeholder just needs to occupy the same space as a real card
+    width: relatedCardWidth,
+    marginHorizontal: CARD_MARGIN_HORIZONTAL,
+    marginBottom: CARD_MARGIN_HORIZONTAL * 2,
+},
+// New consistent card styles, prefixed with 'related' to avoid conflicts
+relatedProductCard: {
+    width: relatedCardWidth,
+    marginHorizontal: CARD_MARGIN_HORIZONTAL,
+    marginBottom: CARD_MARGIN_HORIZONTAL * 2,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    elevation: 4,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    overflow: 'hidden',
+},
+relatedImageContainer: {
+    width: '100%',
+    backgroundColor: '#F8F8F8',
+},
+relatedProductImage: {
+    width: '100%',
+    height: 130,
+},
+bnplTag: { // Shared style, no prefix needed if defined once
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: BNPL_BADGE_BG,
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+},
+bnplTagText: {
+    color: BADGE_TEXT_COLOR,
+    fontSize: 10,
+    fontWeight: 'bold',
+},
+discountBadge: {
+    position: 'absolute',
+    bottom: 2,
+    left: 5,
+    backgroundColor: DISCOUNT_BADGE_BG,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+},
+discountBadgeText: {
+    color: BADGE_TEXT_COLOR,
+    fontSize: 9,
+    fontWeight: 'bold',
+},
+relatedInfoContainer: {
+    padding: 11,
+},
+relatedProductName: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#212121',
+    textAlign: 'center',
+    marginBottom: 3,
+},
+relatedProductDescription: {
+    fontSize: 12,
+    color: '#757575',
+    textAlign: 'center',
+    marginBottom: 5,
+    minHeight: 28,
+},
+relatedPriceSection: {},
+relatedPriceRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'center',
+    marginBottom: 4,
+},
+relatedDiscountedPrice: {
+    fontSize: 16,
+    color: ACCENT_RED, // Use consistent accent color
+    fontWeight: '800',
+    marginRight: 6,
+},
+relatedStrikethroughPrice: {
+    textDecorationLine: 'line-through',
+    color: '#9E9E9E',
+    fontWeight: 'normal',
+    fontSize: 13,
+},
+relatedProductsBottomPadding: {
+    height: 1,
+    backgroundColor: RelatedSectionBgColor
+},
 
-    // --- Bottom Button Bar Styles (MODIFIED) ---
     buttonContainer: {
         position: 'absolute', bottom: 0, left: 0, right: 0,
         flexDirection: 'row', backgroundColor: AppBackgroundColor,

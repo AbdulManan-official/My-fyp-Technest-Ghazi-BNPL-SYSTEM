@@ -1,5 +1,4 @@
 // SearchScreen.js
-// (CORRECTED - Render helpers correctly scoped, includes all features)
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
@@ -27,10 +26,17 @@ import { db } from '../../firebaseConfig';
 
 import { calculateTopTrendingFromList } from '../../Components/trendingProductsUtil';
 
+// --- CONSTANTS ADAPTED FROM HOMESCREEN FOR DESIGN CONSISTENCY ---
 const { width, height } = Dimensions.get("window");
-const CARD_MARGIN = 5;
+const CARD_MARGIN = 8;
 const GRID_PADDING = 10;
 const NUM_COLUMNS = 2;
+const ACCENT_RED = '#E53935';
+const BNPL_BADGE_BG = 'red';      // Distinct Blue for BNPL
+const DISCOUNT_BADGE_BG = 'orange';  // Vibrant Gold/Yellow for Discounts
+const BADGE_TEXT_COLOR = '#FFFFFF';   // White text for both badges
+
+const PRODUCT_CARD_WIDTH = (width - (GRID_PADDING * 2)) / NUM_COLUMNS - (CARD_MARGIN * 2);
 
 const PRODUCTS_COLLECTION = 'Products';
 const BNPL_PLANS_COLLECTION = 'BNPL_plans';
@@ -43,7 +49,7 @@ const allCategoryObject = { id: "All", name: "All" };
 const trendingCategoryObject = { id: "Trending", name: "Trending" };
 
 export default function SearchScreen() {
-    const navigation = useNavigation(); // useNavigation hook at the top level of the component
+    const navigation = useNavigation();
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedCategory, setSelectedCategory] = useState(allCategoryObject.id);
     const [allProductsMasterList, setAllProductsMasterList] = useState([]);
@@ -164,30 +170,86 @@ export default function SearchScreen() {
     const clearSearch = () => { setSearchQuery(''); };
     const onFilterCategoryChange = (categoryId) => { setSelectedCategory(categoryId); };
 
-    // --- RENDER HELPER FUNCTIONS ARE NOW INSIDE THE COMPONENT ---
+    // --- RENDER HELPER FUNCTIONS ---
     const renderProductCard = ({ item }) => {
+        // Logic is now identical to HomeScreen's card for consistency
         const hasDiscount = typeof item.discountedPrice === 'number' && typeof item.originalPrice === 'number' && item.discountedPrice < item.originalPrice;
         const displayOriginalPrice = typeof item.originalPrice === 'number' ? `${CURRENCY_SYMBOL} ${item.originalPrice.toFixed(0)}` : null;
         const displayDiscountedPrice = typeof item.discountedPrice === 'number' ? `${CURRENCY_SYMBOL} ${item.discountedPrice.toFixed(0)}` : null;
-        const showBnplBadge = item.bnplAvailable === true;
-        const showCodBadge = item.codAvailable === true && !showBnplBadge;
-        let finalPriceString = '';
-        if (hasDiscount && displayDiscountedPrice) { finalPriceString = displayDiscountedPrice; }
-        else if (displayOriginalPrice) { finalPriceString = displayOriginalPrice; }
-        else if (displayDiscountedPrice) { finalPriceString = displayDiscountedPrice; }
-
+    
+        let discountPercentage = null;
+        if (hasDiscount && item.originalPrice > 0) {
+            const percentage = ((item.originalPrice - item.discountedPrice) / item.originalPrice) * 100;
+            discountPercentage = `${Math.round(percentage)}% OFF`;
+        }
+    
+        const priceForCalc = typeof item.discountedPrice === 'number' ? item.discountedPrice : item.originalPrice;
+        const canShowBnplLine = item.bnplAvailable && item.BNPLPlans?.length > 0 && typeof priceForCalc === 'number';
+    
+        let bnplInstallment = null;
+        if (canShowBnplLine) {
+            const firstPlan = item.BNPLPlans[0];
+            if (firstPlan && firstPlan.durationInMonths > 0) {
+                const downPayment = priceForCalc * ((firstPlan.downPaymentPercentage || 0) / 100);
+                const monthlyInstallment = (priceForCalc - downPayment) / firstPlan.durationInMonths;
+                bnplInstallment = `or ${CURRENCY_SYMBOL} ${monthlyInstallment.toFixed(0)}/mo with BNPL`;
+            }
+        }
+    
         return (
-            <TouchableOpacity style={styles.productCard} onPress={() => navigation.navigate('ProductDetails', { product: item })} >
-                <Image source={item.image ? { uri: item.image } : placeholderImage} style={styles.productImage} resizeMode="contain" onError={(e) => console.log('Search Image Load Error:', e.nativeEvent.error, 'URL:', item.image)} />
-                <Text style={styles.productName} numberOfLines={1} ellipsizeMode="tail">{item.name || ''}</Text>
-                <View style={styles.priceContainer}>
-                    {hasDiscount && displayOriginalPrice && (<Text style={[styles.productPrice, styles.strikethroughPrice]}>{displayOriginalPrice}</Text>)}
-                    {finalPriceString ? (<Text style={styles.discountedPrice}>{finalPriceString}</Text>) : (<View style={{ height: 20 }} />)}
+            <TouchableOpacity
+                style={styles.productCard}
+                onPress={() => navigation.navigate('ProductDetails', { product: item })}
+                activeOpacity={0.8}
+            >
+                <View style={styles.imageContainer}>
+                    <Image
+                        source={item.image ? { uri: item.image } : placeholderImage}
+                        style={styles.productImage}
+                        resizeMode="contain"
+                    />
+                    {item.bnplAvailable && (
+                        <View style={styles.bnplTag}>
+                           <Text style={styles.bnplTagText}>BNPL</Text>
+                        </View>
+                    )}
+                    {discountPercentage && (
+                        <View style={styles.discountBadge}>
+                            <Text style={styles.discountBadgeText}>{discountPercentage}</Text>
+                        </View>
+                    )}
                 </View>
-                 {item.description ? (<Text style={styles.productDescription} numberOfLines={2} ellipsizeMode="tail">{item.description}</Text>) : <View style={{height: styles.productDescription.fontSize * 2 * 1.2 || 28}}/> }
-                {showBnplBadge ? (<View style={styles.bnplBadge}><MaterialIcons name="schedule" size={14} color="#1565C0" /><Text style={styles.bnplText}>BNPL Available</Text></View>)
-                 : showCodBadge ? (<View style={styles.codBadge}><MaterialIcons name="local-shipping" size={14} color="#EF6C00" /><Text style={styles.codText}>COD Available</Text></View>)
-                 : (<View style={{ height: 24 }} />)}
+    
+                <View style={styles.infoContainer}>
+                    <Text style={styles.productName} numberOfLines={2} ellipsizeMode="tail">
+                        {item.name || 'Product Name'}
+                    </Text>
+    
+                    <Text style={styles.productDescription} numberOfLines={2} ellipsizeMode="tail">
+                        {item.description || ''}
+                    </Text>
+    
+                    <View style={styles.priceSection}>
+                        <View style={styles.priceRow}>
+                            {hasDiscount && (
+                                <>
+                                    <Text style={styles.discountedPrice}>{displayDiscountedPrice}</Text>
+                                    <Text style={styles.strikethroughPrice}>{displayOriginalPrice}</Text>
+                                </>
+                            )}
+                            {!hasDiscount && displayOriginalPrice && (
+                                 <Text style={styles.discountedPrice}>{displayOriginalPrice}</Text>
+                            )}
+                            {!hasDiscount && !displayOriginalPrice && displayDiscountedPrice && (
+                                <Text style={styles.discountedPrice}>{displayDiscountedPrice}</Text>
+                            )}
+                        </View>
+    
+                        {bnplInstallment && (
+                            <Text style={styles.bnplPlanText}>{bnplInstallment}</Text>
+                        )}
+                    </View>
+                </View>
             </TouchableOpacity>
         );
     };
@@ -195,9 +257,6 @@ export default function SearchScreen() {
     const renderListEmptyComponent = () => {
         if (loadingProducts || loadingCategories) return null;
         if (error && filteredProducts.length === 0) { 
-            // If there's a general error and no products are shown for the current filter, show error.
-            // The main error display below FlatList will handle more general fetch errors.
-            // This specific one is for "no results due to error for this filter".
             return ( <View style={styles.emptyListContainer}><Icon name="alert-circle-outline" size={40} color="#ccc" /><Text style={styles.emptyListText}>{error}</Text></View> );
         }
         if (filteredProducts.length === 0) {
@@ -205,7 +264,7 @@ export default function SearchScreen() {
                  return ( <View style={styles.emptyListContainer}><Icon name="magnify-close" size={40} color="#ccc" /><Text style={styles.emptyListText}>No products match your criteria.</Text></View> );
             } else if (selectedCategory === 'Trending' && trendingProductList.length === 0){
                 return ( <View style={styles.emptyListContainer}><Icon name="chart-line-variant" size={40} color="#ccc" /><Text style={styles.emptyListText}>No trending products right now.</Text></View> );
-            } else if (allProductsMasterList.length === 0) { // True only if DB is empty
+            } else if (allProductsMasterList.length === 0) { 
                   return ( <View style={styles.emptyListContainer}><Icon name="package-variant-closed" size={40} color="#ccc" /><Text style={styles.emptyListText}>No products available yet.</Text></View> );
              }
         }
@@ -265,7 +324,7 @@ export default function SearchScreen() {
                         <ActivityIndicator size="large" color="#FF0000" />
                         <Text style={styles.loadingText}>Loading Products...</Text>
                     </View>
-                ) : error && filteredProducts.length === 0 && allProductsMasterList.length === 0 ? ( // Show general error if master list is also empty
+                ) : error && filteredProducts.length === 0 && allProductsMasterList.length === 0 ? ( 
                     <View style={styles.loaderContainer}>
                          <Icon name="alert-circle-outline" size={40} color="#888" />
                         <Text style={styles.errorText}>{error}</Text>
@@ -276,11 +335,11 @@ export default function SearchScreen() {
                 ) : (
                     <FlatList
                         data={filteredProducts}
-                        renderItem={renderProductCard} // This is now correctly scoped
+                        renderItem={renderProductCard}
                         keyExtractor={(item) => item.id}
                         numColumns={NUM_COLUMNS}
                         contentContainerStyle={styles.listContent}
-                        ListEmptyComponent={renderListEmptyComponent} // Correctly scoped
+                        ListEmptyComponent={renderListEmptyComponent}
                         showsVerticalScrollIndicator={false}
                         refreshControl={
                             <RefreshControl
@@ -308,7 +367,9 @@ const styles = StyleSheet.create({
         backgroundColor: '#FF0000',
         paddingTop: Platform.OS === 'ios' ? 10 : 15,
         paddingBottom: 15,
-        paddingHorizontal: 15,borderBottomLeftRadius: 15, borderBottomRightRadius: 15,
+        paddingHorizontal: 15,
+        borderBottomLeftRadius: 15,
+        borderBottomRightRadius: 15,
     },
     searchBar: {
         flexDirection: 'row',
@@ -396,90 +457,103 @@ const styles = StyleSheet.create({
         fontSize: 16, color: '#888', textAlign: 'center', marginTop: 15 
     },
     listContent: {
-        paddingHorizontal: GRID_PADDING - CARD_MARGIN, 
+        paddingHorizontal: GRID_PADDING,
         paddingTop: 10,
         paddingBottom: 20,
-        flexGrow: 1, 
+        flexGrow: 1,
     },
+    // --- NEW PRODUCT CARD STYLES ---
     productCard: {
+        width: PRODUCT_CARD_WIDTH,
+        marginHorizontal: CARD_MARGIN,
+        marginBottom: CARD_MARGIN * 2,
         backgroundColor: '#fff',
-        borderRadius: 8,
-        margin: CARD_MARGIN,
-        width: (width - (GRID_PADDING * 2) - (CARD_MARGIN * NUM_COLUMNS * 2)) / NUM_COLUMNS,
-        alignItems: 'center',
-        padding: 10,
-        paddingBottom: 8, 
-        elevation: 3,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.20,
-        shadowRadius: 1.41,
-        minHeight: 290, 
-        justifyContent: 'space-between',
+        borderRadius: 10,
+        elevation: 4,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 5,
+        overflow: 'hidden',
+    },
+    imageContainer: {
+        width: '100%',
+        backgroundColor: '#F8F8F8',
     },
     productImage: {
         width: '100%',
-        height: 120, 
-        borderRadius: 6,
-        marginBottom: 10, 
-        backgroundColor: '#F8F8F8'
+        height: 130,
+    },
+    bnplTag: {
+        position: 'absolute',
+        top: 6,
+        right: 6,
+        backgroundColor: BNPL_BADGE_BG,
+        borderRadius: 4,
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+    },
+    bnplTagText: {
+        color: BADGE_TEXT_COLOR,
+        fontSize: 10,
+        fontWeight: 'bold',
+    },
+    discountBadge: {
+        position: 'absolute',
+        bottom: 2,
+        left: 5,
+        backgroundColor: DISCOUNT_BADGE_BG,
+        borderRadius: 4,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+    },
+    discountBadgeText: {
+        color: BADGE_TEXT_COLOR,
+        fontSize: 9,
+        fontWeight: 'bold',
+    },
+    infoContainer: {
+        padding: 11,
     },
     productName: {
-        fontSize: 14, 
-        fontWeight: '600',
-        color: '#333',
+        fontSize: 15,
+        fontWeight: '700',
+        color: '#212121',
         textAlign: 'center',
-        minHeight: 18, 
-        marginBottom: 6, 
-        paddingHorizontal: 2,
-        width: '100%',
-    },
-    priceContainer: {
-        flexDirection: 'column',
-        alignItems: 'center',
-        marginTop: 4,
-        minHeight: 35, 
-        marginBottom: 8, 
-        justifyContent: 'center',
-        width: '100%',
-    },
-    productPrice: {
-        fontSize: 13, 
-        color: '#999', 
-        fontWeight: 'normal', 
-    },
-    strikethroughPrice: {
-        textDecorationLine: 'line-through', 
-        marginBottom: 2, 
-    },
-    discountedPrice: {
-        fontSize: 15, 
-        color: '#E53935', 
-        fontWeight: 'bold', 
+        marginBottom: 3,
     },
     productDescription: {
-        fontSize: 11, 
-        color: '#666', 
+        fontSize: 12,
+        color: '#757575',
         textAlign: 'center',
-        marginTop: 4, 
-        marginBottom: 8, 
-        paddingHorizontal: 5, 
+        marginBottom: 5,
         minHeight: 28, 
-        width: '95%', 
-        lineHeight: 14, 
     },
-    bnplBadge: {
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#E3F2FD', borderRadius: 10,
-        paddingVertical: 4, paddingHorizontal: 8, marginBottom: 4, alignSelf: 'center',
-        height: 24, flexShrink: 0, 
+    priceSection: {},
+    priceRow: {
+        flexDirection: 'row',
+        alignItems: 'baseline',
+        justifyContent: 'center',
+        marginBottom: 4,
     },
-    bnplText: { fontSize: 11, color: '#1565C0', marginLeft: 4, fontWeight: '600', },
-    codBadge: {
-        flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF3E0', borderRadius: 10,
-        paddingVertical: 4, paddingHorizontal: 8, marginBottom: 4, alignSelf: 'center',
-        height: 24, flexShrink: 0, 
+    discountedPrice: {
+        fontSize: 16,
+        color: ACCENT_RED,
+        fontWeight: '800',
+        marginRight: 6,
     },
-    codText: { fontSize: 11, color: '#EF6C00', marginLeft: 4, fontWeight: '600', },
+    strikethroughPrice: {
+        textDecorationLine: 'line-through',
+        color: '#9E9E9E',
+        fontWeight: 'normal',
+        fontSize: 13,
+    },
+    bnplPlanText: {
+        fontSize: 10,
+        color: ACCENT_RED,
+        fontWeight: '400',
+        textAlign: 'center',
+    },
     categoryLoader: { 
         marginTop: 15,
         alignSelf: 'center',

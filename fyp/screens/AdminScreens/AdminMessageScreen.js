@@ -1,10 +1,8 @@
-
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
     StyleSheet,
-    // FlatList, // <-- Remove FlatList import
     Image,
     TouchableOpacity,
     Platform,
@@ -13,9 +11,10 @@ import {
     Alert,
     SafeAreaView,
     StatusBar,
-    TouchableHighlight, // <-- Import for better row feedback
+    FlatList,
+    Animated,
 } from 'react-native';
-import { SwipeListView } from 'react-native-swipe-list-view'; // <-- Import SwipeListView
+import { Swipeable, GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { db, auth } from '../../firebaseConfig';
 import {
@@ -25,16 +24,90 @@ import {
     onSnapshot,
     doc,
     getDoc,
-    deleteDoc, // <-- Import deleteDoc
-    // Add imports for deleting subcollection if implementing full delete later
-    // getDocs, writeBatch
+    deleteDoc,
 } from 'firebase/firestore';
 import { formatDistanceToNowStrict } from 'date-fns';
-import Icon from 'react-native-vector-icons/FontAwesome'; // Using FontAwesome for delete icon
+import Icon from 'react-native-vector-icons/FontAwesome';
 
+// --- Constants ---
 const { width } = Dimensions.get('window');
 const userDefaultProfileImage = 'https://www.w3schools.com/w3images/avatar2.png';
-const THEME_RED = '#FF0000'; // Define theme color
+const THEME_RED = '#FF0000';
+
+// --- Helper Functions & Components ---
+
+/**
+ * Formats a Firestore timestamp into a relative time string (e.g., "5m ago").
+ */
+const formatTimestamp = (timestamp) => {
+    if (!timestamp?.toDate) return '';
+    try {
+        return formatDistanceToNowStrict(timestamp.toDate(), { addSuffix: true });
+    } catch (e) {
+        return '';
+    }
+};
+
+/**
+ * A reusable component that makes a single list item swipeable.
+ */
+const SwipeableRow = ({ item, onDelete, onOpen, close, onPress }) => {
+    const swipeableRef = useRef(null);
+
+    // Effect to programmatically close the row when the 'close' prop is true
+    useEffect(() => {
+        if (close && swipeableRef.current) {
+            swipeableRef.current.close();
+        }
+    }, [close]);
+
+    // Renders the hidden "Delete" button
+    const renderRightActions = (progress, dragX) => {
+        const trans = dragX.interpolate({
+            inputRange: [-75, 0],
+            outputRange: [0, 75],
+            extrapolate: 'clamp',
+        });
+        return (
+            <TouchableOpacity onPress={onDelete} style={styles.deleteButton}>
+                <Animated.View style={{ transform: [{ translateX: trans }] }}>
+                    <Icon name="trash" size={25} color="#FFF" />
+                </Animated.View>
+            </TouchableOpacity>
+        );
+    };
+
+    return (
+        <Swipeable
+            ref={swipeableRef}
+            renderRightActions={renderRightActions}
+            onSwipeableWillOpen={() => onOpen(item.id)}
+            overshootRight={false}
+        >
+            <TouchableOpacity activeOpacity={1} onPress={onPress}>
+                <View style={styles.rowFront}>
+                    <View style={styles.userItemContent}>
+                        <Image source={{ uri: item.profilePic }} style={styles.avatar} />
+                        <View style={styles.userInfo}>
+                            <Text style={[styles.userName, item.isUnread && styles.unreadText]}>
+                                {item.name}
+                            </Text>
+                            <Text style={[styles.userMessage, item.isUnread && styles.unreadText]} numberOfLines={1}>
+                                {item.message}
+                            </Text>
+                        </View>
+                        <View style={styles.metaInfo}>
+                            <Text style={styles.timeText}>{formatTimestamp(item.timestamp)}</Text>
+                            {item.isUnread && <View style={styles.unreadBadge} />}
+                        </View>
+                    </View>
+                </View>
+            </TouchableOpacity>
+        </Swipeable>
+    );
+};
+
+// --- Main Screen Component ---
 
 export default function AdminMessageScreen() {
     const navigation = useNavigation();
@@ -42,78 +115,131 @@ export default function AdminMessageScreen() {
     const [loading, setLoading] = useState(true);
     const [adminId, setAdminId] = useState(auth.currentUser?.uid || null);
     const [isAdminVerified, setIsAdminVerified] = useState(false);
+    const [openRowKey, setOpenRowKey] = useState(null);
+    const isInitialMount = useRef(true);
 
-    // --- Verify Admin Status (Keep As Is) ---
+    /**
+     * Effect for verifying admin status on component mount.
+     */
     useEffect(() => {
-        // ... (Admin verification logic remains the same) ...
-        const unsubscribeAuth = auth.onAuthStateChanged(async (user) => { if (user) { setAdminId(user.uid); try { const adminRef = doc(db, 'Admin', user.uid); const adminSnap = await getDoc(adminRef); const isAdmin = adminSnap.exists(); setIsAdminVerified(isAdmin); if (!isAdmin) { setSupportChats([]); setLoading(false); } } catch (error) { setIsAdminVerified(false); setSupportChats([]); setLoading(false); Alert.alert("Error", "Could not verify admin status."); } } else { setAdminId(null); setIsAdminVerified(false); setSupportChats([]); setLoading(false); } }); return () => unsubscribeAuth();
+        const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                setAdminId(user.uid);
+                try {
+                    const adminRef = doc(db, 'Admin', user.uid);
+                    const adminSnap = await getDoc(adminRef);
+                    const isAdmin = adminSnap.exists();
+                    setIsAdminVerified(isAdmin);
+                    if (!isAdmin) {
+                        setSupportChats([]);
+                        setLoading(false);
+                    }
+                } catch (error) {
+                    setIsAdminVerified(false);
+                    setSupportChats([]);
+                    setLoading(false);
+                    Alert.alert("Error", "Could not verify admin status.");
+                }
+            } else {
+                setAdminId(null);
+                setIsAdminVerified(false);
+                setSupportChats([]);
+                setLoading(false);
+            }
+        });
+        return () => unsubscribeAuth();
     }, []);
 
-    // --- Function to fetch User profile (Keep As Is) ---
     const fetchUserProfile = async (userId) => {
-        // ... (fetchUserProfile logic remains the same) ...
-        if (!userId) return { name: 'Unknown User', profilePic: userDefaultProfileImage }; try { const userRef = doc(db, 'Users', userId); const userDoc = await getDoc(userRef); if (userDoc.exists()) { const userData = userDoc.data(); const profilePicUrl = (userData?.profileImage && typeof userData.profileImage === 'string' && userData.profileImage.trim() !== '') ? userData.profileImage : userDefaultProfileImage; return { name: userData?.name || `User ${userId.substring(0, 5)}`, profilePic: profilePicUrl, }; } else { return { name: 'User Not Found', profilePic: userDefaultProfileImage }; } } catch (error) { console.error(`[AdminMsg] Err fetch profile ${userId}:`, error); return { name: 'Error Loading', profilePic: userDefaultProfileImage }; }
-    };
-
-    // --- Fetch Support Chats (Keep As Is) ---
-    useFocusEffect(
-        useCallback(() => {
-            // ... (Chat fetching and client-side sorting logic remains the same) ...
-             if (!isAdminVerified || !adminId) { setLoading(false); setSupportChats([]); return; } setLoading(true); const chatsRef = collection(db, 'Chats'); const q = query( chatsRef, where("isSupportChat", "==", true), where("users", "array-contains", adminId) ); const unsubscribe = onSnapshot(q, async (snapshot) => { if (snapshot.empty) { setSupportChats([]); setLoading(false); return; } const chatPromises = snapshot.docs.map(async (docSnap) => { const data = docSnap.data(); const chatId = docSnap.id; const otherUserId = data.users?.find(id => id !== adminId); if (!otherUserId) return null; const userProfile = await fetchUserProfile(otherUserId); const isUnread = data.lastSenderId !== adminId && !!data.lastMessage; return { id: chatId, userId: otherUserId, name: userProfile.name, message: data.lastMessage || 'No messages yet', timestamp: data.lastMessageTimestamp || data.createdAt || null, profilePic: userProfile.profilePic, isUnread: isUnread, users: data.users || [], }; }); let resolvedChats = (await Promise.all(chatPromises)).filter(chat => chat !== null); resolvedChats.sort((a, b) => { const timeA = a.timestamp?.seconds ?? 0; const timeB = b.timestamp?.seconds ?? 0; return timeB - timeA; }); setSupportChats(resolvedChats); setLoading(false); }, (error) => { console.error("[AdminMsg] Err listening:", error); Alert.alert("Error", "Could not load chats."); setLoading(false); }); return () => { unsubscribe(); };
-        }, [adminId, isAdminVerified])
-    );
-
-    // --- Format Timestamp (Keep As Is) ---
-    const formatTimestamp = (timestamp) => {
-        // ... (formatTimestamp logic remains the same) ...
-        if (!timestamp?.toDate) return ''; try { return formatDistanceToNowStrict(timestamp.toDate(), { addSuffix: true }); } catch (e) { return ''; }
-    };
-
-    // --- **NEW**: Close Row Function ---
-    const closeRow = (rowMap, rowKey) => {
-        if (rowMap[rowKey]) {
-            rowMap[rowKey].closeRow();
+        if (!userId) return { name: 'Unknown User', profilePic: userDefaultProfileImage };
+        try {
+            const userRef = doc(db, 'Users', userId);
+            const userDoc = await getDoc(userRef);
+            if (userDoc.exists()) {
+                const userData = userDoc.data();
+                const profilePicUrl = (userData?.profileImage && typeof userData.profileImage === 'string' && userData.profileImage.trim() !== '') ? userData.profileImage : userDefaultProfileImage;
+                return {
+                    name: userData?.name || `User ${userId.substring(0, 5)}`,
+                    profilePic: profilePicUrl,
+                };
+            } else {
+                return { name: 'User Not Found', profilePic: userDefaultProfileImage };
+            }
+        } catch (error) {
+            console.error(`[AdminMsg] Err fetch profile ${userId}:`, error);
+            return { name: 'Error Loading', profilePic: userDefaultProfileImage };
         }
     };
 
-    // --- **NEW**: Delete Chat Handler ---
-    const handleDeleteChat = async (chatId, rowMap) => {
-        // Close the row first visually
-        closeRow(rowMap, chatId);
+    /**
+     * Effect for fetching and listening to real-time chat updates.
+     * Runs when the screen comes into focus.
+     */
+    useFocusEffect(
+        useCallback(() => {
+            if (!isAdminVerified || !adminId) {
+                // For non-admins, ensure state is clean and stop here.
+                if (isInitialMount.current) {
+                    setLoading(false);
+                    isInitialMount.current = false;
+                }
+                setSupportChats([]);
+                return;
+            }
 
+            // Only show full-screen loader on the very first visit
+            if (isInitialMount.current) {
+                setLoading(true);
+            }
+
+            const chatsRef = collection(db, 'Chats');
+            const q = query(chatsRef, where("isSupportChat", "==", true), where("users", "array-contains", adminId));
+
+            const unsubscribe = onSnapshot(q, async (snapshot) => {
+                const chatPromises = snapshot.docs.map(async (docSnap) => {
+                    const data = docSnap.data();
+                    const chatId = docSnap.id;
+                    const otherUserId = data.users?.find(id => id !== adminId);
+                    if (!otherUserId) return null;
+                    const userProfile = await fetchUserProfile(otherUserId);
+                    const isUnread = data.lastSenderId !== adminId && !!data.lastMessage;
+                    return { id: chatId, userId: otherUserId, name: userProfile.name, message: data.lastMessage || 'No messages yet', timestamp: data.lastMessageTimestamp || data.createdAt || null, profilePic: userProfile.profilePic, isUnread: isUnread, users: data.users || [] };
+                });
+
+                let resolvedChats = (await Promise.all(chatPromises)).filter(chat => chat !== null);
+                resolvedChats.sort((a, b) => (b.timestamp?.seconds ?? 0) - (a.timestamp?.seconds ?? 0));
+                
+                setSupportChats(resolvedChats);
+
+                // Turn off loader after first data fetch is complete
+                if (isInitialMount.current) {
+                    setLoading(false);
+                    isInitialMount.current = false;
+                }
+            }, (error) => {
+                console.error("[AdminMsg] Err listening:", error);
+                Alert.alert("Error", "Could not load chats.");
+                setLoading(false);
+            });
+
+            // Cleanup listener when screen loses focus
+            return () => unsubscribe();
+        }, [adminId, isAdminVerified])
+    );
+
+    const handleDeleteChat = async (chatId) => {
         Alert.alert(
             "Delete Chat",
-            "Are you sure you want to delete this chat? ",
+            "Are you sure you want to delete this chat?",
             [
-                { text: "Cancel", style: "cancel" },
+                { text: "Cancel", style: "cancel", onPress: () => setOpenRowKey(null) },
                 {
                     text: "Delete",
                     style: "destructive",
                     onPress: async () => {
-                        console.log(`[AdminMessageScreen] Attempting to delete chat: ${chatId}`);
                         try {
-                            // --- Option 1: Delete only the main chat document ---
-                            // (Leaves messages subcollection orphaned)
                             const chatDocRef = doc(db, "Chats", chatId);
                             await deleteDoc(chatDocRef);
-                            console.log(`[AdminMessageScreen] Chat document ${chatId} deleted.`);
-
-                            // --- Option 2: Delete chat doc + messages (More complex) ---
-                            // Requires fetching all messages and batch deleting them first.
-                            // Example (use carefully, can be slow/costly for many messages):
-                            /*
-                            const messagesRef = collection(db, "Chats", chatId, "messages");
-                            const messagesSnap = await getDocs(messagesRef);
-                            const batch = writeBatch(db);
-                            messagesSnap.forEach(doc => batch.delete(doc.ref));
-                            batch.delete(doc(db, "Chats", chatId)); // Delete parent doc after messages
-                            await batch.commit();
-                            console.log(`[AdminMessageScreen] Chat ${chatId} and its messages deleted.`);
-                            */
-
-                            // Update local state immediately AFTER successful deletion
-                            setSupportChats(prevChats => prevChats.filter(chat => chat.id !== chatId));
-
                         } catch (error) {
                             console.error(`[AdminMessageScreen] Error deleting chat ${chatId}:`, error);
                             Alert.alert("Error", "Could not delete the chat. Please try again.");
@@ -121,63 +247,37 @@ export default function AdminMessageScreen() {
                     },
                 },
             ],
-            { cancelable: true }
+            { cancelable: true, onDismiss: () => setOpenRowKey(null) }
         );
     };
 
-
-    // --- **MODIFIED**: Render VISIBLE Item Function for SwipeListView ---
-    const renderVisibleChatItem = ({ item }) => (
-        // Use TouchableHighlight for visual feedback when row is pressed/swiped
-        <TouchableHighlight
-            style={styles.rowFront} // Apply background color here
-            underlayColor={'#f0f0f0'} // Color when pressed
-            onPress={() => navigation.navigate('MessageDetailScreen', {
-                chatId: item.id, loggedInUserId: adminId, users: item.users,
-                recipientName: item.name, recipientAvatar: item.profilePic,
-                isAdminChat: true, otherUserId: item.userId
-            })}
-        >
-            {/* Content of the row (same structure as before) */}
-            <View style={styles.userItemContent}>
-                <Image source={{ uri: item.profilePic }} style={styles.avatar} />
-                <View style={styles.userInfo}>
-                    <Text style={[styles.userName, item.isUnread && styles.unreadText]}>
-                        {item.name}
-                    </Text>
-                    <Text style={[styles.userMessage, item.isUnread && styles.unreadText]} numberOfLines={1}>
-                        {item.message}
-                    </Text>
-                </View>
-                <View style={styles.metaInfo}>
-                    <Text style={styles.timeText}>{formatTimestamp(item.timestamp)}</Text>
-                    {item.isUnread && <View style={styles.unreadBadge} />}
-                </View>
-            </View>
-        </TouchableHighlight>
+    const renderChatItem = ({ item }) => (
+        <SwipeableRow
+            item={item}
+            onDelete={() => handleDeleteChat(item.id)}
+            onOpen={setOpenRowKey}
+            close={openRowKey !== null && openRowKey !== item.id}
+            onPress={() => {
+                if (openRowKey) {
+                    setOpenRowKey(null);
+                    return;
+                }
+                navigation.navigate('MessageDetailScreen', {
+                    chatId: item.id,
+                    loggedInUserId: adminId,
+                    users: item.users,
+                    recipientName: item.name,
+                    recipientAvatar: item.profilePic,
+                    isAdminChat: true,
+                    otherUserId: item.userId,
+                });
+            }}
+        />
     );
 
-     // --- **NEW**: Render HIDDEN Item Function for SwipeListView ---
-    const renderHiddenChatItem = (data, rowMap) => (
-        <View style={styles.rowBack}>
-            {/* Empty space on the left (optional) */}
-            <View style={[styles.backRightBtn, styles.backRightBtnLeft]}>
-                 {/* <Text>Left Action</Text> */}
-            </View>
-            {/* Delete button on the right */}
-            <TouchableOpacity
-                style={[styles.backRightBtn, styles.backRightBtnRight]}
-                onPress={() => handleDeleteChat(data.item.id, rowMap)} // Pass item id and rowMap
-            >
-                <Icon name="trash" size={25} color="#FFF" />
-                {/* <Text style={styles.backTextWhite}>Delete</Text> */}
-            </TouchableOpacity>
-        </View>
-    );
+    // --- Conditional Renders ---
 
-    // --- Main Render Logic ---
-    // Loading or Verifying State
-     if ((loading || !isAdminVerified) && auth.currentUser) {
+    if (loading) {
         return (
             <SafeAreaView style={styles.container}>
                 <View style={styles.header}><Text style={styles.headerTitle}>User Messages</Text></View>
@@ -185,61 +285,39 @@ export default function AdminMessageScreen() {
             </SafeAreaView>
         );
     }
-
-    // Access Denied State
-    if (!isAdminVerified && auth.currentUser) {
-       return (
-          <SafeAreaView style={styles.container}>
-            <View style={styles.header}><Text style={styles.headerTitle}>User Messages</Text></View>
-            <View style={styles.emptyContainer}>
-               <Icon name="lock" size={50} color="#AAAAAA" style={{marginBottom: 15}} />
-               <Text style={styles.emptyText}>Access Denied</Text>
-            </View>
-          </SafeAreaView>
-       );
-    }
+    
+    // --- Main JSX ---
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar barStyle="light-content" backgroundColor={THEME_RED} />
-            {/* Header */}
-            <View style={styles.header}>
-                <Text style={styles.headerTitle}>📩 User Messages</Text>
-            </View>
-
-            {/* List or Empty State */}
-            {supportChats.length === 0 && !loading ? (
-                <View style={styles.emptyContainer}>
-                    <Icon name="comments-o" size={50} color="#AAAAAA" style={{marginBottom: 15}} />
-                    <Text style={styles.emptyText}>No support chats found.</Text>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+            <SafeAreaView style={styles.container}>
+                <StatusBar barStyle="light-content" backgroundColor={THEME_RED} />
+                <View style={styles.header}>
+                    <Text style={styles.headerTitle}>📩 User Messages</Text>
                 </View>
-            ) : (
-                 // --- MODIFIED: Use SwipeListView instead of FlatList ---
-                <SwipeListView
-                    data={supportChats}
-                    renderItem={renderVisibleChatItem} // Renders the visible row
-                    renderHiddenItem={renderHiddenChatItem} // Renders the buttons behind
-                    keyExtractor={(item) => item.id}
-                    contentContainerStyle={styles.flatListContent}
-                    showsVerticalScrollIndicator={false}
-                    // Swipe configuration
-                    disableRightSwipe={true} // Only allow swiping left (revealing right button)
-                    rightOpenValue={-75} // How much the row opens (width of delete button)
-                    previewRowKey={supportChats[0]?.id} // Animate first row on mount (optional)
-                    previewOpenValue={-40} // How much the preview opens
-                    previewOpenDelay={1000} // Delay before preview animation
-                    // Optional: Callback when row opens/closes
-                    // onRowDidOpen={(rowKey) => { console.log('Row opened:', rowKey); }}
-                    // onSwipeValueChange={(swipeData) => { /* Can track swipe amount */ }}
-                    useNativeDriver={false} // Often needed for swipe lists depending on complexity
-                />
-                 // --- End Modification ---
-            )}
-        </SafeAreaView>
+
+                {supportChats.length === 0 ? (
+                    <View style={styles.emptyContainer}>
+                        <Icon name="comments-o" size={50} color="#AAAAAA" style={{ marginBottom: 15 }} />
+                        <Text style={styles.emptyText}>No support chats found.</Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        data={supportChats}
+                        renderItem={renderChatItem}
+                        keyExtractor={(item) => item.id}
+                        contentContainerStyle={styles.flatListContent}
+                        showsVerticalScrollIndicator={false}
+                        extraData={openRowKey} // Ensures re-render to close rows
+                    />
+                )}
+            </SafeAreaView>
+        </GestureHandlerRootView>
     );
 }
 
-// --- Styles ---
+// --- Stylesheet ---
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -286,48 +364,25 @@ const styles = StyleSheet.create({
     flatListContent: {
         paddingBottom: 20,
     },
-    // --- Styles for Swipe List View ---
-    rowFront: { // Style for the visible row container
-        backgroundColor: '#FFF', // White background for the visible row
+    rowFront: {
+        backgroundColor: '#FFF',
         borderBottomColor: '#ECECEC',
         borderBottomWidth: 1,
         justifyContent: 'center',
-        minHeight: 74, // Ensure consistent height
+        minHeight: 74,
     },
-    userItemContent: { // Inner container for flex layout (avatar, text, meta)
+    userItemContent: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 12, // Padding applied here now
+        paddingVertical: 12,
         paddingHorizontal: 15,
     },
-    rowBack: { // Container for hidden buttons
-        alignItems: 'center',
-        backgroundColor: '#DDD', // Background behind the row (less important)
-        flex: 1,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        // paddingLeft: 15, // Example if you had a left action
-    },
-    backRightBtn: { // Common style for hidden buttons
-        alignItems: 'center',
-        bottom: 0,
+    deleteButton: {
+        backgroundColor: THEME_RED,
         justifyContent: 'center',
-        position: 'absolute',
-        top: 0,
-        width: 75, // Match rightOpenValue
+        alignItems: 'center',
+        width: 75,
     },
-    backRightBtnLeft: { // Style for a potential left-side hidden button (not used here)
-        // backgroundColor: 'blue',
-        // right: 75,
-    },
-    backRightBtnRight: { // Style for the delete button
-        backgroundColor: THEME_RED, // Red background for delete
-        right: 0, // Positioned on the far right
-    },
-    backTextWhite: { // Style for text on hidden buttons if needed
-        color: '#FFF',
-    },
-    // --- End Swipe List View Styles ---
     avatar: {
         width: 50,
         height: 50,

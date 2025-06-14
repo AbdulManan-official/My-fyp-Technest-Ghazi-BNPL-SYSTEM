@@ -1,7 +1,7 @@
 // utils/trendingProductsUtil.js (Refactored)
 
 // PRODUCTS_COLLECTION_NAME is not needed here anymore as we pass the products
-const NUMBER_OF_TRENDING_PRODUCTS_TO_SHOW = 16; // How many top products to return
+const NUMBER_OF_TRENDING_PRODUCTS_TO_SHOW = 12; // How many top products to return
 
 // --- Trending Score Calculation Logic (same as before) ---
 const TRENDING_WEIGHTS = {

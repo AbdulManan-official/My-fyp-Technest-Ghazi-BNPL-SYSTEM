@@ -23,10 +23,9 @@ const TextColorPrimary = '#212121';
 const TextColorSecondary = '#666666';
 const AccentColor = '#FF0000';
 const AccentColor1 = '#D32F2F'; // Primary Red
-const AccentDarkerColor = '#B71C1C'; // Darker Red for Gradient/Hover
 const LightBorderColor = '#EEEEEE';
 const PlaceholderBgColor = '#F0F0F0';
-const RelatedSectionBgColor = '#FAFAFA';
+const RelatedSectionBgColor = '#F5F5F5';
 const BnplPlanCardBg = '#F8F9FA';
 const BnplPlanCardBorder = '#DEE2E6';
 const BnplPlanIconColor = AccentColor;
@@ -34,19 +33,14 @@ const BnplPlanNameColor = TextColorPrimary;
 const BnplPlanDetailColor = TextColorSecondary;
 const BnplPlanDetailIconColor = '#757575';
 const BnplPlanValueColor = TextColorPrimary;
-// Remove ChatIconColor as it's replaced
-// const ChatIconColor = '#616161'; // REMOVED
+
 const CartIconColor = '#616161'; // Color for the new Cart Icon
 const CartBadgeBackgroundColor = AccentColor; // Use AccentColor for badge
 const CartBadgeTextColor = '#FFFFFF';
-const BnplBadgeBg = '#FFF3E0';
-const BnplBadgeText = '#E65100';
-const CodBadgeBg = '#E3F2FD';
-const CodBadgeText = '#1565C0';
+
 const StarColor = '#FFC107';
 const PlaceholderStarColor = '#E0E0E0';
 const StrikethroughColor = '#999';
-const DiscountedPriceColor = '#E53935';
 const ModalSelectedBg = '#FFF0F0';
 const ModalSelectedBorderColor = AccentColor;
 const ModalSelectedTextColor = AccentColor;
@@ -65,8 +59,8 @@ const MAX_INITIAL_REVIEWS = 3;
 const RELATED_PRODUCTS_LIMIT = 6;
 const CURRENCY_SYMBOL = 'RS';
 const ACCENT_RED = '#E53935';
-const BNPL_BADGE_BG = '#0056b3';
-const DISCOUNT_BADGE_BG = '#B8860B';
+const BNPL_BADGE_BG = 'red';
+const DISCOUNT_BADGE_BG = 'orange';
 const BADGE_TEXT_COLOR = '#FFFFFF';
 const GRID_PADDING_HORIZONTAL = 10;
 const CARD_MARGIN_HORIZONTAL = 8;
@@ -355,138 +349,116 @@ export default function ProductDetailsScreen() {
 
     // Effect 3: Fetch Reviews
     // ... (keep this useEffect as is) ...
-    useEffect(() => {
-        // Don't fetch if we don't have a valid product ID
-        if (!product?.id) {
-            setIsLoadingReviews(false); // Not loading if no ID
-            setFetchedReviews([]);      // Ensure reviews are empty
-            return;
-        }
+   // --- [REPLACEMENT] Optimized useEffect for Fetching Reviews ---
 
-        const fetchReviewsAndUsers = async () => {
-            console.log(`Starting fetch for reviews and user data for productId: ${product.id}`);
-            setIsLoadingReviews(true);
-            setFetchedReviews([]); // Clear previous combined reviews before new fetch
+useEffect(() => {
+    // Don't fetch if we don't have a valid product ID
+    if (!product?.id) {
+        setIsLoadingReviews(false);
+        setFetchedReviews([]);
+        return;
+    }
 
-            try {
-                // === Step 1: Fetch Reviews ===
-                const reviewsCollectionRef = collection(db, 'Reviews');
-                const reviewsQuery = query(
-                    reviewsCollectionRef,
-                    where('productId', '==', product.id), // Filter by the current product's ID
-                    orderBy('timestamp', 'desc')         // Order by timestamp, newest first
-                    // limit(50) // Optional: Add a limit if performance becomes an issue
-                );
+    const fetchReviewsAndEnhance = async () => {
+        console.log(`[Optimized] Starting fetch for reviews for productId: ${product.id}`);
+        setIsLoadingReviews(true);
+        setFetchedReviews([]); // Clear old reviews
 
-                const reviewsSnapshot = await getDocs(reviewsQuery);
-                // Process review data, convert timestamp
-                const reviewsData = reviewsSnapshot.docs.map(doc => {
-                    const data = doc.data();
-                    return {
-                        id: doc.id, // Firestore document ID
-                        ...data,    // Spread all fields from the review document
-                        // Safely convert Firestore Timestamp to JS Date object
-                        timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : null
-                    };
-                });
+        try {
+            // === Step 1: Fetch Reviews and Render Immediately ===
+            const reviewsCollectionRef = collection(db, 'Reviews');
+            const reviewsQuery = query(
+                reviewsCollectionRef,
+                where('productId', '==', product.id),
+                orderBy('timestamp', 'desc')
+            );
+            const reviewsSnapshot = await getDocs(reviewsQuery);
+            const initialReviewsData = reviewsSnapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    timestamp: data.timestamp?.toDate ? data.timestamp.toDate() : null,
+                    // *** Add placeholder fields for user info ***
+                    userName: 'Loading...', // Placeholder name
+                    userProfileImage: null   // No image initially
+                };
+            });
 
-                console.log(`Fetched ${reviewsData.length} review documents.`);
+            console.log(`[Optimized] Fetched ${initialReviewsData.length} reviews. Rendering them now.`);
+            setFetchedReviews(initialReviewsData); // << IMMEDIATE RENDER
+            setIsLoadingReviews(false); // << Loading is "done" from the user's perspective
 
-                // If no reviews found, stop here
-                if (reviewsData.length === 0) {
-                    setFetchedReviews([]); // Ensure state is empty array
-                    setIsLoadingReviews(false); // Loading is complete
-                    return; // Exit the function early
-                }
+            // If no reviews, we can stop here.
+            if (initialReviewsData.length === 0) {
+                return;
+            }
 
-                // === Step 2: Extract Unique User IDs from Fetched Reviews ===
-                // Use a Set to automatically handle duplicates, filter out any falsy IDs
-                const userIds = [...new Set(reviewsData.map(review => review.userId).filter(id => !!id))];
+            // === Step 2: In the background, fetch user data to enhance the reviews ===
+            const userIds = [...new Set(initialReviewsData.map(review => review.userId).filter(Boolean))];
+            if (userIds.length === 0) {
+                console.log("[Optimized] Reviews exist but have no user IDs to fetch.");
+                // Optionally update 'Loading...' to 'Anonymous'
+                setFetchedReviews(currentReviews => currentReviews.map(r => ({ ...r, userName: 'Anonymous User' })));
+                return;
+            }
 
-                console.log(`Found ${userIds.length} unique user IDs in reviews.`);
+            console.log(`[Optimized] Enhancing reviews with data for ${userIds.length} unique users.`);
+            const usersCollectionRef = collection(db, 'Users');
+            const FIRESTORE_IN_QUERY_LIMIT = 30;
 
-                // If reviews exist but none have valid user IDs (edge case)
-                if (userIds.length === 0) {
-                    console.warn("Reviews found, but no valid user IDs were present to fetch user data.");
-                    setFetchedReviews(reviewsData); // Set the reviews without user info
-                    setIsLoadingReviews(false); // Loading is complete
-                    return; // Exit
-                }
+            for (let i = 0; i < userIds.length; i += FIRESTORE_IN_QUERY_LIMIT) {
+                const userIdChunk = userIds.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
+                if (userIdChunk.length > 0) {
+                    const usersQuery = query(usersCollectionRef, where(documentId(), 'in', userIdChunk));
+                    const userSnapshots = await getDocs(usersQuery);
 
-                // === Step 3: Fetch User Data for the Unique IDs ===
-                const usersCollectionRef = collection(db, 'Users');
-                const userDataMap = new Map(); // Use a Map for efficient O(1) lookups later { userId -> { name, profileImage } }
-
-                // Firestore 'in' query limitation (currently 30 IDs per query in v9 SDK)
-                const FIRESTORE_IN_QUERY_LIMIT = 30;
-                const userQueryPromises = []; // Array to hold all query promises
-
-                // Batch user ID fetches to respect the 'in' query limit
-                for (let i = 0; i < userIds.length; i += FIRESTORE_IN_QUERY_LIMIT) {
-                    const userIdChunk = userIds.slice(i, i + FIRESTORE_IN_QUERY_LIMIT);
-                    if (userIdChunk.length > 0) {
-                        console.log(`Querying Users collection for chunk of ${userIdChunk.length} IDs starting with ${userIdChunk[0]}`);
-                        const usersQuery = query(
-                            usersCollectionRef,
-                            where(documentId(), 'in', userIdChunk) // Query by document ID (assumed to be the userId)
-                        );
-                        userQueryPromises.push(getDocs(usersQuery)); // Add the promise to the array
-                    }
-                }
-
-                // Wait for all user data chunk fetches to complete
-                const userSnapshotsArray = await Promise.all(userQueryPromises);
-
-                // Process the results from all chunk queries
-                userSnapshotsArray.forEach(userSnapshots => {
+                    const userDataMap = new Map();
                     userSnapshots.docs.forEach(userDoc => {
                         if (userDoc.exists()) {
                             const userData = userDoc.data();
-                            // Store relevant user info in the map, using userDoc.id (which is the userId) as the key
                             userDataMap.set(userDoc.id, {
-                                name: userData.name || 'Anonymous User', // Provide a fallback name
-                                profileImage: userData.profileImage || null // Store null if profileImage is missing/undefined
+                                name: userData.name || 'Anonymous User',
+                                profileImage: userData.profileImage || null
                             });
-                        } else {
-                            // This case should be rare if review.userId is valid, but handle defensively
-                            console.warn(`User document with ID ${userDoc.id} referenced in a review was not found.`);
-                            // Optionally, you could set a default placeholder here too:
-                            // userDataMap.set(userDoc.id, { name: 'User', profileImage: null });
                         }
                     });
-                });
 
-                console.log(`Successfully fetched and mapped data for ${userDataMap.size} users.`);
-
-                // === Step 4: Merge User Data back into Review Objects ===
-                const combinedReviews = reviewsData.map(review => {
-                    const userInfo = userDataMap.get(review.userId); // Look up user data using userId
-                    return {
-                        ...review, // Keep all original review data
-                        // Add userName and userProfileImage, providing defaults if userInfo wasn't found
-                        userName: userInfo ? userInfo.name : 'User',
-                        userProfileImage: userInfo ? userInfo.profileImage : null
-                    };
-                });
-
-                // === Step 5: Update State with Combined Data ===
-                setFetchedReviews(combinedReviews);
-
-            } catch (error) {
-                console.error("An error occurred during fetching reviews or user data: ", error);
-                setFetchedReviews([]); // Ensure reviews are cleared on error
-                // Optionally display an error message to the user
-                // Alert.alert("Error", "Could not load review details. Please try again later.");
-            } finally {
-                // Ensure loading state is set to false regardless of success or failure
-                setIsLoadingReviews(false);
+                    // === Step 3: Update the state with the fetched user data ===
+                    // This will trigger a re-render ONLY for the updated items.
+                    setFetchedReviews(currentReviews => {
+                        return currentReviews.map(review => {
+                            if (userDataMap.has(review.userId)) {
+                                const userInfo = userDataMap.get(review.userId);
+                                return {
+                                    ...review,
+                                    userName: userInfo.name,
+                                    userProfileImage: userInfo.profileImage
+                                };
+                            }
+                            // If user data for this review wasn't in this chunk, leave it as is.
+                            // If it was supposed to be but wasn't found, it will remain 'Loading...'.
+                            // You could add another check here to change it to 'User Not Found'.
+                            return review;
+                        });
+                    });
+                }
             }
-        };
+            console.log("[Optimized] User data enhancement complete.");
+            // Final pass to clean up any remaining 'Loading...' states if some users weren't found
+            setFetchedReviews(currentReviews => currentReviews.map(r => r.userName === 'Loading...' ? {...r, userName: 'User'} : r));
 
-        fetchReviewsAndUsers(); // Execute the async function
 
-    }, [product?.id]);
+        } catch (error) {
+            console.error("[Optimized] An error occurred during fetching reviews or user data: ", error);
+            setFetchedReviews([]);
+            setIsLoadingReviews(false);
+        }
+    };
 
+    fetchReviewsAndEnhance();
+
+}, [product?.id]);
     // *** ADDED Effect 4: Listen for Cart Updates ***
     useEffect(() => {
         if (user) {
@@ -1441,53 +1413,58 @@ export default function ProductDetailsScreen() {
     };
 
     // Renders a single Review Card using fetched review and user data
-    const renderReviewCard = ({ item, index }) => {
-        // item = { id, orderId, productId, rating, reviewText, timestamp(Date), userId, userName, userProfileImage }
-        const totalDisplayedItems = displayReviews.length; // Use length of the list being rendered
-        const isLastDisplayedItem = index === totalDisplayedItems - 1; // Check if it's the last *visible* item
-        if (!item || !item.id) return null; // Basic validation
+    // --- [REPLACEMENT] renderReviewCard Function ---
 
-        const formattedDate = formatDate(item.timestamp); // Format the JS Date object
+const renderReviewCard = ({ item, index }) => {
+    // ... (rest of the function is the same)
+    const totalDisplayedItems = displayReviews.length;
+    const isLastDisplayedItem = index === totalDisplayedItems - 1;
+    if (!item || !item.id) return null;
 
-        // Determine the image source: User's image URL or the local default asset
-        const imageSource = item.userProfileImage ? { uri: item.userProfileImage } : defaultUserProfileImage;
+    const formattedDate = formatDate(item.timestamp);
 
-        return (
-            <View style={[styles.reviewCard, isLastDisplayedItem && { borderBottomWidth: 0 }]}>
-                {/* Top part: User Image, Name, Date */}
-                <View style={styles.reviewHeader}>
-                    <Image
-                        source={imageSource}
-                        style={styles.reviewerImage}
-                        onError={(e) => console.log(`Image Error: Failed to load ${item.userProfileImage || 'default image'}`)}
-                    />
-                    <View style={styles.reviewerInfo}>
-                        <Text style={styles.reviewerName} numberOfLines={1} ellipsizeMode="tail">
-                            {item.userName || 'User'} {/* Display fetched name or fallback */}
-                        </Text>
-                        {formattedDate && <Text style={styles.reviewDate}>{formattedDate}</Text>}
-                    </View>
+    // [MODIFIED] Check if userProfileImage is a valid string, otherwise use the default.
+    // This prevents trying to load { uri: null }, which can cause issues.
+    const imageSource = (item.userProfileImage && typeof item.userProfileImage === 'string')
+        ? { uri: item.userProfileImage }
+        : defaultUserProfileImage;
+
+    return (
+        <View style={[styles.reviewCard, isLastDisplayedItem && { borderBottomWidth: 0 }]}>
+            {/* Top part: User Image, Name, Date */}
+            <View style={styles.reviewHeader}>
+                <Image
+                    source={imageSource}
+                    style={styles.reviewerImage}
+                    onError={(e) => console.log(`Image Error: Failed to load ${item.userProfileImage || 'default image'}`)}
+                />
+                <View style={styles.reviewerInfo}>
+                    <Text style={styles.reviewerName} numberOfLines={1} ellipsizeMode="tail">
+                        {item.userName || 'User'}
+                    </Text>
+                    {formattedDate && <Text style={styles.reviewDate}>{formattedDate}</Text>}
                 </View>
-
-                {/* Middle part: Rating Stars */}
-                <View style={styles.reviewRatingStars}>
-                    {[...Array(5)].map((_, i) => (
-                        <MaterialIcons
-                            key={`star-${item.id}-${i}`} // Unique key using review ID and star index
-                            name="star"
-                            size={16}
-                            color={i < (item.rating || 0) ? StarColor : PlaceholderStarColor} // Fill stars based on rating
-                        />
-                    ))}
-                </View>
-
-                {/* Bottom part: Review Text */}
-                <Text style={styles.reviewText}>
-                    {item.reviewText || 'No comment provided.'} {/* Display review text or fallback */}
-                </Text>
             </View>
-        );
-    };
+
+            {/* Middle part: Rating Stars */}
+            <View style={styles.reviewRatingStars}>
+                {[...Array(5)].map((_, i) => (
+                    <MaterialIcons
+                        key={`star-${item.id}-${i}`}
+                        name="star"
+                        size={16}
+                        color={i < (item.rating || 0) ? StarColor : PlaceholderStarColor}
+                    />
+                ))}
+            </View>
+
+            {/* Bottom part: Review Text */}
+            <Text style={styles.reviewText}>
+                {item.reviewText || 'No comment provided.'}
+            </Text>
+        </View>
+    );
+};
 
     // Renders a single card for the Related Products section
     // --- [REPLACEMENT] renderRelatedProductCard Function ---
@@ -1593,7 +1570,12 @@ const renderRelatedProductCard = ({ item }) => {
 
         return (
             <View style={styles.relatedProductsContainer}>
-                <Text style={styles.relatedProductsTitle}>You Might Also Like</Text>
+                <View style={styles.titleOuterContainer}>
+    <View style={styles.titleBgContainer}>
+        <MaterialIcons name="thumb-up" size={16} color="#FFFFFF" style={{ marginRight: 8 }} />
+        <Text style={styles.titleText}>You Might Also Like</Text>
+    </View>
+</View>
                 <FlatList
                     data={relatedProducts}
                     renderItem={renderRelatedProductCard}
@@ -2110,6 +2092,34 @@ const styles = StyleSheet.create({
     noReviewsText: { textAlign: 'center', color: TextColorSecondary, marginTop: 20, marginBottom: 20, fontStyle: 'italic' },
     seeMoreButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, marginTop: 10, borderTopWidth: 1, borderTopColor: LightBorderColor },
     seeMoreButtonText: { fontSize: 15, fontWeight: '500', color: AccentColor, marginRight: 5 },
+    titleOuterContainer: {
+    alignItems: 'flex-start',
+    marginBottom: 20, // A little more space after the title
+    paddingHorizontal: 0, // The banner will now sit flush left
+},
+titleBgContainer: {
+    backgroundColor: AccentColor, // Uses your existing constant
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderTopRightRadius: 20,
+    borderBottomRightRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.20,
+    shadowRadius: 4,
+},
+titleText: {
+    fontSize: 17,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.3)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+},
+
     // Related Products Styles
     relatedProductsContainer: {
     marginTop: 20,

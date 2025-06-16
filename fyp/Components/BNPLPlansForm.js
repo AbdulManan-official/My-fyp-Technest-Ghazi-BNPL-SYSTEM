@@ -9,7 +9,6 @@ export default function BNPLPlansForm({
   planData,
   setPlanData,
   saving,
-  deleting,
   editMode,
   onSave,
   onCancel,
@@ -115,7 +114,7 @@ export default function BNPLPlansForm({
 
       {/* Plan Name */}
       <PaperInput
-        label="Plan Name"
+        label="Enter Plan Name"
         mode="outlined"
         defaultValue={planData.planName || ''}
         onChangeText={(text) => { planNameRef.current = text; handleChange('planName', text); }}
@@ -157,7 +156,7 @@ export default function BNPLPlansForm({
 
       {/* Duration */}
       <PaperInput
-        label="Duration (months)"
+        label="Enter Duration (months)"
         mode="outlined"
         keyboardType="numeric"
         defaultValue={planData.duration || ''}
@@ -176,7 +175,7 @@ export default function BNPLPlansForm({
         <>
           {/* Interest Rate for Installment */}
           <PaperInput
-            label="Interest Rate (%)"
+            label="Enter Interest Rate (%)"
             mode="outlined"
             keyboardType="numeric"
             defaultValue={planData.interestRate || ''}
@@ -219,7 +218,7 @@ export default function BNPLPlansForm({
         <>
           {/* Interest Rate for Fixed Duration */}
           <PaperInput
-            label="Interest Rate (%)"
+            label="Enter Interest Rate (%)"
             mode="outlined"
             keyboardType="numeric"
             defaultValue={planData.interestRate || ''}

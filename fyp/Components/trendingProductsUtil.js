@@ -1,80 +1,84 @@
-// utils/trendingProductsUtil.js (Refactored)
+// utils/trendingProductsUtil.js (Refactored: "Top Rated" products logic)
 
-// PRODUCTS_COLLECTION_NAME is not needed here anymore as we pass the products
-const NUMBER_OF_TRENDING_PRODUCTS_TO_SHOW = 12; // How many top products to return
+// ❌ The TRENDING_WEIGHTS constant is no longer needed.
 
-// --- Trending Score Calculation Logic (same as before) ---
-const TRENDING_WEIGHTS = {
-    sales: 0.4,
-    views: 0.2,
-    avgRating: 0.25,
-    reviewCount: 0.15
-};
+const NUMBER_OF_TRENDING_PRODUCTS_TO_SHOW = 12;
+// ✅ Minimum average rating required to be eligible
+const MIN_AVERAGE_RATING = 3.5;
 
-// function calculateTrendingScore(product) { ... same as before ... }
+/**
+ * Calculates a "score" which is just the product's average rating.
+ * @param {Object} product 
+ * @returns {Object} { score, averageRating }
+ */
 function calculateTrendingScore(product) {
     const reviewCount = product.reviewCount || 0;
     const totalRatingSum = product.totalRatingSum || 0;
-    let averageRating = 0;
 
+    let averageRating = 0;
     if (reviewCount > 0) {
         averageRating = totalRatingSum / reviewCount;
     }
 
-    const score =
-        (product.salesCount || 0) * TRENDING_WEIGHTS.sales +
-        (product.viewCount || 0) * TRENDING_WEIGHTS.views +
-        (averageRating || 0) * TRENDING_WEIGHTS.avgRating +
-        (reviewCount || 0) * TRENDING_WEIGHTS.reviewCount;
-    return score;
+    // ✅ MODIFIED LINE: The score is now simply the averageRating itself.
+    // We completely ignore the reviewCount for the score.
+    const score = averageRating;
+
+    return { score, averageRating };
 }
-// --- End Trending Score Calculation ---
 
 /**
- * Calculates trending scores for a given list of products,
- * sorts them, and returns the top N products with their scores.
- * @param {Array<Object>} allProductsData - An array of product objects.
- * @returns {Array<Object>} An array of the top N trending product objects, each including a 'trendingScore'.
+ * Calculates and returns top-rated products 
+ * based on average rating and a minimum cutoff.
+ * @param {Array<Object>} allProductsData 
+ * @returns {Array<Object>}
  */
 export const calculateTopTrendingFromList = (allProductsData) => {
-    console.log('[calculateTopTrendingFromList] Received product list for scoring. Count:', allProductsData.length);
+    // This entire function does NOT need to be changed.
+    // It will now sort by the new "score" (which is just the average rating).
+
+    console.log('[calculateTopTrendingFromList] Received product list for "Top Rated" scoring. Count:', allProductsData.length);
+
     if (!allProductsData || allProductsData.length === 0) {
-        console.log('[calculateTopTrendingFromList] No products provided to calculate trending.');
+        console.log('[calculateTopTrendingFromList] No products provided.');
         return [];
     }
 
     try {
         const productsWithScores = allProductsData
             .map(product => {
-                const score = calculateTrendingScore(product);
+                const { score, averageRating } = calculateTrendingScore(product);
                 return {
-                    ...product, // Spread all original product data
+                    ...product,
                     trendingScore: score,
+                    _averageRating: averageRating,
                 };
             })
-            .filter(product => product.trendingScore > 0); // Optional: filter out non-eligible
+            // Filter out products with low average rating OR zero score (no reviews)
+            .filter(product => 
+                product._averageRating >= MIN_AVERAGE_RATING && product.trendingScore > 0
+            );
 
-        console.log(`[calculateTopTrendingFromList] Calculated scores for ${productsWithScores.length} eligible products.`);
+        console.log(`[calculateTopTrendingFromList] ${productsWithScores.length} products passed the minimum average rating (${MIN_AVERAGE_RATING}).`);
 
+        // This sort now effectively sorts by averageRating, highest first.
         productsWithScores.sort((a, b) => b.trendingScore - a.trendingScore);
-        console.log('[calculateTopTrendingFromList] Products sorted by trending score.');
+        console.log('[calculateTopTrendingFromList] Products sorted by average rating.');
 
-        const topTrending = productsWithScores.slice(0, NUMBER_OF_TRENDING_PRODUCTS_TO_SHOW);
+        const topRated = productsWithScores.slice(0, NUMBER_OF_TRENDING_PRODUCTS_TO_SHOW);
 
-        console.log(`[calculateTopTrendingFromList] Identified top ${topTrending.length} trending products:`);
-        topTrending.forEach(p => {
-            const avgRating = p.reviewCount > 0 ? (p.totalRatingSum / p.reviewCount).toFixed(1) : 'N/A';
+        console.log(`[calculateTopTrendingFromList] Identified top ${topRated.length} rated products:`);
+        topRated.forEach(p => {
             console.log(
-                `  - Name: ${p.name || 'Unnamed'}, ID: ${p.id}, Score: ${p.trendingScore.toFixed(3)}, ` +
-                `Sales: ${p.salesCount || 0}, Views: ${p.viewCount || 0}, ` +
-                `AvgRating: ${avgRating}, Reviews: ${p.reviewCount || 0}`
+                `  - Name: ${p.name || 'Unnamed'}, ID: ${p.id}, Rating: ${p._averageRating.toFixed(1)}, ` +
+                `Reviews: ${p.reviewCount || 0}` // Still useful to log review count
             );
         });
-        
-        return topTrending;
+
+        return topRated;
 
     } catch (err) {
-        console.error("[calculateTopTrendingFromList] CRITICAL ERROR calculating trending scores:", err);
-        return []; // Return empty on error to prevent app crash
+        console.error("[calculateTopTrendingFromList] CRITICAL ERROR calculating scores:", err);
+        return [];
     }
 };
